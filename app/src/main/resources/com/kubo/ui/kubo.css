@@ -1,0 +1,1790 @@
+/* Kubo — dark editorial look: particle art, thin rules, uppercase captions. */
+
+.root {
+    -fx-font-family: "Segoe UI";
+    -fx-background-color: #0a0a0f;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+.label {
+    -fx-text-fill: #e6e6ec;
+}
+
+/* Kubo's own borderless window frame */
+
+.kubo-window {
+    -fx-background-color: #050508;
+    -fx-border-color: #20202a;
+    -fx-border-width: 1;
+}
+
+.window-title-bar {
+    -fx-min-height: 35px;
+    -fx-pref-height: 35px;
+    -fx-max-height: 35px;
+    -fx-padding: 0 0 0 11px;
+    -fx-spacing: 9px;
+    -fx-background-color: linear-gradient(to right, #090910 0%, #07070c 68%, #0b0710 100%);
+    -fx-border-color: transparent transparent #20202a transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.window-mark {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.window-title {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #656575;
+}
+
+.window-control,
+.window-control:focused {
+    -fx-min-width: 46px;
+    -fx-pref-width: 46px;
+    -fx-max-width: 46px;
+    -fx-min-height: 34px;
+    -fx-pref-height: 34px;
+    -fx-max-height: 34px;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-width: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+    -fx-text-fill: #858594;
+    -fx-cursor: hand;
+}
+
+.window-control:hover {
+    -fx-background-color: rgba(53, 232, 255, 0.10);
+    -fx-text-fill: #35e8ff;
+}
+
+.window-control:pressed {
+    -fx-background-color: rgba(255, 63, 216, 0.16);
+    -fx-text-fill: #ff3fd8;
+}
+
+.window-close:hover {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #ffffff;
+}
+
+/* Header */
+
+.connection-scroll,
+.connection-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
+/* The scroll bars stay out of the picture; the track was drawing a grey bar across the field. */
+.connection-scroll > .scroll-bar,
+.connection-scroll > .scroll-bar > .track,
+.connection-scroll > .scroll-bar > .track-background,
+.connection-scroll > .scroll-bar > .increment-button,
+.connection-scroll > .scroll-bar > .decrement-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+.connection-scroll > .scroll-bar:vertical {
+    -fx-pref-width: 6px;
+}
+
+.connection-scroll > .scroll-bar > .thumb {
+    -fx-background-color: #2b2b38;
+    -fx-background-insets: 0;
+    -fx-background-radius: 3px;
+}
+
+.connection-scroll > .scroll-bar > .thumb:hover {
+    -fx-background-color: #43435a;
+}
+
+.wordmark {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.series {
+    -fx-font-size: 11px;
+    -fx-text-fill: #ff2d55;
+}
+
+.series-rule {
+    -fx-background-color: #ff2d55;
+    -fx-pref-width: 44px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+/* Editorial column */
+
+.dash {
+    -fx-background-color: #5a5a66;
+    -fx-pref-width: 22px;
+    -fx-max-width: 22px;
+    -fx-pref-height: 3px;
+    -fx-max-height: 3px;
+}
+
+.title {
+    -fx-font-size: 37px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f7f7fa;
+    -fx-line-spacing: -6px;
+}
+
+.lede {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #9c9cad;
+    -fx-line-spacing: 6.5px;
+}
+
+.field-label {
+    -fx-font-size: 10px;
+    -fx-text-fill: #7d7d90;
+}
+
+/* Inputs: a single rule under the text */
+
+.text-field {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent transparent #33333e transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 0 8 0;
+    -fx-text-fill: #f4f4f7;
+    -fx-prompt-text-fill: #454552;
+    -fx-highlight-fill: #8a4dff;
+    -fx-highlight-text-fill: #ffffff;
+    -fx-font-size: 14px;
+}
+
+.text-field:focused {
+    -fx-border-color: transparent transparent #ff3fd8 transparent;
+}
+
+.text-field:disabled {
+    -fx-opacity: 0.45;
+}
+
+.fingerprint,
+.fingerprint:focused {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: transparent transparent #33333e transparent;
+}
+
+/* Mode switch */
+
+.mode-toggle,
+.mode-toggle:hover,
+.mode-toggle:selected,
+.mode-toggle:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0 0 4 0;
+    -fx-font-size: 11px;
+    -fx-graphic-text-gap: 8px;
+    -fx-cursor: hand;
+}
+
+/* The switch between the two halves of the main screen: the one piece of navigation that has to be seen. */
+.scope-switch {
+    -fx-background-color: #101018;
+    -fx-background-radius: 3px;
+    -fx-border-color: #24242f;
+    -fx-border-radius: 3px;
+    -fx-padding: 2px;
+}
+
+.scope-tab {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #7a7a8c;
+    -fx-background-color: transparent;
+    -fx-background-radius: 2px;
+    -fx-padding: 5px 16px 5px 16px;
+    -fx-cursor: hand;
+}
+
+.scope-tab:hover {
+    -fx-text-fill: #d8d8e2;
+}
+
+.scope-tab-active {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #08080c;
+}
+
+.scope-tab-active:hover {
+    -fx-text-fill: #08080c;
+}
+
+/* Where you can go from here: present, but never louder than what you are looking at. */
+.destination-group {
+    -fx-border-color: transparent transparent transparent #24242f;
+    -fx-border-width: 0 0 0 1;
+    -fx-padding: 0 0 0 14px;
+}
+
+/* A section heading inside a column. Only the screen's own kicker is red. */
+.column-heading {
+    -fx-font-size: 10px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.mode-toggle {
+    -fx-text-fill: #5e5e6c;
+}
+
+.mode-toggle:hover {
+    -fx-text-fill: #b8b8c4;
+}
+
+.mode-toggle:selected {
+    -fx-text-fill: #f4f4f7;
+}
+
+.mode-marker {
+    -fx-fill: transparent;
+    -fx-stroke: #5e5e6c;
+    -fx-stroke-width: 1;
+}
+
+.mode-toggle:selected .mode-marker {
+    -fx-fill: #ff3fd8;
+    -fx-stroke: #ff3fd8;
+}
+
+/* Buttons */
+
+.primary-button,
+.primary-button:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #f4f4f7;
+    -fx-border-width: 1;
+    -fx-text-fill: #f4f4f7;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-padding: 12 34 12 34;
+    -fx-cursor: hand;
+}
+
+.primary-button:hover,
+.primary-button:pressed {
+    -fx-background-color: linear-gradient(to right, #8a4dff, #ff3fd8);
+    -fx-border-color: transparent;
+}
+
+.primary-button:disabled {
+    -fx-opacity: 0.3;
+}
+
+.ghost-button,
+.ghost-button:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent transparent #33333e transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 0 6 0;
+    -fx-text-fill: #8d8d9b;
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+}
+
+.ghost-button:hover {
+    -fx-text-fill: #f4f4f7;
+    -fx-border-color: transparent transparent #f4f4f7 transparent;
+}
+
+.ghost-button:disabled {
+    -fx-opacity: 0.35;
+}
+
+/* Status */
+
+.status {
+    -fx-font-size: 11px;
+    -fx-text-fill: #83839a;
+    -fx-line-spacing: 4px;
+}
+
+.status-pending {
+    -fx-text-fill: #ff3fd8;
+}
+
+.status-ok {
+    -fx-text-fill: #35e0a1;
+}
+
+.status-error {
+    -fx-text-fill: #ff2d55;
+}
+
+/* Host key */
+
+.host-key-host {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+/* Left edge progress bar: target, credentials, session */
+
+.step {
+    -fx-pref-width: 5px;
+    -fx-min-width: 5px;
+}
+
+.step-target {
+    -fx-background-color: #3b3bff;
+    -fx-pref-height: 96px;
+}
+
+.step-credentials {
+    -fx-background-color: #35e8ff;
+    -fx-pref-height: 220px;
+}
+
+.step-session {
+    -fx-background-color: #ff3fd8;
+    -fx-pref-height: 200px;
+}
+
+.vertical-note {
+    -fx-font-size: 9px;
+    -fx-text-fill: #454552;
+}
+
+/* Server scope */
+
+.header-note {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.scope-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.metric-label {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.metric-value {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #e6e6ec;
+}
+
+.badge {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #b8b8c4;
+    -fx-border-color: #33333e;
+    -fx-border-width: 1;
+    -fx-padding: 2 7 2 7;
+}
+
+.badge-alert {
+    -fx-text-fill: #ff2d55;
+    -fx-border-color: #ff2d55;
+}
+
+.badge-accent {
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: rgba(53, 232, 255, 0.45);
+}
+
+.exposure-count {
+    -fx-font-size: 28px;
+    -fx-font-weight: normal;
+}
+
+.count-public {
+    -fx-text-fill: #ff2d55;
+}
+
+.count-internal {
+    -fx-text-fill: #8a4dff;
+}
+
+.count-local {
+    -fx-text-fill: #8d8d9b;
+}
+
+.mono {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #dcdce4;
+}
+
+.mono-muted {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #5e5e6c;
+}
+
+.disk-track {
+    -fx-background-color: #24242d;
+    -fx-pref-height: 2px;
+    -fx-max-height: 2px;
+}
+
+.bar {
+    -fx-pref-width: 5px;
+    -fx-min-width: 5px;
+}
+
+.bar-cpu {
+    -fx-background-color: #ff3fd8;
+}
+
+.bar-memory {
+    -fx-background-color: #35e8ff;
+}
+
+.bar-disk {
+    -fx-background-color: #3b3bff;
+}
+
+.overlay-card {
+    -fx-background-color: rgba(10, 10, 15, 0.95);
+    -fx-border-color: #ff2d55;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 28 34 30 32;
+}
+
+/* Scroll areas stay invisible until hovered content overflows */
+
+.scroll-pane,
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.scroll-pane .corner {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 5px;
+    -fx-padding: 0;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #2a2a34;
+    -fx-background-radius: 0;
+    -fx-background-insets: 0;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-padding: 0;
+    -fx-pref-height: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-padding: 0;
+    -fx-shape: " ";
+}
+
+/* Files */
+
+.files-view {
+    -fx-background-color: #050508;
+}
+
+.files-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.zoom-bar {
+    -fx-background-color: rgba(8, 8, 12, 0.85);
+    -fx-border-color: #1c1c24;
+    -fx-border-width: 1;
+    -fx-padding: 3;
+}
+
+.zoom-button,
+.zoom-button:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-text-fill: #8d8d9b;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-padding: 4 9 4 9;
+    -fx-cursor: hand;
+}
+
+.zoom-button:hover {
+    -fx-background-color: #14141b;
+    -fx-text-fill: #f4f4f7;
+}
+
+.chooser-card {
+    -fx-background-color: rgba(5, 5, 8, 0.96);
+    -fx-border-color: #9d4dff;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 30 36 32 34;
+}
+
+.prompt-panel {
+    -fx-background-color: #08080c;
+    -fx-border-color: #1c1c24 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* The edge of the console, pulled to resize it. */
+.console-grip {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #1c1c24 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.console-grip:hover {
+    -fx-background-color: #9d4dff33;
+    -fx-border-color: transparent transparent #9d4dff transparent;
+}
+
+.prompt-sign {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 14px;
+    -fx-text-fill: #9d4dff;
+}
+
+.prompt-input {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+}
+
+.prompt-running {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #6ee0c8;
+}
+
+.prompt-command {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #f4f4f7;
+    -fx-padding: 6 0 0 0;
+}
+
+.prompt-output {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #a8a8b6;
+}
+
+.prompt-error {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #ff5a6e;
+}
+
+.prompt-system,
+.prompt-system-failed,
+.prompt-system-error {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #5e5e6c;
+}
+
+.prompt-system-failed {
+    -fx-text-fill: #c9954a;
+}
+
+.prompt-system-error {
+    -fx-text-fill: #ff5a6e;
+}
+
+.prompt-meta {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #4a4a57;
+}
+
+/* Floating cards: actions on an entry or a folder */
+
+.float-card {
+    -fx-background-color: rgba(7, 7, 11, 0.97);
+    -fx-border-color: #24242d #24242d #24242d #9d4dff;
+    -fx-border-width: 1 1 1 2;
+    -fx-padding: 16 18 16 18;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.7), 28, 0, 0, 10);
+}
+
+.float-card-danger {
+    -fx-border-color: #24242d #24242d #24242d #ff2d55;
+}
+
+.card-connector {
+    -fx-stroke: #9d4dff;
+    -fx-stroke-width: 1;
+    -fx-opacity: 0.7;
+}
+
+.card-anchor {
+    -fx-fill: #9d4dff;
+}
+
+.card-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.card-title-danger {
+    -fx-text-fill: #ff2d55;
+}
+
+.card-note {
+    -fx-font-size: 10px;
+    -fx-text-fill: #8d8d9b;
+    -fx-line-spacing: 3px;
+}
+
+.card-problem {
+    -fx-font-size: 10px;
+    -fx-text-fill: #ff5a6e;
+    -fx-line-spacing: 2px;
+}
+
+.card-success {
+    -fx-font-size: 10px;
+    -fx-text-fill: #6ee0c8;
+}
+
+.card-rule {
+    -fx-background-color: #1c1c24;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.menu-action,
+.menu-action:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 6 8 6 8;
+    -fx-text-fill: #c9c9d4;
+    -fx-font-size: 11.5px;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.menu-action:hover {
+    -fx-background-color: #14141b;
+}
+
+.menu-action .label {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #c9c9d4;
+}
+
+.menu-action:hover .label {
+    -fx-text-fill: #f4f4f7;
+}
+
+.menu-action .menu-key {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #4a4a57;
+}
+
+.menu-danger .label {
+    -fx-text-fill: #ff5a6e;
+}
+
+.menu-danger:hover {
+    -fx-background-color: rgba(255, 45, 85, 0.12);
+}
+
+.menu-danger:hover .label {
+    -fx-text-fill: #ff8a9b;
+}
+
+.menu-blocked {
+    -fx-padding: 5 8 5 8;
+}
+
+.menu-blocked-name {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #4a4a57;
+}
+
+.menu-blocked-reason {
+    -fx-font-size: 9px;
+    -fx-text-fill: #8a5560;
+}
+
+.card-field,
+.card-field:focused {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+}
+
+.compact-button,
+.compact-button:focused {
+    -fx-padding: 7 18 7 18;
+    -fx-font-size: 11px;
+}
+
+.danger-button,
+.danger-button:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #ff2d55;
+    -fx-border-width: 1;
+    -fx-text-fill: #ff5a6e;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 7 18 7 18;
+    -fx-cursor: hand;
+}
+
+.danger-button:hover {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #ffffff;
+}
+
+.danger-button:disabled {
+    -fx-opacity: 0.3;
+}
+
+.files-notice {
+    -fx-background-color: rgba(7, 7, 11, 0.94);
+    -fx-border-color: transparent transparent transparent #6ee0c8;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 8 14 8 12;
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #dcdce4;
+}
+
+.files-notice-error {
+    -fx-border-color: transparent transparent transparent #ff2d55;
+    -fx-text-fill: #ff8a9b;
+}
+
+/* Permissions and their lexicon */
+
+.perm-octal {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 30px;
+    -fx-text-fill: #f4f4f7;
+}
+
+.perm-letters {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 15px;
+}
+
+.perm-type {
+    -fx-text-fill: #6e6e7d;
+}
+
+.perm-owner {
+    -fx-text-fill: #ff3fd8;
+}
+
+.perm-group {
+    -fx-text-fill: #9d4dff;
+}
+
+.perm-others {
+    -fx-text-fill: #35e8ff;
+}
+
+.perm-cell,
+.perm-cell:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #33333e;
+    -fx-border-width: 1;
+    -fx-pref-width: 34px;
+    -fx-pref-height: 22px;
+    -fx-min-width: 34px;
+    -fx-padding: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #4a4a57;
+    -fx-cursor: hand;
+}
+
+.perm-cell:hover {
+    -fx-border-color: #8d8d9b;
+}
+
+.perm-cell:disabled {
+    -fx-opacity: 0.55;
+}
+
+.perm-cell-owner:selected {
+    -fx-background-color: #ff3fd8;
+    -fx-border-color: #ff3fd8;
+    -fx-text-fill: #0a0a0f;
+}
+
+.perm-cell-group:selected {
+    -fx-background-color: #9d4dff;
+    -fx-border-color: #9d4dff;
+    -fx-text-fill: #0a0a0f;
+}
+
+.perm-cell-others:selected {
+    -fx-background-color: #35e8ff;
+    -fx-border-color: #35e8ff;
+    -fx-text-fill: #0a0a0f;
+}
+
+.perm-digit {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 15px;
+    -fx-text-fill: #f4f4f7;
+}
+
+.lexicon-key {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #f4f4f7;
+}
+
+.lexicon-text {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #8d8d9b;
+}
+
+/* Destination picker */
+
+.picker-scrim {
+    -fx-background-color: rgba(3, 3, 5, 0.62);
+}
+
+.picker-card {
+    -fx-background-color: #050508;
+    -fx-border-color: #24242d #24242d #24242d #9d4dff;
+    -fx-border-width: 1 1 1 2;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.8), 40, 0, 0, 12);
+}
+
+.picker-footer {
+    -fx-background-color: #08080c;
+    -fx-border-color: #1c1c24 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.picker-destination {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+    -fx-text-fill: #f4f4f7;
+}
+
+/* Editor */
+
+.editor-view {
+    -fx-background-color: #050508;
+}
+
+.editor-area {
+    -fx-background-color: #07070b;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+    -fx-text-fill: #dcdce4;
+    -fx-highlight-fill: #5a2db3;
+    -fx-highlight-text-fill: #ffffff;
+    -fx-prompt-text-fill: #454552;
+}
+
+.editor-area .content {
+    -fx-background-color: #07070b;
+    -fx-padding: 10 14 10 14;
+    -fx-cursor: text;
+}
+
+.editor-area:readonly .content {
+    -fx-background-color: #0a0a0e;
+}
+
+.editor-area .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-pref-height: 5px;
+    -fx-padding: 0;
+}
+
+.editor-bar {
+    -fx-background-color: #08080c;
+    -fx-border-color: #1c1c24 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 7 40 8 36;
+}
+
+.editor-status {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.editor-status-dirty {
+    -fx-text-fill: #ff3fd8;
+}
+
+.editor-status-ok {
+    -fx-text-fill: #6ee0c8;
+}
+
+.editor-status-error {
+    -fx-text-fill: #ff5a6e;
+}
+
+.find-field,
+.find-field:focused {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11.5px;
+    -fx-pref-width: 180px;
+    -fx-padding: 4 0 5 0;
+}
+
+.find-missing,
+.find-missing:focused {
+    -fx-text-fill: #ff5a6e;
+    -fx-border-color: transparent transparent #ff2d55 transparent;
+}
+
+.conflict-bar {
+    -fx-background-color: rgba(255, 45, 85, 0.09);
+    -fx-border-color: transparent transparent transparent #ff2d55;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 9 40 9 34;
+}
+
+/* Shell size */
+
+.prompt-grip {
+    -fx-pref-height: 7px;
+    -fx-min-height: 7px;
+    -fx-max-height: 7px;
+    -fx-background-color: transparent;
+}
+
+.prompt-grip:hover {
+    -fx-background-color: linear-gradient(to bottom, #9d4dff, transparent);
+    -fx-opacity: 0.5;
+}
+
+/* This computer and uploads: cyan marks everything local */
+
+.local-kicker {
+    -fx-font-size: 11px;
+    -fx-text-fill: #35e8ff;
+}
+
+.local-card {
+    -fx-border-color: #24242d #24242d #24242d #35e8ff;
+}
+
+.upload-card {
+    -fx-border-color: #24242d #24242d #24242d #35e8ff;
+    -fx-padding: 12 16 12 16;
+}
+
+.local-place,
+.local-place:focused,
+.local-crumb,
+.local-crumb:focused,
+.local-crumb-current,
+.local-crumb-current:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 2 0 3 0;
+    -fx-cursor: hand;
+}
+
+.local-place {
+    -fx-font-size: 10px;
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: transparent transparent rgba(53, 232, 255, 0.35) transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.local-place:hover {
+    -fx-text-fill: #f4f4f7;
+}
+
+.local-crumb {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.local-crumb:hover {
+    -fx-text-fill: #35e8ff;
+}
+
+.local-crumb-current {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #e6e6ec;
+}
+
+.local-button:hover,
+.local-button:pressed {
+    -fx-background-color: linear-gradient(to right, #35e8ff, #6ee0c8);
+    -fx-text-fill: #050508;
+}
+
+.local-ghost {
+    -fx-text-fill: #35e8ff;
+}
+
+.upload-row {
+    -fx-padding: 8 0 8 0;
+    -fx-border-color: #1c1c24 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.upload-name {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f4f4f7;
+}
+
+.upload-status {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #8d8d9b;
+}
+
+.upload-status-done {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #6ee0c8;
+}
+
+.upload-status-error {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #ff5a6e;
+}
+
+.upload-close,
+.upload-close:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0 2 0 6;
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #6e6e7d;
+    -fx-cursor: hand;
+}
+
+.upload-close:hover {
+    -fx-text-fill: #ff5a6e;
+}
+
+.transfer-up {
+    -fx-font-size: 12px;
+    -fx-text-fill: #35e8ff;
+}
+
+.transfer-down {
+    -fx-font-size: 12px;
+    -fx-text-fill: #6ee0c8;
+}
+
+.compact-danger,
+.compact-danger:focused {
+    -fx-padding: 4 12 4 12;
+    -fx-font-size: 10px;
+}
+
+/* Logs history */
+
+.logs-list,
+.logs-list:focused {
+    -fx-background-color: #07070b;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-color: #1c1c24;
+    -fx-border-width: 1;
+}
+
+.logs-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 8 12 8 12;
+    -fx-border-color: transparent transparent #121218 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.logs-list .list-cell:filled:hover {
+    -fx-background-color: #0e0e14;
+}
+
+.logs-list .list-cell:filled:selected {
+    -fx-background-color: rgba(157, 77, 255, 0.14);
+}
+
+.logs-list .scroll-bar:horizontal {
+    -fx-pref-height: 0;
+    -fx-opacity: 0;
+}
+
+.log-live {
+    -fx-font-size: 9px;
+    -fx-text-fill: #35e0a1;
+}
+
+.log-command {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #dcdce4;
+}
+
+.log-origin {
+    -fx-font-size: 9px;
+    -fx-padding: 1 6 1 6;
+    -fx-border-width: 1;
+}
+
+.log-origin-monitor {
+    -fx-text-fill: #6e6e7d;
+    -fx-border-color: #33333e;
+}
+
+.log-origin-files {
+    -fx-text-fill: #9d4dff;
+    -fx-border-color: rgba(157, 77, 255, 0.5);
+}
+
+.log-origin-user {
+    -fx-text-fill: #ff3fd8;
+    -fx-border-color: rgba(255, 63, 216, 0.5);
+}
+
+.log-origin-docker {
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: rgba(53, 232, 255, 0.5);
+}
+
+.log-origin-redis {
+    -fx-text-fill: #ff5a6e;
+    -fx-border-color: rgba(255, 90, 110, 0.5);
+}
+
+/* Docker screen */
+
+.sudo-card {
+    -fx-border-color: #24242d #24242d #24242d #ffb347;
+}
+
+.help-card {
+    -fx-border-color: #24242d #24242d #24242d #35e8ff;
+    -fx-max-width: 640px;
+}
+
+.mode-toggle-active {
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: transparent transparent #35e8ff transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.run-card {
+    -fx-border-color: #24242d #24242d #24242d #35e8ff;
+}
+
+.env-key {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #8a4dff;
+}
+
+.env-value {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #c9c9d4;
+}
+
+.env-eye,
+.env-eye:focused {
+    -fx-background-color: transparent;
+    -fx-padding: 0 2 0 4;
+    -fx-font-size: 10px;
+    -fx-text-fill: #6e6e7d;
+    -fx-cursor: hand;
+}
+
+.env-eye:hover {
+    -fx-text-fill: #35e8ff;
+}
+
+.image-row {
+    -fx-padding: 9 8 9 8;
+    -fx-border-color: transparent transparent #121218 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.image-row:hover {
+    -fx-background-color: #0e0e14;
+}
+
+.network-card {
+    -fx-background-color: rgba(20, 20, 27, 0.7);
+    -fx-border-color: transparent transparent transparent #8a4dff;
+    -fx-border-width: 0 0 0 2;
+}
+
+.net-chip {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #c9c9d4;
+    -fx-border-color: #33333e;
+    -fx-border-width: 1;
+    -fx-padding: 2 8 2 8;
+}
+
+/* Redis screen */
+
+.redis-db-selector,
+.redis-db-selector:focused,
+.redis-type-choice,
+.redis-type-choice:focused {
+    -fx-background-color: #08090e;
+    -fx-background-radius: 0;
+    -fx-border-color: #353542;
+    -fx-border-radius: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-mark-color: #35e8ff;
+}
+
+.redis-db-selector .list-cell,
+.redis-type-choice .list-cell {
+    -fx-background-color: #08090e;
+    -fx-text-fill: #dcdce4;
+    -fx-padding: 5 9 5 9;
+}
+
+.redis-key-dialog {
+    -fx-min-width: 560px;
+}
+
+.redis-create-editor {
+    -fx-min-height: 190px;
+}
+
+.redis-prompt-card {
+    -fx-min-width: 500px;
+}
+
+.redis-output-card {
+    -fx-min-width: 720px;
+    -fx-min-height: 520px;
+}
+
+.redis-diagnostic-output,
+.redis-diagnostic-output:focused,
+.redis-diagnostic-output .content {
+    -fx-background-color: #05070b;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #292a36;
+    -fx-border-radius: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #dcdce4;
+    -fx-highlight-fill: #76245f;
+}
+
+.redis-context-menu {
+    -fx-background-color: rgba(7, 8, 13, 0.98);
+    -fx-background-radius: 0;
+    -fx-border-color: #353542;
+    -fx-border-width: 1;
+    -fx-padding: 6;
+}
+
+.redis-context-menu .menu-item {
+    -fx-background-color: transparent;
+    -fx-padding: 7 18 7 12;
+}
+
+.redis-context-menu .menu-item .label {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #cfcfda;
+}
+
+.redis-context-menu .menu-item:focused {
+    -fx-background-color: rgba(53, 232, 255, 0.10);
+}
+
+.redis-context-menu .menu-item:focused .label {
+    -fx-text-fill: #35e8ff;
+}
+
+.redis-context-menu .separator .line {
+    -fx-border-color: #24242d transparent transparent transparent;
+}
+
+.redis-context-menu .redis-menu-danger .label,
+.redis-context-menu .redis-menu-danger:focused .label {
+    -fx-text-fill: #ff5a6e;
+}
+
+.redis-console {
+    -fx-background-color: linear-gradient(to bottom, #07070c 0%, #050509 100%);
+    -fx-border-color: #24242d transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.redis-console .scroll-pane,
+.redis-console .scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+.redis-console .prompt-command,
+.redis-console .prompt-output,
+.redis-console .prompt-error,
+.redis-console .prompt-meta {
+    -fx-padding: 2 0 2 0;
+}
+
+.redis-console .prompt-sign {
+    -fx-text-fill: #35e8ff;
+}
+
+.redis-console .redis-cli-command {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #35e8ff;
+    -fx-padding: 6 0 0 0;
+}
+
+.hud-value {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 24px;
+    -fx-text-fill: #e6e6ec;
+}
+
+.hud-sub {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #6e6e7d;
+}
+
+/* Redis screen · the technical sheet */
+
+.sheet-masthead {
+    -fx-background-color: #0b0b0f;
+    -fx-border-color: transparent transparent #1e1e26 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.sheet-mark {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #0b0b0f;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1 6 1 6;
+}
+
+.sheet-title {
+    -fx-font-size: 31px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f2f2f7;
+}
+
+.sheet-caption {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #75758a;
+}
+
+.sheet-tag {
+    -fx-background-color: #17171f;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #b9b9c6;
+    -fx-padding: 2 9 2 6;
+}
+
+.service-chip,
+.service-chip:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: #2b2b36;
+    -fx-border-width: 1;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #75758a;
+    -fx-padding: 2 9 2 9;
+    -fx-cursor: hand;
+}
+
+.service-chip:hover {
+    -fx-text-fill: #e8e8ee;
+    -fx-border-color: #43435a;
+}
+
+.service-chip-active {
+    -fx-text-fill: #ff3fd8;
+    -fx-border-color: #ff3fd8;
+}
+
+.readout-bar {
+    -fx-border-color: #1e1e26;
+    -fx-border-width: 1 0 1 0;
+    -fx-padding: 6 0 6 0;
+}
+
+.readout-caption {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 9px;
+    -fx-text-fill: #62626f;
+}
+
+.readout-value {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 21px;
+    -fx-text-fill: #e8e8ee;
+}
+
+.readout-value-small {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #e8e8ee;
+}
+
+.readout-note {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 9px;
+    -fx-text-fill: #62626f;
+}
+
+.readout-rule {
+    -fx-background-color: #23232c;
+}
+
+.rail-separator {
+    -fx-background-color: #23232c;
+}
+
+.rail-label {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #62626f;
+}
+
+.rail-button,
+.rail-button:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: #2b2b36;
+    -fx-border-width: 1;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #b9b9c6;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.rail-button:hover {
+    -fx-text-fill: #ffffff;
+    -fx-border-color: #55556e;
+    -fx-background-color: #16161d;
+}
+
+.rail-button:disabled {
+    -fx-opacity: 0.4;
+}
+
+/* Redis screen · the dense key index */
+
+.redis-key-list {
+    -fx-background-color: #0b0b0f;
+    -fx-border-color: transparent #1e1e26 transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.redis-list,
+.redis-list > .virtual-flow > .clipped-container > .sheet > .list-cell {
+    -fx-background-color: transparent;
+}
+
+.redis-list {
+    -fx-border-color: #1a1a22;
+    -fx-border-width: 1;
+    -fx-padding: 2;
+}
+
+.redis-list > .virtual-flow > .corner {
+    -fx-background-color: transparent;
+}
+
+.redis-row {
+    -fx-background-color: transparent;
+    -fx-padding: 0 6 0 6;
+}
+
+.redis-row:filled:hover {
+    -fx-background-color: #15151d;
+}
+
+.redis-row:filled:selected {
+    -fx-background-color: #1d1526;
+    -fx-border-color: transparent transparent transparent #ff3fd8;
+    -fx-border-width: 0 0 0 2;
+}
+
+.redis-row-name {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-text-fill: #c9c9d4;
+}
+
+.redis-row:filled:selected .redis-row-name {
+    -fx-text-fill: #ffffff;
+}
+
+.redis-row-ttl {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #62626f;
+}
+
+.redis-row-bar {
+    -fx-background-color: #43435a;
+    -fx-opacity: 0.75;
+}
+
+.redis-inspector {
+    -fx-background-color: #0b0b0f;
+    -fx-border-color: transparent transparent transparent #1e1e26;
+    -fx-border-width: 0 0 0 1;
+}
+
+.inspector-key {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f2f2f7;
+}
+
+/* Root mode */
+
+.wordmark-root {
+    -fx-text-fill: #ff2d55;
+}
+
+.window-mark-root {
+    -fx-text-fill: #ff2d55;
+}
+
+.root-button,
+.root-button:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: #2b2b36;
+    -fx-border-width: 1;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-text-fill: #75758a;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.root-button:hover {
+    -fx-text-fill: #ffffff;
+    -fx-border-color: #55556e;
+}
+
+.root-button-active {
+    -fx-text-fill: #ff2d55;
+    -fx-border-color: #ff2d55;
+}
+
+.root-button:disabled {
+    -fx-opacity: 0.35;
+}
+
+.redis-value,
+.redis-value:focused {
+    -fx-background-color: #07070b;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: #24242d;
+    -fx-border-width: 1;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #dcdce4;
+    -fx-highlight-fill: #5a2db3;
+    -fx-highlight-text-fill: #ffffff;
+}
+
+.redis-value .content {
+    -fx-background-color: #07070b;
+    -fx-padding: 8 10 8 10;
+}
+
+.redis-collection,
+.redis-collection > .viewport {
+    -fx-background-color: #07070b;
+    -fx-border-color: #24242d;
+    -fx-border-width: 1;
+}
+
+.redis-entry-key {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #35e8ff;
+    -fx-padding: 3 10 3 10;
+}
+
+.redis-entry-value {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #dcdce4;
+    -fx-padding: 3 10 3 0;
+}
+
+.log-ok {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #35e0a1;
+}
+
+.log-failed {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #c9954a;
+}
+
+.log-error {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #ff5a6e;
+}
+
+/* Saved sessions */
+
+.session-card {
+    -fx-background-color: rgba(10, 10, 15, 0.82);
+    -fx-border-color: transparent transparent transparent #33333e;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 12 14 12 14;
+    -fx-cursor: hand;
+}
+
+.session-card:hover {
+    -fx-background-color: rgba(20, 20, 27, 0.92);
+}
+
+.session-card-key {
+    -fx-border-color: transparent transparent transparent #35e8ff;
+}
+
+.session-card-password {
+    -fx-border-color: transparent transparent transparent #ff3fd8;
+}
+
+.session-card-selected {
+    -fx-background-color: rgba(138, 77, 255, 0.16);
+}
+
+.session-target {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #f4f4f7;
+}
+
+.session-warning {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #ff5a6e;
+}
+
+.session-delete,
+.session-delete:focused,
+.session-link,
+.session-link:focused,
+.session-connect,
+.session-connect:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0 2 0 2;
+    -fx-cursor: hand;
+}
+
+.session-delete {
+    -fx-font-size: 10px;
+    -fx-text-fill: #4a4a57;
+}
+
+.session-delete:hover {
+    -fx-text-fill: #ff5a6e;
+}
+
+.session-link {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #8d8d9b;
+    -fx-underline: true;
+}
+
+.session-link:hover {
+    -fx-text-fill: #ff5a6e;
+}
+
+.session-connect {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #e6e6ec;
+}
+
+.session-connect:hover {
+    -fx-text-fill: #ff3fd8;
+}
+
+.remember-note {
+    -fx-font-size: 9.5px;
+    -fx-text-fill: #c9954a;
+    -fx-line-spacing: 2px;
+}
+
+.monitor-problem {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #c9954a;
+}
+
+.tooltip {
+    -fx-background-color: #14141b;
+    -fx-background-radius: 0;
+    -fx-text-fill: #dcdce4;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-padding: 8 10 8 10;
+}

@@ -1,0 +1,16 @@
+[versions]
+javafx-plugin = "0.1.0"
+sshj = "0.40.0"
+jackson = "2.20.0"
+slf4j = "2.0.17"
+sshd = "2.15.0"
+
+[libraries]
+sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+# Integration tests only: an SSH server started inside the test.
+sshd-core = { module = "org.apache.sshd:sshd-core", version.ref = "sshd" }
+
+[plugins]
+javafx = { id = "org.openjfx.javafxplugin", version.ref = "javafx-plugin" }
