@@ -145,9 +145,13 @@ final class DestinationPicker extends VBox {
         destinationLabel.setText(folder.path());
         resultLabel.setText("→  " + target);
 
+        // Root mode lifts the user's own permissions: the move or copy will run as root, so a destination they
+        // could not write to on their own is still a valid target.
+        boolean gated = account != null && !view.elevated();
         Optional<String> problem = FileCommands.destinationProblem(source.path(), folder.path(), move)
-                .or(() -> !folder.readable() ? Optional.of("No permission to enter this folder") : Optional.empty())
-                .or(() -> account != null && !account.canCreateIn(folder)
+                .or(() -> !view.elevated() && !folder.readable()
+                        ? Optional.of("No permission to enter this folder") : Optional.empty())
+                .or(() -> gated && !account.canCreateIn(folder)
                         ? Optional.of("No write permission in " + ActionCard.displayName(folder)) : Optional.empty());
         if (problem.isPresent()) {
             setStatus(problem.get().toUpperCase(Locale.ROOT), true);

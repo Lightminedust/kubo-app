@@ -95,8 +95,8 @@ final class ActionCard extends VBox {
 
     void showFolderMenu() {
         RemoteEntry subject = folder;
-        String create = !subject.readable() ? "NO PERMISSION TO ENTER THIS FOLDER"
-                : account != null && !account.canCreateIn(subject) ? "NO WRITE PERMISSION IN THIS FOLDER" : null;
+        String create = !view.elevated() && !subject.readable() ? "NO PERMISSION TO ENTER THIS FOLDER"
+                : gated() && !account.canCreateIn(subject) ? "NO WRITE PERMISSION IN THIS FOLDER" : null;
         List<Node> items = new ArrayList<>();
         items.add(header(subject, "FOLDER SPACE"));
         items.add(action("NEW FILE", "", create, false, () -> showCreate(false)));
@@ -255,7 +255,7 @@ final class ActionCard extends VBox {
 
     void showPermissions(RemoteEntry subject) {
         PermissionMode mode = PermissionMode.parseSymbolic(subject.permissions()).orElseThrow();
-        String lock = account == null || account.canChangeMode(subject) ? null
+        String lock = !gated() || account.canChangeMode(subject) ? null
                 : "ONLY " + subject.owner().toUpperCase(Locale.ROOT) + " (THE OWNER) OR ROOT CAN CHANGE THIS MODE. "
                 + "YOU CAN STILL READ IT HERE.";
         PermissionsPanel panel = new PermissionsPanel(subject, mode, lock);
@@ -277,11 +277,19 @@ final class ActionCard extends VBox {
 
     // Reasons an action is not offered
 
+    /**
+     * True while the connected user's own permissions still decide what is offered. Root mode lifts them: the
+     * command will run as root, so withholding the action would be telling the user something untrue.
+     */
+    private boolean gated() {
+        return account != null && !view.elevated();
+    }
+
     private String removalProblem(RemoteEntry subject) {
         if (folder == null) {
             return "THE SERVER ROOT CANNOT BE CHANGED";
         }
-        if (account != null && !account.canRemove(subject, folder)) {
+        if (gated() && !account.canRemove(subject, folder)) {
             return "NEEDS WRITE PERMISSION ON " + displayName(folder).toUpperCase(Locale.ROOT);
         }
         return null;
@@ -294,13 +302,16 @@ final class ActionCard extends VBox {
         if (subject.type() == RemoteEntry.Type.OTHER) {
             return "NOT A REGULAR FILE";
         }
-        if (account != null && !account.canRead(subject)) {
+        if (gated() && !account.canRead(subject)) {
             return "NO READ PERMISSION";
         }
         return subject.isDirectory() ? enterProblem(subject) : null;
     }
 
     private String enterProblem(RemoteEntry subject) {
+        if (view.elevated()) {
+            return null;
+        }
         return !subject.readable() || account != null && !account.canExecute(subject)
                 ? "NO PERMISSION TO ENTER" : null;
     }
@@ -309,7 +320,7 @@ final class ActionCard extends VBox {
         if (folder == null) {
             return "THE SERVER ROOT CANNOT BE COPIED";
         }
-        if (account != null && !account.canRead(subject)) {
+        if (gated() && !account.canRead(subject)) {
             return "NO READ PERMISSION";
         }
         return subject.isDirectory() ? enterProblem(subject) : null;
@@ -319,7 +330,7 @@ final class ActionCard extends VBox {
         if (subject.type() == RemoteEntry.Type.OTHER) {
             return "NOT A REGULAR FILE";
         }
-        if (account != null && !account.canRead(subject)) {
+        if (gated() && !account.canRead(subject)) {
             return "NO READ PERMISSION";
         }
         if (subject.type() == RemoteEntry.Type.FILE && subject.sizeBytes() > FileCommands.MAX_EDIT_BYTES) {
