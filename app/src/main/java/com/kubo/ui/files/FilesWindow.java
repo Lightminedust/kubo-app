@@ -23,8 +23,21 @@ public final class FilesWindow {
      * @param openLogs opens the session history
      */
     public FilesWindow(SshConnection connection, CommandService commands, Runnable openLogs) {
-        view = new FilesView(new FileBrowser(connection, commands));
+        this(connection, commands, openLogs, null);
+    }
+
+    /**
+     * @param root the session's root state, so the file manager can act as root when root mode is on
+     */
+    public FilesWindow(SshConnection connection, CommandService commands, Runnable openLogs,
+                       com.kubo.privilege.RootSession root) {
+        FileBrowser browser = new FileBrowser(connection, commands);
+        browser.setRootSession(root);
+        view = new FilesView(browser);
         view.setOnLogs(openLogs);
+        if (root != null) {
+            view.setRootSession(root);
+        }
 
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
         Scene scene = new Scene(KuboWindow.install(stage, view),

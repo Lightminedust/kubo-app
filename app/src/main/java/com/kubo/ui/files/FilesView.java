@@ -71,6 +71,10 @@ public final class FilesView extends StackPane {
     private final ToggleGroup viewGroup = new ToggleGroup();
     private final ToggleButton foldersOnly = toggle("FOLDERS");
     private final ToggleButton foldersAndFiles = toggle("FOLDERS + FILES");
+    /** Holds the ROOT button once the session's root state is known. */
+    private final HBox rootSlot = new HBox();
+    private com.kubo.privilege.RootSession rootSession;
+    private StackPane rootOverlay;
     private final ToggleButton hiddenToggle = toggle("HIDDEN");
     private final ToggleButton shellToggle = toggle("SHELL");
 
@@ -128,7 +132,7 @@ public final class FilesView extends StackPane {
         getChildren().add(layout);
 
         canvas.setOnOpen(directory -> load(canvas, directory));
-        canvas.setOnSelect(entry -> details.show(entry, account));
+        canvas.setOnSelect(entry -> details.show(entry, account, elevated()));
         canvas.setOnNavigate(directory -> {
             pathLabel.setText(directory.path());
             prompt.setDirectory(directory.path());
@@ -552,6 +556,48 @@ public final class FilesView extends StackPane {
         return bar;
     }
 
+    /**
+     * Gives the file manager the session's root state: the ROOT button appears, and every file command runs as
+     * root while root mode is on.
+     */
+    public void setRootSession(com.kubo.privilege.RootSession session) {
+        this.rootSession = session;
+        if (browser != null) {
+            browser.setRootSession(session);
+        }
+        rootSlot.getChildren().setAll(new com.kubo.ui.RootButton(session,
+                (command, done) -> worker.execute(() -> {
+                    com.kubo.command.CommandEntry entry = browser == null ? null : browser.verify(command);
+                    boolean ok = entry != null && entry.success();
+                    Platform.runLater(() -> done.accept(ok));
+                }),
+                this::showRootCard, this::hideRootCard));
+    }
+
+    /**
+     * True when file commands are currently running as root, so the cards stop withholding actions the connected
+     * user could not do on their own but root can.
+     */
+    boolean elevated() {
+        return browser != null && browser.elevated();
+    }
+
+    private void showRootCard(Region card) {
+        hideRootCard();
+        Region scrim = new Region();
+        scrim.getStyleClass().add("picker-scrim");
+        rootOverlay = new StackPane(scrim, card);
+        rootOverlay.setMinSize(0, 0);
+        getChildren().add(rootOverlay);
+    }
+
+    private void hideRootCard() {
+        if (rootOverlay != null) {
+            getChildren().remove(rootOverlay);
+            rootOverlay = null;
+        }
+    }
+
     private HBox buildHeader() {
         Label wordmark = com.kubo.ui.RootButton.wordmark();
         HBox brand = new HBox(wordmark);
@@ -585,8 +631,9 @@ public final class FilesView extends StackPane {
             control.setMinWidth(Region.USE_PREF_SIZE);
         }
 
+        rootSlot.setAlignment(Pos.CENTER_LEFT);
         HBox header = new HBox(18, brand, kicker, pathLabel, spacer, foldersOnly, foldersAndFiles, hiddenToggle,
-                homeButton, backButton, importButton, logsButton, shellToggle);
+                homeButton, backButton, importButton, rootSlot, logsButton, shellToggle);
         header.setAlignment(Pos.CENTER_LEFT);
         header.setPadding(new Insets(22, 40, 6, 36));
         HBox.setMargin(hiddenToggle, new Insets(0, 12, 0, 12));

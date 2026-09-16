@@ -77,7 +77,7 @@ final class ActionCard extends VBox {
                 view.openFolder(subject);
             }));
         } else {
-            boolean writable = account == null || account.canWrite(subject);
+            boolean writable = account == null || view.elevated() || account.canWrite(subject);
             items.add(action(writable ? "EDIT" : "VIEW", "ENTER", editProblem(subject), false, () -> {
                 view.closeCard();
                 view.edit(subject);
@@ -349,9 +349,12 @@ final class ActionCard extends VBox {
     /**
      * What the connected user may do with an entry, in words.
      */
-    static String accessText(Account account, RemoteEntry subject) {
+    static String accessText(Account account, RemoteEntry subject, boolean elevated) {
         if (account == null) {
             return "";
+        }
+        if (elevated) {
+            return "ROOT MODE IS ON: EVERYTHING IS ALLOWED";
         }
         if (account.isRoot()) {
             return "YOU ARE ROOT: EVERYTHING IS ALLOWED";
@@ -420,7 +423,7 @@ final class ActionCard extends VBox {
                 : subject.permissions() + "  ·  " + mode.get().octal() + "  ·  " + subject.owner() + " : "
                 + subject.group(), "mono");
         VBox header = new VBox(3, label(kicker, "series"), title, path, modeLine);
-        String access = accessText(account, subject);
+        String access = accessText(account, subject, view.elevated());
         if (!access.isEmpty()) {
             header.getChildren().add(label(access, "metric-label"));
         }

@@ -449,7 +449,7 @@ public final class ScopeView extends StackPane {
             return;
         }
         if (filesWindow == null || !filesWindow.isShowing()) {
-            filesWindow = new FilesWindow(connection, commands, this::openLogs);
+            filesWindow = new FilesWindow(connection, commands, this::openLogs, rootSession);
         }
         filesWindow.show();
     }

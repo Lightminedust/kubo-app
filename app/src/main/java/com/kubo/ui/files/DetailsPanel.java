@@ -117,7 +117,7 @@ final class DetailsPanel extends VBox {
         pathValue.setText(detail);
     }
 
-    void show(RemoteEntry entry, Account account) {
+    void show(RemoteEntry entry, Account account, boolean elevated) {
         selectedPath = entry.path();
         nameLabel.setText(ActionCard.displayName(entry));
         pathValue.setText(entry.path());
@@ -127,7 +127,7 @@ final class DetailsPanel extends VBox {
         permissionsValue.setText(entry.permissions().isEmpty() ? "—" : entry.permissions());
         ownerValue.setText(entry.owner().isEmpty() ? "—" : entry.owner() + " : " + entry.group());
         linkValue.setText(entry.linkTarget().isEmpty() ? "—" : entry.linkTarget());
-        accessValue.setText(ActionCard.accessText(account, entry));
+        accessValue.setText(ActionCard.accessText(account, entry, elevated));
         itemsValue.setText(!entry.isDirectory() ? "—"
                 : !entry.readable() ? "LOCKED"
                 : entry.childCount() >= 0 ? String.valueOf(entry.childCount()) : "—");

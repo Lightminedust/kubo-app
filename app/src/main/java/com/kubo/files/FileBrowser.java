@@ -2,6 +2,7 @@ package com.kubo.files;
 
 import com.kubo.command.CommandEntry;
 import com.kubo.command.CommandService;
+import com.kubo.privilege.Privilege;
 import com.kubo.command.CommandService.Origin;
 import com.kubo.connection.ssh.SshConnection;
 import com.kubo.model.files.Account;
@@ -45,6 +46,35 @@ public final class FileBrowser {
     private final SshConnection connection;
     private final CommandService commands;
     private final List<Consumer<CommandEntry>> listeners = new CopyOnWriteArrayList<>();
+
+    /**
+     * The session's root state, or null when this browser can never act as root. Read at every call, because the
+     * user may turn root on and off while the window is open.
+     */
+    private com.kubo.privilege.RootSession root;
+
+    /**
+     * Gives this browser the session's root state, so file operations can run as root while root mode is on.
+     */
+    public void setRootSession(com.kubo.privilege.RootSession root) {
+        this.root = root;
+    }
+
+    /**
+     * True when the next command should run as root: root mode is on and the password, if one is needed, is here.
+     */
+    public boolean elevated() {
+        return root != null && root.isElevated() && root.privilege() != null
+                && root.privilege().available() && !root.privilege().needsPassword();
+    }
+
+    /**
+     * Runs an already-formed sudo check, so the UI can tell whether the password is right before anything real
+     * happens. Never recorded: the history has no business holding a password check.
+     */
+    public CommandEntry verify(Privilege.Command command) {
+        return connection.exec(command.command(), command.input(), QUICK);
+    }
 
     public FileBrowser(SshConnection connection, CommandService commands) {
         this.connection = Objects.requireNonNull(connection, "connection");
@@ -209,7 +239,7 @@ public final class FileBrowser {
         Path part = folder.resolve("." + target.getFileName() + ".kubo-part");
         CommandEntry result;
         try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(part))) {
-            result = record(connection.execInto(DownloadCommands.file(entry.path()), out, onReceived, cancelled, QUICK),
+            result = readInto(DownloadCommands.file(entry.path()), out, onReceived, cancelled, QUICK,
                     Origin.FILES);
         } catch (IOException e) {
             deleteQuietly(part);
@@ -253,8 +283,8 @@ public final class FileBrowser {
             TarExtractor extractor = new TarExtractor(temporary);
             CommandEntry result;
             try (extractor) {
-                result = record(connection.execInto(DownloadCommands.folder(entry.path()), extractor, onReceived,
-                        cancelled, QUICK), Origin.FILES);
+                result = readInto(DownloadCommands.folder(entry.path()), extractor, onReceived,
+                        cancelled, QUICK, Origin.FILES);
             }
             if (cancelled.getAsBoolean() || result.error().equals("Cancelled")) {
                 return Download.cancelledByUser();
@@ -356,13 +386,70 @@ public final class FileBrowser {
         return run(command, null, QUICK, origin);
     }
 
+    /**
+     * Runs a command, as root when root mode is on.
+     *
+     * <p>When there is data to send, it goes on the same standard input the sudo password uses, so the wrapper that
+     * always consumes exactly one password line is used and the password is written ahead of the data.
+     */
     private CommandEntry run(String command, byte[] input, Duration timeout, Origin origin) {
-        return record(connection.exec(command, input, timeout), origin);
+        if (!elevated()) {
+            return record(connection.exec(command, input, timeout), origin);
+        }
+        Privilege privilege = root.privilege();
+        if (input == null) {
+            Privilege.Command wrapped = privilege.asRoot(command);
+            return recordAsRoot(connection.exec(wrapped.command(), wrapped.input(), timeout), command, origin);
+        }
+        Privilege.Command wrapped = privilege.asRootReadingInput(command);
+        return recordAsRoot(connection.exec(wrapped.command(), join(wrapped.input(), input), timeout),
+                command, origin);
     }
 
     private CommandEntry run(String command, InputStream input, LongConsumer onSent, BooleanSupplier cancelled,
                              Duration timeout, Origin origin) {
-        return record(connection.exec(command, input, onSent, cancelled, timeout), origin);
+        if (!elevated()) {
+            return record(connection.exec(command, input, onSent, cancelled, timeout), origin);
+        }
+        Privilege.Command wrapped = root.privilege().asRootReadingInput(command);
+        InputStream stream = wrapped.input() == null ? input
+                : new java.io.SequenceInputStream(new java.io.ByteArrayInputStream(wrapped.input()), input);
+        return recordAsRoot(connection.exec(wrapped.command(), stream, onSent, cancelled, timeout), command, origin);
+    }
+
+    /**
+     * Reads a command's output, as root when root mode is on. The password goes on standard input and the file's
+     * bytes come back on standard output, so the two never mix.
+     */
+    private CommandEntry readInto(String command, java.io.OutputStream sink, LongConsumer onReceived,
+                                  BooleanSupplier cancelled, Duration timeout, Origin origin) {
+        if (!elevated()) {
+            return record(connection.execInto(command, sink, onReceived, cancelled, timeout), origin);
+        }
+        Privilege.Command wrapped = root.privilege().asRoot(command);
+        return recordAsRoot(connection.execInto(wrapped.command(), sink, onReceived, cancelled, timeout),
+                command, origin);
+    }
+
+    /**
+     * The password line first, then the data. Only used where the command reads its own input.
+     */
+    private static byte[] join(byte[] password, byte[] data) {
+        if (password == null || password.length == 0) {
+            return data;
+        }
+        byte[] both = new byte[password.length + data.length];
+        System.arraycopy(password, 0, both, 0, password.length);
+        System.arraycopy(data, 0, both, password.length, data.length);
+        return both;
+    }
+
+    /**
+     * Records the plain command with its root flag — never the sudo wrapper, and never the password.
+     */
+    private CommandEntry recordAsRoot(CommandEntry raw, String plain, Origin origin) {
+        return record(new CommandEntry(raw.executedAt(), plain, true, raw.exitCode(), raw.output(), raw.error(),
+                raw.duration()), origin);
     }
 
     private CommandEntry record(CommandEntry entry, Origin origin) {

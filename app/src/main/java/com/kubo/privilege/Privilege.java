@@ -85,6 +85,34 @@ public final class Privilege {
     }
 
     /**
+     * Wraps a command that reads its own data from standard input, such as writing a file with {@code cat > file}.
+     *
+     * <p>This cannot use the ordinary wrapper. {@code sudo -S} takes the password from stdin, and the command's
+     * data follows on the same stream — so whether sudo consumes a password line has to be certain. With a cached
+     * sudo ticket it would consume nothing, and the password line would be written into the user's file. {@code -k}
+     * drops any cached ticket first, so sudo always prompts and always eats exactly one line.
+     *
+     * <p>The returned {@link Command#input()} is the password line to send <em>before</em> the data, or null when
+     * no password is involved at all.
+     *
+     * @throws IllegalStateException when root is not available, or a password is needed but not set
+     */
+    public Command asRootReadingInput(String command) {
+        Objects.requireNonNull(command, "command");
+        return switch (access) {
+            case ROOT -> new Command(command, null);
+            case SUDO_NOPASSWD -> new Command("sudo -n -- /bin/sh -c " + ShellQuote.quote(command), null);
+            case SUDO_PASSWORD -> {
+                if (!hasPassword()) {
+                    throw new IllegalStateException("The sudo password is needed first");
+                }
+                yield new Command("sudo -k -S -p '' -- /bin/sh -c " + ShellQuote.quote(command), passwordBytes());
+            }
+            case NONE -> throw new IllegalStateException("This user cannot act as root");
+        };
+    }
+
+    /**
      * A harmless command that checks the sudo password is right, so the UI can tell before running a real action.
      */
     public Command verifyPassword() {

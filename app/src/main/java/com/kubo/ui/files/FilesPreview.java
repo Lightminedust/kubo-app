@@ -510,6 +510,8 @@ public final class FilesPreview {
     }
 
     private static void write(FilesView view, Path output, String name, Runnable prepare) throws IOException {
+        // Previews show the ROOT button, so its place in the header is checked like everything else.
+        view.setRootSession(new com.kubo.privilege.RootSession(com.kubo.privilege.RootAccess.SUDO_PASSWORD));
         Scene scene = new Scene(view, 1440, 880, Color.web("#050508"));
         scene.getStylesheets().add(KuboApp.STYLESHEET);
         view.canvas().stop();
