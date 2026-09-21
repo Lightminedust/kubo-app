@@ -380,8 +380,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <div class="cta" lang="fr">
         <a class="btn primary" href="#download" data-download data-explain="exe">T&eacute;l&eacute;charger pour Windows</a>
         <a class="btn" href="#download">Sur Linux →</a>
-        <a class="btn" href="#files">Le voir bouger ↓</a>
-        <span class="meta">Apporte son propre Java · 75 Mo · gratuit</span>
+        <a class="btn" href="#files">Le voir en action ↓</a>
+        <span class="meta">Java embarqu&eacute; · 75 Mo · gratuit</span>
       </div>
     </div>
   </section>
@@ -392,7 +392,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <div class="cell" lang="en"><h3><span class="dot" style="background:var(--teal)"></span>Nothing installed</h3>
         <p>Kubo only runs ordinary shell commands over SSH. No agent, no daemon, nothing left behind on the server.</p></div>
       <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--teal)"></span>Rien d'install&eacute;</h3>
-        <p>Kubo n'ex&eacute;cute que des commandes shell ordinaires, par SSH. Aucun agent, aucun d&eacute;mon, rien laiss&eacute; derri&egrave;re sur le serveur.</p></div>
+        <p>Kubo n'ex&eacute;cute que des commandes shell ordinaires, par SSH. Aucun agent, aucun d&eacute;mon, rien qui reste sur le serveur.</p></div>
       <div class="cell" lang="en"><h3><span class="dot" style="background:var(--cyan)"></span>Nothing leaves your machine</h3>
         <p>It talks to your server and to no one else. No telemetry, no account, no cloud. Your data stays yours.</p></div>
       <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--cyan)"></span>Rien ne quitte votre machine</h3>
@@ -462,7 +462,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
             d&eacute;placer, changer les droits, t&eacute;l&eacute;charger ou supprimer ; d&eacute;posez des fichiers
             de votre PC sur un dossier pour les envoyer. Les dossiers que vous ne pouvez pas ouvrir sont dessin&eacute;s
             en rouge avant m&ecirc;me d'essayer. C'est l'explorateur SSH de tous les jours — plus rapide &agrave; lire,
-            et &agrave; croire, que les outils qu'on subit d'habitude.</p>
+            et plus facile &agrave; croire, que les outils qu'on subit d'habitude.</p>
           <p lang="en">And there's a shell right there that lists every command it sends, so you always see exactly what
             touched your server.</p>
           <p lang="fr">Et un shell juste &agrave; c&ocirc;t&eacute;, qui liste chaque commande envoy&eacute;e :
@@ -508,11 +508,11 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
             as a pane of glass between them. Your ports branch off by how far they can truly be reached —
             exposed, open, shielded, private, local — so an open database screams and a loopback-only port stays
             quiet.</p>
-          <p lang="fr">La voie d'entr&eacute;e, lue de gauche &agrave; droite : Internet d'un c&ocirc;t&eacute;, votre
-            serveur de l'autre, et le pare-feu comme une vitre entre les deux. Vos ports se rangent selon la distance
-            depuis laquelle on peut vraiment les atteindre — expos&eacute;, ouvert, abrit&eacute;, priv&eacute;,
-            local — donc une base de donn&eacute;es ouverte hurle, et un port qui n'&eacute;coute que la boucle locale
-            reste silencieux.</p>
+          <p lang="fr">Le chemin d'entr&eacute;e, lu de gauche &agrave; droite : Internet d'un c&ocirc;t&eacute;, votre
+            serveur de l'autre, et le pare-feu comme une vitre entre les deux. Vos ports se rangent selon d'o&ugrave;
+            on peut vraiment les atteindre — expos&eacute;, ouvert, abrit&eacute;, priv&eacute;,
+            local — donc une base de donn&eacute;es ouverte saute aux yeux, et un port qui n'&eacute;coute que la boucle
+            locale reste discret.</p>
           <p lang="en">Kubo cross-references <code>ss</code>, PM2 and Docker to name what holds each port, and reads whichever
             firewall you actually run — UFW, firewalld, nftables or iptables. When it can't read the rules, it
             says so, and never pretends a firewall it couldn't read is protecting you.</p>
@@ -560,7 +560,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <div class="fignum" lang="en">Fig. 03 &mdash; Services</div>
           <div class="fignum" lang="fr">Fig. 03 &mdash; Services</div>
           <h3 lang="en">Running now is not the same as <span class="accent-s">coming back</span></h3>
-          <h3 lang="fr">Tourner maintenant n'est pas <span class="accent-s">revenir apr&egrave;s</span></h3>
+          <h3 lang="fr">Il tourne aujourd'hui. <span class="accent-s">Sera-t-il l&agrave; demain ?</span></h3>
           <p lang="en">systemd answers those as two separate questions, and nobody runs both of them against forty
             services. So a server sits for months looking perfectly healthy, with something important that will
             simply not be there after the next reboot &mdash; and you find out during the reboot.</p>
@@ -587,8 +587,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
             m&eacute;moire d'un service qui s'emballe, ou sa part de processeur, sans le red&eacute;marrer. Lui
             envoyer un signal. Lui donner ses propres r&eacute;glages dans un fichier &agrave; part, pour que celui
             livr&eacute; par votre paquet ne soit jamais touch&eacute;. &Eacute;crire un service entier, avec
-            l'arbre des fichiers juste l&agrave; pour choisir ce qu'il lance &mdash; et Kubo vous dit que le script
-            n'est pas ex&eacute;cutable <i>avant</i> d'&eacute;crire l'unit&eacute;, pas au premier
+            l'arbre des fichiers juste l&agrave; pour choisir ce qu'il lance &mdash; et Kubo vous pr&eacute;vient que le script
+            n'est pas ex&eacute;cutable <i>avant</i> d'&eacute;crire l'unit&eacute;, et non au premier
             d&eacute;marrage rat&eacute;.</p>
           <p lang="en">Stopping or disabling <code>sshd</code>, or the network under it, is refused outright rather than
             confirmed. That is the one mistake with no way back: the server keeps running, perfectly healthy,
@@ -604,7 +604,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <div class="taglist" lang="fr">
             <span class="tag">Cinq &eacute;tats</span><span class="tag">D&eacute;pendances</span>
             <span class="tag">Limites m&eacute;moire &amp; CPU</span><span class="tag">Signaux</span>
-            <span class="tag">R&eacute;glages &agrave; part</span><span class="tag">En cr&eacute;er un</span>
+            <span class="tag">Surcharges</span><span class="tag">Cr&eacute;er un service</span>
           </div>
         </div>
       </div>
@@ -629,7 +629,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         <div class="scope" lang="en"><div class="n" style="color:var(--violet)">SCOPE</div><h4>The machine itself</h4>
           <p>OS, kernel, CPU, RAM — the processor as a spinning particle sphere, with memory, swap, load and steal read around it.</p></div>
         <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">SCOPE</div><h4>La machine elle-m&ecirc;me</h4>
-          <p>OS, noyau, processeur, RAM — le processeur en sph&egrave;re de particules qui tourne, avec la m&eacute;moire, le swap, la charge et le vol de temps lus autour.</p></div>
+          <p>OS, noyau, processeur, RAM — le processeur en sph&egrave;re de particules qui tourne, avec la m&eacute;moire, le swap, la charge et le steal lus autour.</p></div>
         <div class="scope" lang="en"><div class="n" style="color:var(--violet)">FILES</div><h4>Browse & manage</h4>
           <p>The folder tree, edit and permissions, uploads and downloads, and your own shell beside it.</p></div>
         <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">FICHIERS</div><h4>Naviguer et g&eacute;rer</h4>
@@ -637,10 +637,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         <div class="scope" lang="en"><div class="n" style="color:var(--cyan)">NETWORK</div><h4>What's exposed</h4>
           <p>The firewall, the routing and every listening port, branched by how far it can really be reached.</p></div>
         <div class="scope" lang="fr"><div class="n" style="color:var(--cyan)">R&Eacute;SEAU</div><h4>Ce qui est expos&eacute;</h4>
-          <p>Le pare-feu, le routage et chaque port en &eacute;coute, rang&eacute;s selon la distance depuis laquelle on peut vraiment les atteindre.</p></div>
+          <p>Le pare-feu, le routage et chaque port en &eacute;coute, rang&eacute;s selon d'o&ugrave; on peut vraiment les atteindre.</p></div>
         <div class="scope" lang="en"><div class="n" style="color:var(--teal)">SERVICES</div><h4>Up, and staying up</h4>
           <p>Every unit by what it really is &mdash; failed, won't survive a reboot, enabled but not running, running, idle &mdash; with its dependencies, its limits and its journal.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">SERVICES</div><h4>Debout, et qui le reste</h4>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">SERVICES</div><h4>En marche, et qui le restera</h4>
           <p>Chaque unit&eacute; selon ce qu'elle est vraiment &mdash; en &eacute;chec, ne survivra pas au red&eacute;marrage, activ&eacute;e mais arr&ecirc;t&eacute;e, en marche, au repos &mdash; avec ses d&eacute;pendances, ses limites et son journal.</p></div>
         <div class="scope" lang="en"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Containers</h4>
           <p>State, CPU and memory, ports and volumes; start, stop, restart, logs, a shell inside — and a read-only browse of the container's files.</p></div>
@@ -672,15 +672,15 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <p class="note" lang="en">It connects to the servers you name, over SSH, with the credentials you supply — and to
             nothing else. No account. No cloud. No phone-home.</p>
           <p class="note" lang="fr">Il se connecte aux serveurs que vous nommez, en SSH, avec les identifiants que
-            vous fournissez &mdash; et &agrave; rien d'autre. Aucun compte. Aucun cloud. Aucun appel &agrave; la
-            maison.</p>
+            vous fournissez &mdash; et &agrave; rien d'autre. Aucun compte. Aucun cloud. Rien qui reparte
+            ailleurs.</p>
         </div>
         <div>
           <ul>
             <li lang="en"><span class="mono">01</span><div><b>Host keys, checked</b><span>First contact shows the fingerprint and asks. A server whose key changed is refused outright.</span></div></li>
             <li lang="fr"><span class="mono">01</span><div><b>Cl&eacute;s d'h&ocirc;te v&eacute;rifi&eacute;es</b><span>Au premier contact, l'empreinte est montr&eacute;e et la question pos&eacute;e. Un serveur dont la cl&eacute; a chang&eacute; est refus&eacute; net.</span></div></li>
             <li lang="en"><span class="mono">02</span><div><b>Secrets held, then wiped</b><span>Passwords and passphrases live in memory as raw bytes and are wiped after use. Saved only if you tick "remember", encrypted with Windows DPAPI for your account.</span></div></li>
-            <li lang="fr"><span class="mono">02</span><div><b>Secrets tenus, puis effac&eacute;s</b><span>Mots de passe et phrases de passe vivent en m&eacute;moire en octets bruts et sont effac&eacute;s apr&egrave;s usage. Enregistr&eacute;s seulement si vous cochez &laquo;&nbsp;retenir&nbsp;&raquo;, chiffr&eacute;s par DPAPI pour votre compte Windows.</span></div></li>
+            <li lang="fr"><span class="mono">02</span><div><b>Secrets gard&eacute;s, puis effac&eacute;s</b><span>Mots de passe et phrases secr&egrave;tes vivent en m&eacute;moire sous forme d'octets bruts, et sont effac&eacute;s apr&egrave;s usage. Enregistr&eacute;s seulement si vous cochez &laquo;&nbsp;retenir&nbsp;&raquo;, chiffr&eacute;s par DPAPI pour votre compte Windows.</span></div></li>
             <li lang="en"><span class="mono">03</span><div><b>Root only when you say so</b><span>Kubo never elevates on its own. One button asks for sudo, once per session, and every window shows <code>Kubo_root</code> while it's on.</span></div></li>
             <li lang="fr"><span class="mono">03</span><div><b>Root seulement quand vous le dites</b><span>Kubo ne s'&eacute;l&egrave;ve jamais de lui-m&ecirc;me. Un bouton demande sudo, une fois par session, et chaque fen&ecirc;tre affiche <code>Kubo_root</code> tant que c'est actif.</span></div></li>
             <li lang="en"><span class="mono">04</span><div><b>Nothing destructive by surprise</b><span>Changes are simulated or confirmed by typing the name back; commands that need root are fixed templates, never built from what you type.</span></div></li>
@@ -703,7 +703,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="en">Kubo brings its own Java runtime, so there is
         no runtime to install first. No account to create, nothing to configure — point it at your server and go.
         Every package below holds the same application; take whichever suits the machine you are on.</p>
-      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="fr">Kubo apporte son propre Java : il n'y a
+      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="fr">Kubo embarque son propre Java : il n'y a
         rien &agrave; installer avant. Aucun compte &agrave; cr&eacute;er, rien &agrave; configurer — donnez-lui
         l'adresse de votre serveur et c'est parti. Tous les paquets ci-dessous contiennent la m&ecirc;me
         application ; prenez celui qui convient &agrave; la machine sur laquelle vous &ecirc;tes.</p>
@@ -717,7 +717,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <h3>Kubo-Setup.exe</h3>
           <p lang="en">The usual way. Installs Kubo, adds it to the Start menu, and a later version replaces this one
             instead of sitting beside it.</p>
-          <p lang="fr">La voie habituelle. Installe Kubo, l'ajoute au menu D&eacute;marrer, et une version
+          <p lang="fr">La m&eacute;thode habituelle. Installe Kubo, l'ajoute au menu D&eacute;marrer, et une version
             ult&eacute;rieure remplacera celle-ci au lieu de s'installer &agrave; c&ocirc;t&eacute;.</p>
           <div class="foot" lang="en">
             <a class="btn primary" href="#" data-download data-explain="exe">Download for Windows</a>
@@ -735,7 +735,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <h3 lang="fr">Sans installation</h3>
           <p lang="en">A zip you unfold wherever you like — a folder of your own, an external drive, a work laptop you
             cannot install on. Nothing is written to the registry, and deleting the folder removes it.</p>
-          <p lang="fr">Un zip que vous d&eacute;pliez o&ugrave; vous voulez — un dossier &agrave; vous, un disque
+          <p lang="fr">Un zip &agrave; d&eacute;compresser o&ugrave; vous voulez — un dossier &agrave; vous, un disque
             externe, un portable de travail sur lequel vous ne pouvez rien installer. Rien n'est &eacute;crit dans
             le registre, et supprimer le dossier suffit &agrave; l'enlever.</p>
           <div class="foot" lang="en">
@@ -824,8 +824,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         encryption Kubo can trust on every machine; key files still are.</p>
       <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.0.0 · demande une session graphique et GTK 3<br>
         Kubo <i>administre</i> des serveurs Linux — il ne tourne pas sur l'un d'eux. Les mots de passe ne sont
-        jamais enregistr&eacute;s ici, faute d'un chiffrement en qui Kubo puisse avoir confiance sur toutes les
-        machines ; les fichiers de cl&eacute; le sont toujours.</p>
+        jamais enregistr&eacute;s ici, faute d'un chiffrement fiable sur toutes les machines ;
+        les fichiers de cl&eacute;, eux, le sont toujours.</p>
     </div>
   </section>
 
@@ -862,7 +862,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <span class="n" lang="fr">02 — L'auteur</span>
           <b>github.com/Lightminedust</b>
           <span class="d" lang="en">Everything else I build, in the open. Follow along to see what comes next.</span>
-          <span class="d" lang="fr">Tout le reste de ce que je construis, &agrave; ciel ouvert. Suivez pour voir
+          <span class="d" lang="fr">Tout le reste de ce que je construis, en public. Suivez pour voir
             ce qui vient ensuite.</span>
           <span class="go" lang="en">Follow on GitHub →</span>
           <span class="go" lang="fr">Suivre sur GitHub →</span>
@@ -880,7 +880,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       </div>
       <div class="mailrow">
         <span class="kicker" lang="en">Or just write</span>
-        <span class="kicker" lang="fr">Ou &eacute;crivez simplement</span>
+        <span class="kicker" lang="fr">Ou &eacute;crivez-moi</span>
         <a class="btn primary" href="mailto:nellawassi@gmail.com?subject=Kubo">nellawassi@gmail.com</a>
         <span class="meta" lang="en">Answered within 24 hours</span>
         <span class="meta" lang="fr">R&eacute;ponse sous 24 heures</span>
@@ -892,8 +892,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         <p lang="en">Kubo is free. There is nothing to buy, no subscription, no account — and it is built by
           <b>one independent student engineer</b>, on personal time and personal server bills.</p>
         <p lang="fr">Kubo est gratuit. Il n'y a rien &agrave; acheter, aucun abonnement, aucun compte — et il est
-          fait par <b>un seul ing&eacute;nieur &eacute;tudiant ind&eacute;pendant</b>, sur son temps et ses propres
-          factures de serveur.</p>
+          fait par <b>un ing&eacute;nieur &eacute;tudiant, seul et ind&eacute;pendant</b>, sur son temps et ses
+          propres factures de serveur.</p>
         <p lang="en">If it saved you an hour, the two things that actually help are a <b>star on GitHub</b> and a
           <b>link shared</b> somewhere people like you will see it.</p>
         <p lang="fr">S'il vous a fait gagner une heure, les deux choses qui aident vraiment sont une
