@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: Gemmie.Kubo
+PackageVersion: 1.0.0
+MinimumOSVersion: 10.0.0.0
+InstallerType: wix
+Scope: machine
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-09-21
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/Lightminedust/Kubo/releases/download/v1.0.0/Kubo-1.0.0.msi
+  InstallerSha256: 0CD7E67E8B8AD5B1BE21A2B52B8DEEA2CD34D523CFFE5102C49F671318796390
+  ProductCode: '{154B24EC-425C-3E11-9B7B-98D2C03CDD2D}'
+  AppsAndFeaturesEntries:
+  # Fixed for the life of the product, so winget recognises an installed Kubo as the same package.
+  - UpgradeCode: '{0EF6EAB5-FEFA-4D5C-8EB4-5ABD3E462B86}'
+    ProductCode: '{154B24EC-425C-3E11-9B7B-98D2C03CDD2D}'
+    DisplayVersion: 1.0.0
+ManifestType: installer
+ManifestVersion: 1.6.0
