@@ -10,7 +10,7 @@ Nothing here is automatic. Each new version of Kubo needs its own pull request.
 ## Why the MSI and not the .exe
 
 The website offers `Kubo-Setup.exe`, because that is what a person double-clicks. winget gets
-`Kubo-0.3.0.msi` instead, built from exactly the same application image.
+`Kubo-1.0.0.msi` instead, built from exactly the same application image.
 
 An MSI installs and uninstalls silently by definition, and carries its own ProductCode and UpgradeCode,
 so winget can tell an installed Kubo apart from anything else and knows when an upgrade replaces it.
@@ -26,10 +26,10 @@ Everything below assumes the version is already released on GitHub, with `Kubo-<
 **1 — Build the MSI, stamped with the release version.**
 
 ```
-gradlew jpackage -PinstallerType=msi -PappVersion=0.3.0
+gradlew jpackage -PinstallerType=msi -PappVersion=1.0.0
 ```
 
-Needs the WiX Toolset v3 on the PATH. It lands in `app\build\jpackage\Kubo-0.3.0.msi`.
+Needs the WiX Toolset v3 on the PATH. It lands in `app\build\jpackage\Kubo-1.0.0.msi`.
 
 **2 — Attach that exact file to the GitHub release.** The hash in the manifest is the hash of the file
 you are about to generate from, so it must be the same bytes people will download. Build once, upload
@@ -39,18 +39,18 @@ that file, then carry on.
 
 ```
 powershell -ExecutionPolicy Bypass -File packaging\winget\build-manifests.ps1 `
-    -Msi app\build\jpackage\Kubo-0.3.0.msi
+    -Msi app\build\jpackage\Kubo-1.0.0.msi
 ```
 
 This reads the SHA256 and the MSI's ProductCode — a fresh GUID on every build, which is why the
 manifests are generated rather than edited — and writes three files into
-`packaging\winget\manifests\0.3.0\`.
+`packaging\winget\manifests\1.0.0\`.
 
 **4 — Check them locally before asking anyone to review them.**
 
 ```
-winget validate --manifest packaging\winget\manifests\0.3.0
-winget install --manifest packaging\winget\manifests\0.3.0
+winget validate --manifest packaging\winget\manifests\1.0.0
+winget install --manifest packaging\winget\manifests\1.0.0
 ```
 
 The second one really installs Kubo from the manifest. Do it on a machine you do not mind installing
@@ -59,13 +59,13 @@ on, and uninstall afterwards.
 **5 — Open the pull request.** Fork [microsoft/winget-pkgs], copy the generated folder to
 
 ```
-manifests\g\Gemmie\Kubo\0.3.0\
+manifests\g\Gemmie\Kubo\1.0.0\
 ```
 
 and open a PR from a branch of your fork. The path is derived from the package identifier
 (`Gemmie.Kubo`), and the lower-case first letter of the publisher is part of it.
 
-`wingetcreate update Gemmie.Kubo --version 0.3.0 --urls <msi url>` can do steps 3 and 5 for you once
+`wingetcreate update Gemmie.Kubo --version 1.0.0 --urls <msi url>` can do steps 3 and 5 for you once
 the package exists in the index; it computes the hash and opens the PR itself. The first submission is
 easier to do by hand, because there is nothing to update yet.
 
