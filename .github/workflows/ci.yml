@@ -59,11 +59,15 @@ jobs:
         run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # The runner image already carries the WiX Toolset, which the .exe and .msi need.
+      #
+      # Quoted properties: the default shell on the Windows runner is PowerShell, which splits
+      # -PappVersion=1.0.0 into two arguments and leaves Gradle looking for a task called .0.0. Quoting is
+      # right under every shell, so both runners are written the same way.
       - name: Installer, MSI and portable zip
         run: |
-          ./gradlew jpackage -PinstallerType=exe -PappVersion=${{ steps.version.outputs.number }} --console=plain
-          ./gradlew jpackage -PinstallerType=msi -PappVersion=${{ steps.version.outputs.number }} --console=plain
-          ./gradlew portable -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew jpackage "-PinstallerType=exe" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
+          ./gradlew jpackage "-PinstallerType=msi" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
+          ./gradlew portable "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
 
       - uses: actions/upload-artifact@v4
         with:
@@ -98,11 +102,11 @@ jobs:
 
       - name: Deb, rpm and portable tarball
         run: |
-          ./gradlew jpackage -PinstallerType=deb -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew jpackage "-PinstallerType=deb" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
           mkdir -p packages && cp app/build/jpackage/*.deb packages/
-          ./gradlew jpackage -PinstallerType=rpm -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew jpackage "-PinstallerType=rpm" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
           cp app/build/jpackage/*.rpm packages/
-          ./gradlew tarball -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew tarball "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
           cp app/build/distributions/*.tar.gz packages/
 
       # A package that will not even unpack is worth catching before anyone downloads it.
