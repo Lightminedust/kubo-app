@@ -1,0 +1,61 @@
+KUBO — PORTABLE EDITION FOR LINUX
+=================================
+
+This folder is the whole application. There is nothing to install, and nothing
+is written outside your home folder.
+
+  1. Unpack it wherever you like:
+
+       tar -xzf Kubo-linux-x86_64.tar.gz
+
+  2. Run it:
+
+       ./Kubo/bin/Kubo
+
+Java is already inside: you do not need a runtime installed.
+
+If you want it in your menu and on your PATH, use the .deb or .rpm instead.
+
+
+WHAT THE SYSTEM STILL HAS TO PROVIDE
+------------------------------------
+Kubo draws its windows with JavaFX, which uses GTK 3. Every mainstream desktop
+already has it. On a minimal or headless install you may need:
+
+  Debian / Ubuntu    sudo apt install libgtk-3-0
+  Fedora / RHEL      sudo dnf install gtk3
+  Arch               sudo pacman -S gtk3
+
+Kubo is a desktop application: it needs a graphical session. It manages Linux
+servers over SSH, but it does not run on one.
+
+
+WHAT IT LEAVES BEHIND
+---------------------
+Nothing on the servers you connect to: Kubo only runs ordinary shell commands
+over SSH, and installs no agent.
+
+On this machine it keeps its saved servers and its command logs in
+
+  ~/.kubo
+
+Delete that folder and Kubo has forgotten everything.
+
+
+ABOUT SAVED PASSWORDS
+---------------------
+On Windows, Kubo can store a password encrypted by the system for one account
+(DPAPI). Linux has no equivalent that every machine is guaranteed to have, so
+Kubo does not store passwords here at all, rather than writing one somewhere it
+could be read. Key files are still remembered by their path, which is not a
+secret. Use an SSH key if you would rather not type a password each time.
+
+
+UPDATING
+--------
+Unpack the newer archive and replace this folder. Your servers and logs live in
+~/.kubo, so they survive.
+
+
+Kubo is the intellectual property of Gemmie. Free to use — see LICENSE.txt.
+https://kubo.gemmi-e.com   ·   nellawassi@gmail.com

@@ -6,7 +6,7 @@ import com.kubo.model.docker.DockerContainer;
 import com.kubo.model.docker.Health;
 import com.kubo.model.docker.PortMapping;
 import com.kubo.model.server.ListeningPort.Exposure;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
@@ -76,7 +76,7 @@ final class DockerCluster extends Pane {
     }
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private List<DockerContainer> containers = List.of();
     private List<Row> rows = List.of();
     private String version = "";
@@ -121,17 +121,7 @@ final class DockerCluster extends Pane {
         setOnMouseClicked(this::handleClick);
         setOnScroll(this::handleScroll);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                render((now - start) / 1e9);
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, this::render);
         timer.start();
     }
 

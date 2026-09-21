@@ -264,8 +264,8 @@ public final class RedisService {
         int bounded = Math.max(2, Math.min(30, seconds));
         String args = "-n " + Math.max(0, db) + " MONITOR";
         String plain = "timeout --signal=INT " + bounded + "s " + endpoint.plain(args);
-        Privilege.Command command = endpoint.shell(endpoint.authenticatedShell(
-                "timeout --signal=INT " + bounded + "s " + endpoint.authenticated(args)));
+        // timeout passes its environment on, so redis-cli still finds REDISCLI_AUTH behind it.
+        Privilege.Command command = endpoint.command("timeout --signal=INT " + bounded + "s ", args);
         CommandEntry raw = connection.exec(command.command(), command.input(), Duration.ofSeconds(bounded + 5L));
         int exit = raw.exitCode() == 124 || raw.exitCode() == 130 ? 0 : raw.exitCode();
         CommandEntry entry = new CommandEntry(raw.executedAt(), endpoint.plain(args) + "  # " + bounded + " s",

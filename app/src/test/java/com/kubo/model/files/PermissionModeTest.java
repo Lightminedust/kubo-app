@@ -100,6 +100,28 @@ class PermissionModeTest {
         assertEquals(letters, PermissionMode.symbolic(digit));
     }
 
+    @ParameterizedTest
+    @CsvSource({"644, 755", "600, 700", "640, 750", "604, 705", "444, 555", "000, 000", "755, 755"})
+    void makingItRunnableFollowsWhoCanRead(String before, String after) {
+        assertEquals(after, PermissionMode.parseOctal(before).orElseThrow().runnable().octal());
+    }
+
+    @Test
+    void makingItRunnableKeepsTheSpecialBits() {
+        // Kubo never sets setuid, and never clears one somebody else set either.
+        assertEquals("4755", PermissionMode.parseOctal("4644").orElseThrow().runnable().octal());
+        assertEquals("2755", PermissionMode.parseOctal("2644").orElseThrow().runnable().octal());
+    }
+
+    @Test
+    void executableIsAboutTheOwner() {
+        assertFalse(PermissionMode.parseOctal("644").orElseThrow().executable());
+        assertTrue(PermissionMode.parseOctal("744").orElseThrow().executable());
+        // Runnable by the group and by everyone else, but not by the user who owns it: still not runnable
+        // by the account a service would start it as when that account owns the file.
+        assertFalse(PermissionMode.parseOctal("655").orElseThrow().executable());
+    }
+
     @Test
     void rejectsImpossibleValues() {
         assertThrows(IllegalArgumentException.class, () -> new PermissionMode(-1));

@@ -42,7 +42,8 @@ class SessionHistoryTest {
         assertEquals("USER", failed.origin());
         assertEquals("rm x", failed.command());
         assertEquals(1, failed.exitCode());
-        assertEquals("rm: denied", failed.error());
+        // The failure is still visible from the exit code; the message itself was never written to the file.
+        assertEquals("", failed.error(), "the log keeps the size of standard error, never its text");
         assertFalse(failed.success());
         assertEquals(9, session.commands().get(0).outputBytes());
     }

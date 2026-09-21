@@ -6,7 +6,7 @@ import com.kubo.model.network.NetworkMap;
 import com.kubo.model.network.Risk;
 import com.kubo.model.network.ServiceOwner;
 import com.kubo.model.network.Vhost;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
@@ -118,7 +118,7 @@ final class NetworkTree extends Pane {
     }
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
 
     private NetworkMap map = NetworkMap.empty();
     private final Map<Band, Branch> branches = new LinkedHashMap<>();
@@ -184,17 +184,7 @@ final class NetworkTree extends Pane {
         setOnMouseClicked(this::handleClick);
         setOnScroll(this::handleScroll);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                render((now - start) / 1e9);
-            }
-        };
+        timer = new LiveTimer(this, () -> moving() ? LiveTimer.EVERY_PULSE : LiveTimer.AMBIENT, this::render);
         timer.start();
     }
 
@@ -262,6 +252,14 @@ final class NetworkTree extends Pane {
         focus = selected == null ? 0 : 1;
         placeBranches();
         paint();
+    }
+
+    /** True while the view is dragged, gliding or easing: the moments worth drawing at full rate. */
+    private boolean moving() {
+        return dragging
+                || Math.abs(velocityX) > 2 || Math.abs(velocityY) > 2
+                || Math.abs(targetX - camX) > 0.5 || Math.abs(targetY - camY) > 0.5
+                || Math.abs(targetZoom - zoom) > 0.001;
     }
 
     void zoomIn() {

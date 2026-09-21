@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.kubo.connection.SavedSession.Auth;
 import com.kubo.connection.ssh.SshTarget;
+import com.kubo.platform.Host;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -19,9 +20,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * The saved sessions, in {@code %USERPROFILE%\.kubo\sessions.json}. Written whole to a temporary file then moved
- * into place, so the file is never half-written. Methods block (secrets go through Windows): call them off the
- * UI thread when a secret is involved.
+ * The saved sessions, in {@code .kubo/sessions.json} under the user's home folder. Written whole to a temporary
+ * file then moved into place, so the file is never half-written. Methods block when a secret is involved — the
+ * system is asked to encrypt it — so call them off the UI thread.
  */
 public final class SessionStore {
 
@@ -33,6 +34,14 @@ public final class SessionStore {
     public interface Protection {
 
         boolean available();
+
+        /**
+         * One sentence for the connection screen saying who can read a remembered secret, or why none is kept.
+         * Shown to the user, so it has to be true of this system rather than of Kubo in general.
+         */
+        default String explanation() {
+            return "";
+        }
 
         String protect(char[] secret) throws IOException;
 
@@ -56,14 +65,23 @@ public final class SessionStore {
     }
 
     /**
-     * The user's own store, secrets protected by Windows.
+     * The user's own store, secrets protected by whatever this system offers — and not stored at all where it
+     * offers nothing.
      */
     public static SessionStore standard() {
-        return new SessionStore(FILE, new WindowsSecrets(), Clock.systemUTC());
+        Protection protection = Host.isWindows() ? new WindowsSecrets() : new NoSecrets();
+        return new SessionStore(FILE, protection, Clock.systemUTC());
     }
 
     public boolean canRememberSecrets() {
         return protection.available();
+    }
+
+    /**
+     * What to tell the user about where a remembered secret lives on this system.
+     */
+    public String protectionNote() {
+        return protection.explanation();
     }
 
     /**

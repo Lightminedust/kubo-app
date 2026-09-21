@@ -55,10 +55,14 @@ class SessionLogTest {
             assertEquals("echo \"quoted\" \\ done", second.get("command").asText());
             assertEquals(1, second.get("exitCode").asInt());
             assertEquals(52, second.get("durationMs").asLong());
-            assertEquals("permission denied", second.get("error").asText());
             assertEquals(0, second.get("outputBytes").asInt());
             assertEquals(27, commands.get(0).get("outputBytes").asInt());
             assertFalse(commands.get(0).has("output"));
+            // Standard error is output too, and a failing program may print a path or a secret into it: the log
+            // keeps its size, never its text.
+            assertEquals("permission denied".length(), second.get("errorBytes").asInt());
+            assertFalse(second.has("error"), second.toString());
+            assertFalse(mapper.readTree(file.toFile()).toString().contains("permission denied"));
         }
     }
 

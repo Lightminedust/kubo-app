@@ -13,13 +13,16 @@ import java.util.function.Consumer;
 
 /**
  * One file's editor in its own window. Closing it with unsaved changes asks first.
+ *
+ * <p>Public because the services screen opens it too: somebody making a service out of a script should be
+ * able to write that script where they are, rather than being sent to another screen for it.
  */
-final class EditorWindow {
+public final class EditorWindow {
 
     private final Stage stage = new Stage();
     private final FileEditor editor;
 
-    EditorWindow(FileBrowser browser, String path, Consumer<String> onSaved) {
+    public EditorWindow(FileBrowser browser, String path, Consumer<String> onSaved) {
         editor = new FileEditor(browser, path);
         editor.setOnSaved(onSaved);
 
@@ -44,7 +47,7 @@ final class EditorWindow {
         editor.load();
     }
 
-    void show() {
+    public void show() {
         stage.show();
         stage.toFront();
     }
@@ -60,7 +63,7 @@ final class EditorWindow {
     /**
      * Closes without asking, e.g. when the session ends.
      */
-    void close() {
+    public void close() {
         stage.close();
     }
 }

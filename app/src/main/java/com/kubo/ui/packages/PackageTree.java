@@ -5,7 +5,7 @@ import com.kubo.model.packages.PackageInventory;
 import com.kubo.model.packages.PackageRole;
 import com.kubo.ui.BranchCamera;
 import com.kubo.ui.Fibers;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
@@ -119,7 +119,7 @@ final class PackageTree extends Pane {
     /** Off-screen, only ever asked how wide a string is in a given font. */
     private final Text ruler = new Text();
     private final BranchCamera camera = new BranchCamera();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private final List<Column> columns = new ArrayList<>();
 
     private PackageInventory inventory = PackageInventory.empty();
@@ -154,22 +154,13 @@ final class PackageTree extends Pane {
         setOnMouseReleased(this::handleRelease);
         setOnScroll(this::handleScroll);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                double time = (now - start) / 1e9;
-                double dt = lastTime < 0 ? 0 : Math.min(0.1, time - lastTime);
-                lastTime = time;
-                clock = time;
-                camera.step(dt);
-                paint();
-            }
-        };
+        timer = new LiveTimer(this, () -> camera.moving() ? LiveTimer.EVERY_PULSE : LiveTimer.AMBIENT, time -> {
+            double dt = lastTime < 0 ? 0 : Math.min(0.1, time - lastTime);
+            lastTime = time;
+            clock = time;
+            camera.step(dt);
+            paint();
+        });
         timer.start();
     }
 

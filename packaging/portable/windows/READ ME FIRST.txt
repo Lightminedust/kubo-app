@@ -1,0 +1,39 @@
+KUBO — PORTABLE EDITION
+=======================
+
+This folder is the whole application. There is nothing to install.
+
+  1. Unzip it wherever you like — a folder of your own, an external drive, a USB stick.
+  2. Run Kubo.exe.
+
+Java is already inside: you do not need to install a runtime.
+
+
+WINDOWS MAY WARN YOU
+--------------------
+Kubo is not code-signed yet, so Windows SmartScreen may say the publisher is
+unknown. Choose "More info", then "Run anyway". The installer on the website
+shows the same warning, for the same reason.
+
+
+WHAT IT LEAVES BEHIND
+---------------------
+Nothing on your server: Kubo only runs ordinary shell commands over SSH, and
+installs no agent.
+
+On this PC it keeps its saved servers and its command logs in
+
+  %USERPROFILE%\.kubo
+
+Delete that folder and Kubo has forgotten everything. Passwords and passphrases
+are never written there unless you explicitly ask Kubo to remember them.
+
+
+UPDATING
+--------
+Download the newer zip and replace this folder. Your servers and logs live in
+%USERPROFILE%\.kubo, so they survive.
+
+
+Kubo is the intellectual property of Gemmie. Free to use — see LICENSE.txt.
+https://kubo.gemmi-e.com   ·   nellawassi@gmail.com

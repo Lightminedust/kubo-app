@@ -7,9 +7,14 @@ on:
   pull_request:
 
 jobs:
+  # The tests run on both desktops Kubo is packaged for. Linux is not a formality: it is what catches a
+  # Windows assumption creeping back into code that is meant to be portable.
   check:
-    # Kubo is a Windows app: JavaFX natives, DPAPI and the packaged launcher are Windows-specific.
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-latest, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,24 +26,94 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests, SSH integration tests and coverage rule
-        run: .\gradlew.bat check jacocoTestReport --console=plain
+        run: ./gradlew check jacocoTestReport --console=plain
 
       - name: Test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reports
+          name: reports-${{ matrix.os }}
           path: |
             app/build/reports/tests
             app/build/reports/jacoco
 
-      - name: Package
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: .\gradlew.bat jpackage --console=plain
+  # jpackage cannot build for another system than the one it runs on, so each package is built on its own
+  # runner. Only tags produce packages.
+  windows-packages:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Packaged app
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Read the version from the tag
+        id: version
+        shell: bash
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # The runner image already carries the WiX Toolset, which the .exe and .msi need.
+      - name: Installer, MSI and portable zip
+        run: |
+          ./gradlew jpackage -PinstallerType=exe -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew jpackage -PinstallerType=msi -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          ./gradlew portable -PappVersion=${{ steps.version.outputs.number }} --console=plain
+
+      - uses: actions/upload-artifact@v4
         with:
           name: Kubo-windows
-          path: app/build/jpackage/Kubo
+          path: |
+            app/build/jpackage/*.exe
+            app/build/jpackage/*.msi
+            app/build/distributions/*.zip
+
+  linux-packages:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # jpackage shells out to these: fakeroot and dpkg-dev to build a .deb, rpm to build an .rpm on a
+      # Debian-family runner, binutils to read what the bundled binaries depend on.
+      - name: Packaging tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot binutils dpkg-dev rpm
+
+      - name: Read the version from the tag
+        id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Deb, rpm and portable tarball
+        run: |
+          ./gradlew jpackage -PinstallerType=deb -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          mkdir -p packages && cp app/build/jpackage/*.deb packages/
+          ./gradlew jpackage -PinstallerType=rpm -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          cp app/build/jpackage/*.rpm packages/
+          ./gradlew tarball -PappVersion=${{ steps.version.outputs.number }} --console=plain
+          cp app/build/distributions/*.tar.gz packages/
+
+      # A package that will not even unpack is worth catching before anyone downloads it.
+      - name: Check the packages are well formed
+        run: |
+          dpkg-deb --info packages/*.deb
+          dpkg-deb --contents packages/*.deb | grep -E 'bin/Kubo$'
+          rpm -qip packages/*.rpm
+          tar -tzf packages/*.tar.gz | grep -E 'Kubo/bin/Kubo$'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kubo-linux
+          path: packages/*

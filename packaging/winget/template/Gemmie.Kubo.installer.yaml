@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+# Template. Run packaging/winget/build-manifests.ps1 to fill the placeholders and write the real manifest.
+#
+# The MSI is used rather than the .exe offered on the website: an MSI installs and uninstalls silently by
+# definition, which is what winget's validation requires and what unattended installs depend on.
+
+PackageIdentifier: Gemmie.Kubo
+PackageVersion: {{VERSION}}
+MinimumOSVersion: 10.0.0.0
+InstallerType: wix
+Scope: machine
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: {{RELEASE_DATE}}
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/Lightminedust/Kubo/releases/download/v{{VERSION}}/Kubo-{{VERSION}}.msi
+  InstallerSha256: {{SHA256}}
+  ProductCode: '{{PRODUCT_CODE}}'
+  AppsAndFeaturesEntries:
+  # Fixed for the life of the product, so winget recognises an installed Kubo as the same package.
+  - UpgradeCode: '{0EF6EAB5-FEFA-4D5C-8EB4-5ABD3E462B86}'
+    ProductCode: '{{PRODUCT_CODE}}'
+    DisplayVersion: {{VERSION}}
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kubo — see and manage your server</title>
-<meta name="description" content="Kubo is a Windows desktop app that connects to your own Linux server over SSH and lets you see and manage it visually. Nothing is installed on the server; nothing leaves your machine.">
+<meta name="description" content="Kubo is a desktop app for Windows and Linux that connects to your own Linux server over SSH and lets you see and manage it visually. Nothing is installed on the server; nothing leaves your machine.">
 
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
@@ -15,11 +15,11 @@
      uncomment the two og:image lines to get a picture in the preview. -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kubo.gemmi-e.com/">
-<meta property="og:title" content="Kubo — see your server, run nothing on it">
-<meta property="og:description" content="A Windows app that connects to your own Linux server over SSH and turns it into something you can look at. Nothing installed on the server; nothing leaves your machine.">
+<meta property="og:title" content="Kubo — stop reading your server, start seeing it">
+<meta property="og:description" content="A desktop app that connects to your own Linux server over SSH and turns it into something you can look at. Nothing installed on the server; nothing leaves your machine.">
 <!-- <meta property="og:image" content="https://kubo.gemmi-e.com/assets/social.png"> -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Kubo — see your server, run nothing on it">
+<meta name="twitter:title" content="Kubo — stop reading your server, start seeing it">
 <meta name="twitter:description" content="Connect to your own Linux server over SSH and see it: performance, real exposure, files, Docker, Redis, packages. Nothing leaves your machine.">
 <!-- <meta name="twitter:image" content="https://kubo.gemmi-e.com/assets/social.png"> -->
 
@@ -29,7 +29,8 @@
       kubo-files.mp4      (the file manager clip)
       kubo-network.mp4    (the network clip)
   Optional WebM versions (kubo-files.webm / kubo-network.webm) are picked up first if present.
-  When the installer is online, set its URL in the two data-download links (search: TODO-INSTALLER).
+  The download links, and whether the winget and Linux blocks appear at all, are set by the few
+  variables at the top of the script at the bottom of this file.
 -->
 
 <style>
@@ -50,6 +51,7 @@ body{
 }
 a{color:inherit;text-decoration:none}
 img,video{max-width:100%;display:block}
+code{font-family:var(--mono);font-size:.92em;color:var(--dim)}
 
 /* the vertical gradient bar on the far left edge, like the app */
 .railbar{position:fixed;left:0;top:0;bottom:0;width:4px;z-index:50;
@@ -98,7 +100,7 @@ header.top{position:sticky;top:0;z-index:40;backdrop-filter:blur(9px);
 .lede{font-size:clamp(17px,2.2vw,21px);color:var(--dim);max-width:620px;margin:0}
 .lede b{color:var(--ink);font-weight:600}
 .cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px;align-items:center}
-.cta .meta{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.cta .meta,.mailrow .meta{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 
 /* ---- trust strip ---- */
 .trust{border-bottom:1px solid var(--line);background:var(--bg2)}
@@ -124,6 +126,107 @@ section.block{padding-block:88px;border-bottom:1px solid var(--line)}
   font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--dim);
   background:rgba(5,5,11,.6);padding:4px 8px;border-radius:3px;pointer-events:none}
 .figure video{width:100%;height:100%;object-fit:cover;background:#04040a}
+
+/* the big play button: the preview runs silent on its own, this starts it properly */
+.play{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;width:100%;height:100%;border:0;cursor:pointer;
+  background:radial-gradient(60% 60% at 50% 50%,rgba(5,5,11,.45),rgba(5,5,11,.72));
+  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);
+  transition:opacity .25s,background .25s}
+.play svg{width:74px;height:74px;display:block;filter:drop-shadow(0 12px 30px rgba(0,0,0,.55));
+  transition:transform .25s}
+.play .ring{fill:rgba(5,5,11,.55);stroke:var(--ink);stroke-width:2;transition:fill .25s,stroke .25s}
+.play .tri{fill:var(--ink);transition:fill .25s}
+.play:hover{background:radial-gradient(60% 60% at 50% 50%,rgba(5,5,11,.3),rgba(5,5,11,.6))}
+.play:hover svg{transform:scale(1.07)}
+.play:hover .ring{fill:var(--magenta);stroke:var(--magenta)}
+.play:hover .tri{fill:#050510}
+.play[hidden]{display:none}
+
+/* ---- contact ---- */
+.links{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.link{background:var(--panel);padding:26px 22px;display:flex;flex-direction:column;gap:8px;
+  text-decoration:none;color:inherit;transition:background .2s}
+.link:hover{background:#0e0e1c}
+.link .n{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.link b{font-size:18px;letter-spacing:-.01em;word-break:break-word}
+.link .d{color:var(--muted);font-size:13.5px;flex:1}
+.link .go{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+  transition:color .2s,letter-spacing .2s}
+.link:hover .go{color:var(--cyan);letter-spacing:.2em}
+.link:nth-child(1):hover .go{color:var(--magenta)}
+.link:nth-child(2):hover .go{color:var(--violet)}
+.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:30px}
+
+/* ---- the three ways to get it ---- */
+.gets{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:left;margin-top:10px}
+.get{background:var(--panel);padding:28px 24px;display:flex;flex-direction:column;gap:10px}
+/* an author display: rule beats the browser's own [hidden] one, so each has to say it again */
+.gets[hidden],.get[hidden]{display:none}
+.get.lead{background:#0d0d1b}
+.get .n{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.get.lead .n{color:var(--magenta)}
+.get h3{margin:0;font-size:19px;letter-spacing:-.01em;font-weight:700}
+.get p{margin:0;color:var(--muted);font-size:13.5px;flex:1}
+.get .foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px}
+.get .size{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.cmd{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:5px;overflow:hidden;
+  background:#07070f;margin-top:6px}
+.cmd code{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;color:var(--ink);padding:11px 12px;
+  white-space:nowrap;overflow-x:auto}
+.cmd button{border:0;border-left:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:0 14px;
+  transition:color .2s,background .2s}
+.cmd button:hover{color:var(--ink);background:#10101f}
+.smallprint{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--muted);line-height:1.9;
+  margin-top:24px}
+
+.platform{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:40px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.platform::before,.platform::after{content:"";height:1px;width:34px;background:var(--line)}
+.platform[hidden]{display:none}
+
+/* ---- the ask ---- */
+.support{margin-top:46px;padding:34px 34px 30px;border:1px solid var(--line);border-radius:10px;
+  background:linear-gradient(180deg,#0c0c18,var(--bg2));position:relative;overflow:hidden}
+.support::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,var(--magenta),var(--violet) 55%,var(--cyan))}
+.support p{margin:14px 0 0;color:var(--dim);font-size:15.5px;max-width:620px}
+.support p b{color:var(--ink);font-weight:600}
+.support .row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:22px}
+.support .cmd{margin-top:0;flex:1 1 280px;max-width:380px}
+
+/* ---- the "what happens now" sheet ---- */
+.sheet{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:rgba(3,3,8,.78);backdrop-filter:blur(6px);text-align:left}
+.sheet[hidden]{display:none}
+.sheet-card{position:relative;width:100%;max-width:460px;background:var(--bg2);border:1px solid var(--line);
+  border-radius:10px;padding:30px 30px 26px;box-shadow:0 40px 120px -40px #000;
+  animation:rise .22s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.sheet-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;border-radius:10px 10px 0 0;
+  background:linear-gradient(90deg,var(--magenta),var(--violet) 55%,var(--cyan))}
+.sheet-kind{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--magenta)}
+.sheet-card h3{margin:.5em 0 .2em;font-size:21px;letter-spacing:-.01em}
+.sheet-card ol{margin:18px 0 0;padding:0;list-style:none;counter-reset:step}
+.sheet-card li{counter-increment:step;display:flex;gap:14px;padding:11px 0;border-top:1px solid var(--line);
+  color:var(--dim);font-size:14px;line-height:1.55}
+.sheet-card li::before{content:counter(step,decimal-leading-zero);font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;color:var(--muted);padding-top:3px}
+.sheet-card li code{color:var(--cyan);word-break:break-word}
+.sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px}
+.sheet-note{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted)}
+.sheet-close{border:1px solid var(--line);background:#101019;color:var(--ink);border-radius:3px;cursor:pointer;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:9px 18px;
+  transition:border-color .2s}
+.sheet-close:hover{border-color:var(--violet)}
+
+/* ---- footer links ---- */
+.footlinks{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase}
 .figure .body .fignum{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
 .figure .body h3{font-size:26px;margin:.25em 0 .5em;letter-spacing:-.01em;text-transform:uppercase}
 .figure .body p{color:var(--dim);margin:0 0 14px}
@@ -168,7 +271,9 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   .trust .cell:first-child{border-top:0}
   .figure{grid-template-columns:1fr;gap:24px}
   .figure.flip .stage{order:0}
-  .scopes{grid-template-columns:1fr}
+  .scopes,.links,.gets{grid-template-columns:1fr}
+  .support{padding:26px 20px 24px}
+  .support .cmd{max-width:none}
   .sec{grid-template-columns:1fr;gap:26px}
 }
 </style>
@@ -181,17 +286,19 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <linearGradient id="kg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#ff2d55"/><stop offset=".5" stop-color="#9d4dff"/><stop offset="1" stop-color="#35e8ff"/>
   </linearGradient>
-  <symbol id="kmark" viewBox="0 0 46 54">
-    <path d="M11 6 V41" stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <path d="M13 25 L33 7"  stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <path d="M13 23 L35 41" stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <rect class="us" x="9" y="46" width="27" height="5.4" rx="1.5" fill="url(#kg)"/>
+  <!-- K_ : the underscore sits beside the K on its baseline, the way a terminal cursor waits after a
+       character. Centred underneath it read as an underline instead. -->
+  <symbol id="kmark" viewBox="0 0 60 50">
+    <path d="M11 7 V40"     stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
+    <path d="M13 25 L32 8"  stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
+    <path d="M13 23 L34 40" stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
+    <rect class="us" x="40" y="37.5" width="17" height="5.5" rx="1.5" fill="url(#kg)"/>
   </symbol>
 </defs></svg>
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#top"><svg class="mark"><use href="#kmark"/></svg>Kubo</a>
+    <a class="brand" href="#top"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</a>
     <button class="nav-toggle" onclick="document.getElementById('nav').classList.toggle('open')">MENU</button>
     <nav class="nav" id="nav">
       <a href="#what">What it is</a>
@@ -199,8 +306,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <a href="#network">Network</a>
       <a href="#scopes">Everything</a>
       <a href="#security">Security</a>
-      <!-- TODO-INSTALLER: point this at the installer once it is online -->
-      <a class="btn primary" href="#download" data-download>Get Kubo</a>
+      <a href="#contact">Contact</a>
+      <a class="btn primary" href="#download">Get Kubo</a>
     </nav>
   </div>
 </header>
@@ -211,16 +318,16 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <section class="hero">
     <canvas id="rain" aria-hidden="true"></canvas>
     <div class="wrap">
-      <span class="kicker">Your server, seen</span>
-      <h1>See your ser<span class="u">v</span>er.<br>Run nothing on it.</h1>
-      <p class="lede">Kubo is a Windows app that connects to <b>your own Linux server</b> over SSH and turns it
-        into something you can look at — live performance, what is really exposed, your files, Docker, Redis,
-        packages — drawn in particles instead of packed into tables. <b>Nothing is installed on the server, and
-        nothing ever leaves your machine.</b></p>
+      <span class="kicker">Your server, drawn</span>
+      <h1>Stop reading<br>your server.<br>Start seein<span class="u">g</span> it.</h1>
+      <p class="lede">A desktop app for Windows and Linux that connects to <b>your own Linux server</b> over SSH
+        and draws it instead of tabulating it — live performance, what is really exposed, your files, Docker,
+        Redis, packages. <b>Nothing is installed on the server, and nothing ever leaves your machine.</b></p>
       <div class="cta">
-        <a class="btn primary" href="#download" data-download>Download for Windows</a>
+        <a class="btn primary" href="#download" data-download data-explain="exe">Download for Windows</a>
+        <a class="btn" href="#download">On Linux →</a>
         <a class="btn" href="#files">See it move ↓</a>
-        <span class="meta">Windows 10 / 11 · brings its own Java · ~75 MB</span>
+        <span class="meta">Brings its own Java · 75 MB · free</span>
       </div>
     </div>
   </section>
@@ -255,11 +362,18 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     <div class="wrap">
       <div class="figure">
         <div class="stage" data-tag="FILES.SCOPE">
-          <video controls preload="metadata" playsinline poster="">
+          <video autoplay muted loop playsinline preload="metadata">
             <source src="kubo-files.webm" type="video/webm">
             <source src="kubo-files.mp4" type="video/mp4">
             Your browser cannot play this video.
           </video>
+          <button class="play" type="button" data-play aria-label="Play the files demo with sound">
+            <svg viewBox="0 0 76 76" aria-hidden="true">
+              <circle class="ring" cx="38" cy="38" r="36"/>
+              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
+            </svg>
+            <span>Play with sound</span>
+          </button>
         </div>
         <div class="body">
           <div class="fignum">Fig. 01 — File manager</div>
@@ -287,11 +401,18 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     <div class="wrap">
       <div class="figure flip">
         <div class="stage" data-tag="NETWORK.SCOPE">
-          <video controls preload="metadata" playsinline poster="">
+          <video autoplay muted loop playsinline preload="metadata">
             <source src="kubo-network.webm" type="video/webm">
             <source src="kubo-network.mp4" type="video/mp4">
             Your browser cannot play this video.
           </video>
+          <button class="play" type="button" data-play aria-label="Play the network demo with sound">
+            <svg viewBox="0 0 76 76" aria-hidden="true">
+              <circle class="ring" cx="38" cy="38" r="36"/>
+              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
+            </svg>
+            <span>Play with sound</span>
+          </button>
         </div>
         <div class="body">
           <div class="fignum">Fig. 02 — Network</div>
@@ -369,23 +490,168 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     <div class="wrap">
       <span class="kicker" style="justify-content:center">Get Kubo</span>
       <h2 style="text-transform:uppercase;margin:.4em 0 .3em">Free to use. Yours to keep.</h2>
-      <p style="color:var(--dim);max-width:560px;margin:0 auto 28px">A single installer that brings its own Java runtime.
-        No account to create, nothing to configure — point it at your server and go.</p>
-      <div class="cta" style="justify-content:center">
-        <!-- TODO-INSTALLER: replace # with the real installer link -->
-        <a class="btn primary" href="#" data-download>Download for Windows</a>
-        <span class="meta">Windows 10 / 11 · ~75 MB · v0.1.0</span>
+      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px">Kubo brings its own Java runtime, so there is
+        no runtime to install first. No account to create, nothing to configure — point it at your server and go.
+        Every package below holds the same application; take whichever suits the machine you are on.</p>
+
+      <div class="platform">Windows 10 / 11</div>
+
+      <div class="gets">
+        <div class="get lead">
+          <span class="n">01 — Installer</span>
+          <h3>Kubo-Setup.exe</h3>
+          <p>The usual way. Installs Kubo, adds it to the Start menu, and a later version replaces this one
+            instead of sitting beside it.</p>
+          <div class="foot">
+            <a class="btn primary" href="#" data-download data-explain="exe">Download for Windows</a>
+            <span class="size">75 MB</span>
+          </div>
+        </div>
+
+        <div class="get" data-zip-card hidden>
+          <span class="n">02 — Portable</span>
+          <h3>No installation</h3>
+          <p>A zip you unfold wherever you like — a folder of your own, an external drive, a work laptop you
+            cannot install on. Nothing is written to the registry, and deleting the folder removes it.</p>
+          <div class="foot">
+            <a class="btn" href="#" data-zip data-explain="zip">Download the .zip</a>
+            <span class="size">73 MB</span>
+          </div>
+        </div>
+
+        <div class="get" data-winget-card hidden>
+          <span class="n">03 — winget</span>
+          <h3>From the terminal</h3>
+          <p>If you already live in a terminal, Windows' own package manager can fetch it, and
+            <code>winget upgrade</code> keeps it current along with everything else.</p>
+          <div class="cmd">
+            <code data-winget-command>winget install Gemmie.Kubo</code>
+            <button type="button" data-copy="[data-winget-command]" data-explain="winget">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="smallprint">64-bit · v0.3.0 · free to use<br>
+        Not code-signed yet — Windows may call the publisher unknown. Choose <b>More info → Run anyway</b>.</p>
+
+      <div class="platform" data-linux-card hidden>Linux desktop</div>
+
+      <div class="gets" data-linux-card hidden>
+        <div class="get">
+          <span class="n">Debian · Ubuntu</span>
+          <h3>.deb</h3>
+          <p>Installs like any other package, with a menu entry and an icon. Mint, Pop!_OS and the rest of the
+            family too.</p>
+          <div class="foot">
+            <a class="btn" href="#" data-deb data-explain="deb">Download the .deb</a>
+          </div>
+        </div>
+
+        <div class="get">
+          <span class="n">Fedora · RHEL · openSUSE</span>
+          <h3>.rpm</h3>
+          <p>The same package for the rpm side of the world — Rocky, Alma and CentOS Stream included.</p>
+          <div class="foot">
+            <a class="btn" href="#" data-rpm data-explain="rpm">Download the .rpm</a>
+          </div>
+        </div>
+
+        <div class="get">
+          <span class="n">Anything else</span>
+          <h3>.tar.gz</h3>
+          <p>Unpack it and run <code>Kubo/bin/Kubo</code>. Nothing is installed, nothing is written outside your
+            home folder.</p>
+          <div class="foot">
+            <a class="btn" href="#" data-targz data-explain="targz">Download the archive</a>
+          </div>
+        </div>
+      </div>
+
+      <p class="smallprint" data-linux-card hidden>x86-64 · v0.3.0 · needs a graphical session and GTK 3<br>
+        Kubo <i>manages</i> Linux servers — it does not run on one. Passwords are never saved here, for want of
+        encryption Kubo can trust on every machine; key files still are.</p>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="block" id="contact">
+    <div class="wrap">
+      <div class="head">
+        <span class="kicker">Who is behind it</span>
+        <h2>Kubo is built by one person</h2>
+        <p>Designed, written and maintained by <b>Awassi Nell Damas</b> at <b>Gemmie</b>, a one-architect studio in
+          Kigali. A bug, a feature you need, a server tool you wish existed — or a project of your own — write,
+          and the answer comes from the person who wrote the code. Usually within 24 hours.</p>
+      </div>
+      <div class="links">
+        <a class="link" href="https://gemmi-e.com/contact" target="_blank" rel="noopener">
+          <span class="n">01 — Portfolio &amp; hire</span>
+          <b>gemmi-e.com</b>
+          <span class="d">The studio behind Kubo — web, mobile, backend and Linux infrastructure — and the
+            contact form that lands straight in my inbox.</span>
+          <span class="go">Start a project →</span>
+        </a>
+        <a class="link" href="https://github.com/Lightminedust" target="_blank" rel="noopener">
+          <span class="n">02 — The author</span>
+          <b>github.com/Lightminedust</b>
+          <span class="d">Everything else I build, in the open. Follow along to see what comes next.</span>
+          <span class="go">Follow on GitHub →</span>
+        </a>
+        <a class="link" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener">
+          <span class="n">03 — Kubo itself</span>
+          <b>github.com/Lightminedust/Kubo</b>
+          <span class="d">Releases, changelog and issues. Report a bug or ask for a feature there — it is read.</span>
+          <span class="go">Open the repository →</span>
+        </a>
+      </div>
+      <div class="mailrow">
+        <span class="kicker">Or just write</span>
+        <a class="btn primary" href="mailto:nellawassi@gmail.com?subject=Kubo">nellawassi@gmail.com</a>
+        <span class="meta">Answered within 24 hours</span>
+      </div>
+
+      <div class="support">
+        <span class="kicker">Support the work</span>
+        <p>Kubo is free. There is nothing to buy, no subscription, no account — and it is built by
+          <b>one independent student engineer</b>, on personal time and personal server bills.</p>
+        <p>If it saved you an hour, the two things that actually help are a <b>star on GitHub</b> and a
+          <b>link shared</b> somewhere people like you will see it.</p>
+        <div class="row">
+          <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener">★ Star on GitHub</a>
+          <div class="cmd">
+            <code id="share-link">https://kubo.gemmi-e.com</code>
+            <button type="button" data-copy="#share-link">Copy</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="sheet-card">
+    <span class="sheet-kind" id="sheet-kind"></span>
+    <h3 id="sheet-title"></h3>
+    <ol id="sheet-steps"></ol>
+    <div class="sheet-foot">
+      <span class="sheet-note" id="sheet-note"></span>
+      <button type="button" class="sheet-close" id="sheet-close">Got it</button>
+    </div>
+  </div>
+</div>
 
 </main>
 
 <footer>
   <div class="wrap">
     <div>
-      <div class="brand" style="font-size:20px;margin-bottom:10px"><svg class="mark"><use href="#kmark"/></svg>Kubo</div>
+      <div class="brand" style="font-size:20px;margin-bottom:10px"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</div>
       <div class="legal">A Gemmie product · nothing leaves your machine.</div>
+      <div class="footlinks">
+        <a href="https://gemmi-e.com/contact" target="_blank" rel="noopener">Portfolio</a>
+        <a href="https://github.com/Lightminedust" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener">Kubo repository</a>
+        <a href="mailto:nellawassi@gmail.com?subject=Kubo">Email</a>
+      </div>
     </div>
     <div class="legal" style="text-align:right">
       Kubo is the intellectual property of Gemmie.<br>
@@ -402,9 +668,141 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
    and all three buttons update automatically.
    ============================================================ */
 var DOWNLOAD_URL = "https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-Setup.exe";
+var ZIP_URL      = "https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-windows-portable.zip";
+
+/* The winget package identifier, once Microsoft's index has accepted it. Leave it "" until the pull
+   request to microsoft/winget-pkgs is merged: the card stays hidden rather than showing a command that
+   fails. See packaging/winget/README.md. */
+var WINGET_ID = "";
+
+/* The release whose Linux packages are online. Their file names carry the version, so this is the one line
+   to bump when a new release is published — and the one to leave "" while there are none, which keeps the
+   whole Linux block hidden instead of offering three links that 404. */
+var LINUX_VERSION = "0.3.0";
+
 if (DOWNLOAD_URL) {
   document.querySelectorAll('[data-download]').forEach(function(a){ a.href = DOWNLOAD_URL; });
 }
+if (ZIP_URL) {
+  document.querySelectorAll('[data-zip]').forEach(function(a){ a.href = ZIP_URL; });
+  document.querySelectorAll('[data-zip-card]').forEach(function(c){ c.hidden = false; });
+}
+if (WINGET_ID) {
+  document.querySelectorAll('[data-winget-command]').forEach(function(c){ c.textContent = 'winget install ' + WINGET_ID; });
+  document.querySelectorAll('[data-winget-card]').forEach(function(c){ c.hidden = false; });
+}
+
+if (LINUX_VERSION) {
+  var release = "https://github.com/Lightminedust/Kubo/releases/download/v" + LINUX_VERSION + "/";
+  var linux = {
+    '[data-deb]':   release + "kubo_" + LINUX_VERSION + "_amd64.deb",
+    '[data-rpm]':   release + "kubo-" + LINUX_VERSION + "-1.x86_64.rpm",
+    '[data-targz]': release + "Kubo-linux-x86_64.tar.gz"
+  };
+  Object.keys(linux).forEach(function(selector){
+    document.querySelectorAll(selector).forEach(function(a){ a.href = linux[selector]; });
+  });
+  document.querySelectorAll('[data-linux-card]').forEach(function(c){ c.hidden = false; });
+}
+
+/* What happens after you click. Three lines each: the reader wanted a download, not a manual. */
+(function(){
+  var sheet = document.getElementById('sheet');
+  if (!sheet) return;
+  var v = LINUX_VERSION || "0.0.0", opened = null;
+
+  var SHEETS = {
+    exe: { kind: "Installer", title: "Kubo-Setup.exe", note: "75 MB", steps: [
+      "Run the file your browser just saved.",
+      "Windows will call the publisher unknown \u2014 it is not code-signed yet. Choose <b>More info \u2192 Run anyway</b>.",
+      "Kubo lands in your Start menu. Point it at your server; nothing gets installed on it." ]},
+    zip: { kind: "Portable", title: "No installation", note: "73 MB", steps: [
+      "Unzip the folder anywhere \u2014 your desktop, a USB stick.",
+      "Run <code>Kubo.exe</code> inside it. No administrator, nothing in the registry.",
+      "Your servers and logs live in <code>%USERPROFILE%\\.kubo</code>. Delete the folder and Kubo is gone." ]},
+    deb: { kind: "Debian \u00b7 Ubuntu", title: "The .deb", note: "56 MB", steps: [
+      "<code>sudo apt install ./kubo_" + v + "_amd64.deb</code>",
+      "Open Kubo from your applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
+      "Remove it with <code>sudo apt remove kubo</code>." ]},
+    rpm: { kind: "Fedora \u00b7 RHEL \u00b7 openSUSE", title: "The .rpm", note: "56 MB", steps: [
+      "<code>sudo dnf install ./kubo-" + v + "-1.x86_64.rpm</code>",
+      "Open Kubo from your applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
+      "Remove it with <code>sudo dnf remove kubo</code>." ]},
+    targz: { kind: "Portable", title: "The archive", note: "75 MB", steps: [
+      "<code>tar -xzf Kubo-linux-x86_64.tar.gz</code>",
+      "<code>./Kubo/bin/Kubo</code> \u2014 nothing is installed, nothing needs root.",
+      "Settings live in <code>~/.kubo</code>. Delete the folder and Kubo is gone." ]},
+    winget: { kind: "winget", title: "Copied", note: "Windows package manager", steps: [
+      "Paste it into PowerShell or Windows Terminal.",
+      "<code>winget upgrade</code> then keeps Kubo current along with everything else.",
+      "Remove it with <code>winget uninstall " + (WINGET_ID || "Gemmie.Kubo") + "</code>." ]}
+  };
+
+  function open(name){
+    var data = SHEETS[name];
+    if (!data) return;
+    opened = document.activeElement;
+    document.getElementById('sheet-kind').textContent = data.kind;
+    document.getElementById('sheet-title').textContent = data.title;
+    document.getElementById('sheet-note').textContent = data.note;
+    document.getElementById('sheet-steps').innerHTML =
+      data.steps.map(function(step){ return '<li><span>' + step + '</span></li>'; }).join('');
+    sheet.hidden = false;
+    document.getElementById('sheet-close').focus();
+  }
+
+  function close(){
+    sheet.hidden = true;
+    if (opened && opened.focus) opened.focus();
+  }
+
+  // The download still starts: the sheet explains what to do with the file, it does not stand in the way.
+  document.querySelectorAll('[data-explain]').forEach(function(trigger){
+    trigger.addEventListener('click', function(){ open(trigger.getAttribute('data-explain')); });
+  });
+  document.getElementById('sheet-close').addEventListener('click', close);
+  sheet.addEventListener('click', function(event){ if (event.target === sheet) close(); });
+  document.addEventListener('keydown', function(event){ if (event.key === 'Escape' && !sheet.hidden) close(); });
+})();
+
+/* Copy a command to the clipboard, and say so where the button was. */
+document.querySelectorAll('[data-copy]').forEach(function(button){
+  var source = document.querySelector(button.getAttribute('data-copy'));
+  button.addEventListener('click', function(){
+    navigator.clipboard.writeText(source.textContent.trim()).then(function(){
+      button.textContent = 'Copied';
+      setTimeout(function(){ button.textContent = 'Copy'; }, 1800);
+    }).catch(function(){
+      button.textContent = 'Select it';
+      setTimeout(function(){ button.textContent = 'Copy'; }, 1800);
+    });
+  });
+});
+
+/* The previews run silent and looping on their own. The big button starts one properly:
+   sound on, from the beginning, with the browser's own controls. */
+document.querySelectorAll('[data-play]').forEach(function(button){
+  var stage = button.parentNode, video = stage.querySelector('video');
+  button.addEventListener('click', function(){
+    // only one preview speaks at a time
+    document.querySelectorAll('.figure video').forEach(function(other){
+      if (other !== video) {
+        other.muted = true; other.controls = false; other.loop = true;
+        var b = other.parentNode.querySelector('[data-play]');
+        if (b) b.hidden = false;
+      }
+    });
+    button.hidden = true;
+    video.loop = false; video.muted = false; video.controls = true; video.currentTime = 0;
+    video.play().catch(function(){ /* refused: the controls are there anyway */ });
+  });
+  // when it finishes, fall back to the silent loop and offer the button again
+  video.addEventListener('ended', function(){
+    video.controls = false; video.muted = true; video.loop = true;
+    button.hidden = false;
+    video.play().catch(function(){});
+  });
+});
 
 /* A quiet Matrix rain behind the hero — the same 0/1 fall as the app's connection screen. */
 (function(){
@@ -442,3 +840,11 @@ if (DOWNLOAD_URL) {
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+

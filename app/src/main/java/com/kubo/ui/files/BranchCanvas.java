@@ -4,10 +4,10 @@ import com.kubo.ui.BranchCamera;
 
 import com.kubo.model.files.DirectoryListing;
 import com.kubo.model.files.RemoteEntry;
+import com.kubo.ui.LiveTimer;
 import com.kubo.ui.files.BranchTree.Column;
 import com.kubo.ui.files.BranchTree.Delivery;
 import com.kubo.ui.files.BranchTree.Hit;
-import javafx.animation.AnimationTimer;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.input.ClipboardContent;
@@ -73,7 +73,7 @@ public final class BranchCanvas extends Pane {
     }
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private final BranchTree tree = new BranchTree();
     private final BranchCamera camera = new BranchCamera();
     private final BranchPainter painter = new BranchPainter(tree, camera);
@@ -125,17 +125,7 @@ public final class BranchCanvas extends Pane {
         setOnDragDetected(this::handleDragDetected);
         setOnDragDone(event -> painter.carried = null);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                renderFrame((now - start) / 1e9, true);
-            }
-        };
+        timer = new LiveTimer(this, () -> camera.moving() ? LiveTimer.EVERY_PULSE : LiveTimer.AMBIENT, time -> renderFrame(time, true));
         timer.start();
     }
 
@@ -220,6 +210,26 @@ public final class BranchCanvas extends Pane {
 
     public RemoteEntry selectedEntry() {
         return selected;
+    }
+
+    /**
+     * Drops the selection when what was selected has gone.
+     *
+     * <p>The tree stops drawing a deleted entry by itself, but {@link #selectedEntry()} would go on
+     * answering with it, and a screen that asks what is selected would be handed a file that is not there.
+     *
+     * @param path what has gone, which takes anything under it with it
+     */
+    public void forget(String path) {
+        if (selectedPath == null || path == null) {
+            return;
+        }
+        if (!selectedPath.equals(path) && !selectedPath.startsWith(path + "/")) {
+            return;
+        }
+        selected = null;
+        selectedPath = null;
+        painter.selectedPath = null;
     }
 
     /**

@@ -1,7 +1,7 @@
 package com.kubo.ui.scope;
 
 import com.kubo.model.server.ServerMetrics;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -17,8 +17,10 @@ import javafx.scene.text.TextAlignment;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -61,6 +63,14 @@ public final class CoreField extends Pane {
     private static final Color AMBER = Color.web("#ffb347");
     private static final Color EMBER = Color.web("#ff7a3d");
     private static final Color GHOST = Color.web("#8a8a99");
+
+    /**
+     * Colours with an opacity baked in, remembered. Setting one fill per particle costs one canvas command where
+     * setting the global alpha and then the fill costs two — and the sphere draws some four and a half thousand
+     * particles a frame, every command of which is recorded here and then replayed, one by one, on the render
+     * thread. Opacity is kept to the 256 steps a screen can show, so the picture is the same.
+     */
+    private static final Map<Color, Color[]> TINTED = new IdentityHashMap<>();
     private static final Color MOTE = Color.web("#9fb8ab");
     private static final Color[] HEAT = gradient(128,
             new double[]{0, 0.35, 0.55, 0.75, 0.9, 1},
@@ -79,7 +89,7 @@ public final class CoreField extends Pane {
     private static final int MOTE_COUNT = 50;
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private final Random random = new Random(7);
 
     private final double[] theta = new double[SPHERE_COUNT];
@@ -174,17 +184,7 @@ public final class CoreField extends Pane {
         getChildren().add(canvas);
         setMinSize(0, 0);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                renderFrame((now - start) / 1e9, true);
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, time -> renderFrame(time, true));
         timer.start();
     }
 
@@ -224,6 +224,17 @@ public final class CoreField extends Pane {
 
     public void stop() {
         timer.stop();
+    }
+
+    static Color tinted(Color base, double alpha) {
+        int step = (int) Math.round(clamp(alpha) * 255);
+        Color[] steps = TINTED.computeIfAbsent(base, key -> new Color[256]);
+        Color colour = steps[step];
+        if (colour == null) {
+            colour = new Color(base.getRed(), base.getGreen(), base.getBlue(), base.getOpacity() * step / 255.0);
+            steps[step] = colour;
+        }
+        return colour;
     }
 
     static Color heat(double level) {
@@ -461,8 +472,7 @@ public final class CoreField extends Pane {
             }
 
             double particle = size[i] * (0.55 + 0.8 * depth);
-            gc.setGlobalAlpha(alpha);
-            gc.setFill(color);
+            gc.setFill(tinted(color, alpha));
             gc.fillRect(cx + x3 * distance - particle / 2, cy + y * distance - particle / 2, particle, particle);
         }
     }
@@ -476,8 +486,8 @@ public final class CoreField extends Pane {
             double angle = -Math.PI / 2 + memoryAngle[i] * TAU;
             double distance = radius * (MEMORY_RING + memoryOffset[i]);
             boolean inUse = memoryAngle[i] < used;
-            gc.setFill(inUse ? lit : MUTED);
-            gc.setGlobalAlpha((inUse ? 0.6 + 0.35 * Math.sin(time * 2 + memoryPhase[i]) : 0.14) * fade);
+            gc.setFill(tinted(inUse ? lit : MUTED,
+                    (inUse ? 0.6 + 0.35 * Math.sin(time * 2 + memoryPhase[i]) : 0.14) * fade));
             gc.fillRect(cx + Math.cos(angle) * distance - 0.9, cy + Math.sin(angle) * distance - 0.9, 1.8, 1.8);
         }
 
@@ -485,12 +495,12 @@ public final class CoreField extends Pane {
             double fraction = (double) i / SWAP_DOTS;
             double angle = -Math.PI / 2 + fraction * TAU;
             boolean inUse = fraction < swap * presence;
-            gc.setFill(inUse ? VIOLET : FAINT);
-            gc.setGlobalAlpha((inUse ? 0.9 : 0.8) * fade);
+            gc.setFill(tinted(inUse ? VIOLET : FAINT, (inUse ? 0.9 : 0.8) * fade));
             gc.fillRect(cx + Math.cos(angle) * radius * SWAP_RING - 0.8,
                     cy + Math.sin(angle) * radius * SWAP_RING - 0.8, 1.6, 1.6);
         }
 
+        gc.setGlobalAlpha(1);
         if (presence > 0.01) {
             double end = -Math.PI / 2 + used * TAU;
             gc.setStroke(TEXT);

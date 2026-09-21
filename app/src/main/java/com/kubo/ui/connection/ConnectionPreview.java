@@ -37,6 +37,7 @@ public final class ConnectionPreview {
         Platform.startup(() -> {
             try {
                 render(output, "connection-idle", ParticleField.State.IDLE, false);
+                render(output, "connection-connecting", ParticleField.State.CONNECTING, false);
                 render(output, "connection-host-key", ParticleField.State.AWAITING_HOST_KEY, true);
                 render(output, "connection-connected", ParticleField.State.CONNECTED, true);
                 render(output, "connection-failed", ParticleField.State.FAILED, false);

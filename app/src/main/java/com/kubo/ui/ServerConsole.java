@@ -275,9 +275,15 @@ public final class ServerConsole extends VBox {
         Label line = label(text, style);
         line.setWrapText(true);
         line.setMinHeight(Region.USE_PREF_SIZE);
+        // Whether the reader was at the end before this line arrived. A log that writes every second and
+        // drags the view back down with it cannot be read at all: scrolling up has to mean something.
+        boolean following = scroll.getVvalue() > 0.985 || output.getChildren().isEmpty();
         output.getChildren().add(line);
         while (output.getChildren().size() > MAX_BLOCKS) {
             output.getChildren().remove(0);
+        }
+        if (!following) {
+            return;
         }
         Platform.runLater(() -> {
             scroll.layout();

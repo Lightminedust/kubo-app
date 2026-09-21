@@ -1,7 +1,7 @@
 package com.kubo.ui.docker;
 
 import com.kubo.docker.DockerCommands;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -36,7 +36,7 @@ final class RunDialog extends VBox {
     private final Label status = new Label();
     private final Button run = new Button("RUN");
     private final Canvas pulling = new Canvas(400, 46);
-    private final AnimationTimer animation;
+    private final LiveTimer animation;
     private double clock;
 
     /**
@@ -91,18 +91,10 @@ final class RunDialog extends VBox {
         image.textProperty().addListener((observable, previous, value) -> status.setText(""));
         Platform.runLater(image::requestFocus);
 
-        animation = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                clock = (now - start) / 1e9;
-                drawPulling();
-            }
-        };
+        animation = new LiveTimer(this, LiveTimer.AMBIENT, time -> {
+            clock = time;
+            drawPulling();
+        });
     }
 
     /**

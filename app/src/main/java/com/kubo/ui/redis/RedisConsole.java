@@ -2,6 +2,7 @@ package com.kubo.ui.redis;
 
 import com.kubo.command.CommandEntry;
 import com.kubo.command.CommandService;
+import com.kubo.platform.LocalShell;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -30,7 +31,7 @@ import java.util.function.Consumer;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Redis activity, an interactive redis-cli, and a deliberately local PowerShell runner. */
+/** Redis activity, an interactive redis-cli, and a deliberately local shell runner for this PC. */
 public final class RedisConsole extends VBox {
 
     private static final int MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -38,24 +39,24 @@ public final class RedisConsole extends VBox {
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
-    private enum Page { LOGS, REDIS, POWERSHELL }
+    private enum Page { LOGS, REDIS, LOCAL }
 
     private final VBox logOutput = new VBox(3);
     private final VBox cliOutput = new VBox(3);
-    private final VBox powerShellOutput = new VBox(3);
+    private final VBox localOutput = new VBox(3);
     private final ScrollPane logScroll = scroll(logOutput);
     private final ScrollPane cliScroll = scroll(cliOutput);
-    private final ScrollPane powerShellScroll = scroll(powerShellOutput);
-    private final StackPane pages = new StackPane(logScroll, cliScroll, powerShellScroll);
+    private final ScrollPane localScroll = scroll(localOutput);
+    private final StackPane pages = new StackPane(logScroll, cliScroll, localScroll);
     private final TextField input = new TextField();
     private final Label sign = label("R›", "prompt-sign");
     private final HBox inputRow;
     private final Button logsTab = tab("LOGS");
     private final Button cliTab = tab("REDIS CLI");
-    private final Button powerShellTab = tab("POWERSHELL");
+    private final Button localTab = tab(LocalShell.name());
     private final Label title = label("REDIS ACTIVITY", "series");
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "kubo-powershell");
+        Thread thread = new Thread(runnable, "kubo-local-shell");
         thread.setDaemon(true);
         return thread;
     });
@@ -71,8 +72,8 @@ public final class RedisConsole extends VBox {
         this(commands, false);
     }
 
-    /** Reuses the console as Kubo's standalone local PowerShell screen. */
-    public RedisConsole(CommandService commands, boolean powerShellOnly) {
+    /** Reuses the console as Kubo's standalone local shell screen. */
+    public RedisConsole(CommandService commands, boolean localOnly) {
         getStyleClass().addAll("prompt-panel", "redis-console");
         setPadding(new Insets(10, 34, 12, 36));
         setPrefHeight(164);
@@ -80,11 +81,12 @@ public final class RedisConsole extends VBox {
 
         logsTab.setOnAction(event -> show(Page.LOGS));
         cliTab.setOnAction(event -> show(Page.REDIS));
-        powerShellTab.setOnAction(event -> show(Page.POWERSHELL));
-        Label location = label("REDIS RUNS ON THE SERVER  ·  POWERSHELL STAYS ON THIS PC", "metric-label");
+        localTab.setOnAction(event -> show(Page.LOCAL));
+        Label location = label("REDIS RUNS ON THE SERVER  ·  " + LocalShell.name() + " STAYS ON THIS PC",
+                "metric-label");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(10, title, logsTab, cliTab, powerShellTab, spacer, location);
+        HBox header = new HBox(10, title, logsTab, cliTab, localTab, spacer, location);
         header.setAlignment(Pos.CENTER_LEFT);
 
         input.getStyleClass().add("prompt-input");
@@ -110,21 +112,21 @@ public final class RedisConsole extends VBox {
         getChildren().addAll(header, pages, inputRow);
         append(logOutput, "REDIS COMMANDS SENT BY KUBO APPEAR HERE IN REAL TIME.", "prompt-meta", logScroll);
         append(cliOutput, "INTERACTIVE REDIS CONSOLE  ·  ACTIVE SERVICE AND DATABASE.", "prompt-meta", cliScroll);
-        append(powerShellOutput, "LOCAL WINDOWS POWERSHELL  ·  EACH ENTRY IS A SEPARATE COMMAND  ·  60 S LIMIT",
-                "prompt-meta", powerShellScroll);
+        append(localOutput, "LOCAL " + LocalShell.name()
+                + "  ·  EACH ENTRY IS A SEPARATE COMMAND  ·  60 S LIMIT", "prompt-meta", localScroll);
 
-        stopListening = powerShellOnly || commands == null ? () -> { } : commands.addListener((entry, origin) -> {
+        stopListening = localOnly || commands == null ? () -> { } : commands.addListener((entry, origin) -> {
             if (origin == CommandService.Origin.REDIS) Platform.runLater(() -> appendRedis(entry));
         });
-        if (powerShellOnly) {
+        if (localOnly) {
             logsTab.setVisible(false);
             logsTab.setManaged(false);
             cliTab.setVisible(false);
             cliTab.setManaged(false);
-            powerShellTab.setVisible(false);
-            powerShellTab.setManaged(false);
+            localTab.setVisible(false);
+            localTab.setManaged(false);
         }
-        show(powerShellOnly ? Page.POWERSHELL : Page.LOGS);
+        show(localOnly ? Page.LOCAL : Page.LOGS);
     }
 
     void setOnRedisCommand(Consumer<String> handler) {
@@ -163,26 +165,26 @@ public final class RedisConsole extends VBox {
         currentPage = page;
         logsTab.getStyleClass().remove("mode-toggle-active");
         cliTab.getStyleClass().remove("mode-toggle-active");
-        powerShellTab.getStyleClass().remove("mode-toggle-active");
-        (page == Page.LOGS ? logsTab : page == Page.REDIS ? cliTab : powerShellTab)
+        localTab.getStyleClass().remove("mode-toggle-active");
+        (page == Page.LOGS ? logsTab : page == Page.REDIS ? cliTab : localTab)
                 .getStyleClass().add("mode-toggle-active");
         title.setText(switch (page) {
             case LOGS -> "REDIS ACTIVITY";
             case REDIS -> "REDIS CLI  ·  ACTIVE DB";
-            case POWERSHELL -> "POWERSHELL  ·  LOCAL PC";
+            case LOCAL -> LocalShell.name() + "  ·  LOCAL PC";
         });
         visible(logScroll, page == Page.LOGS);
         visible(cliScroll, page == Page.REDIS);
-        visible(powerShellScroll, page == Page.POWERSHELL);
+        visible(localScroll, page == Page.LOCAL);
         visible(inputRow, page != Page.LOGS);
         if (page == Page.REDIS) {
             sign.setText("R›");
             input.setPromptText("HSET myhash field1 \"hello\"");
             input.setOnAction(event -> runRedis());
-        } else if (page == Page.POWERSHELL) {
+        } else if (page == Page.LOCAL) {
             sign.setText("PS›");
-            input.setPromptText("run one PowerShell command on this Windows PC");
-            input.setOnAction(event -> runPowerShell());
+            input.setPromptText(LocalShell.prompt());
+            input.setOnAction(event -> runLocal());
         }
         if (page != Page.LOGS) Platform.runLater(input::requestFocus);
     }
@@ -213,21 +215,21 @@ public final class RedisConsole extends VBox {
         }
     }
 
-    private void runPowerShell() {
+    private void runLocal() {
         String command = input.getText().strip();
         if (command.isEmpty() || input.isDisabled()) return;
         input.clear();
         input.setDisable(true);
-        append(powerShellOutput, CLOCK.format(Instant.now()) + "  PS› " + command, "prompt-command", powerShellScroll);
+        append(localOutput, CLOCK.format(Instant.now()) + "  PS› " + command, "prompt-command", localScroll);
         worker.execute(() -> {
             Result result = execute(command);
             Platform.runLater(() -> {
                 if (!result.output().isBlank()) {
-                    append(powerShellOutput, result.output().stripTrailing(), result.exitCode() == 0
-                            ? "prompt-output" : "prompt-error", powerShellScroll);
+                    append(localOutput, result.output().stripTrailing(), result.exitCode() == 0
+                            ? "prompt-output" : "prompt-error", localScroll);
                 }
-                append(powerShellOutput, result.summary(), result.exitCode() == 0 ? "prompt-meta" : "prompt-error",
-                        powerShellScroll);
+                append(localOutput, result.summary(), result.exitCode() == 0 ? "prompt-meta" : "prompt-error",
+                        localScroll);
                 input.setDisable(false);
                 input.requestFocus();
             });
@@ -238,9 +240,8 @@ public final class RedisConsole extends VBox {
         Path output = null;
         long started = System.nanoTime();
         try {
-            output = Files.createTempFile("kubo-powershell-", ".log");
-            ProcessBuilder builder = new ProcessBuilder("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                    "-Command", "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); " + command);
+            output = Files.createTempFile("kubo-local-shell-", ".log");
+            ProcessBuilder builder = new ProcessBuilder(LocalShell.command(command));
             builder.redirectErrorStream(true);
             builder.redirectOutput(output.toFile());
             process = builder.start();
@@ -254,7 +255,7 @@ public final class RedisConsole extends VBox {
             long millis = (System.nanoTime() - started) / 1_000_000;
             return new Result(exit, read(output), "EXIT " + exit + "  ·  " + millis + " MS");
         } catch (IOException e) {
-            return new Result(-1, "", "POWERSHELL COULD NOT START  ·  " + message(e));
+            return new Result(-1, "", LocalShell.name() + " COULD NOT START  ·  " + message(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Result(-1, "", "INTERRUPTED");

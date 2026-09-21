@@ -1,8 +1,8 @@
 package com.kubo.ui.files;
 
 import com.kubo.model.files.RemoteEntry;
+import com.kubo.ui.LiveTimer;
 import com.kubo.ui.scope.Format;
-import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -83,7 +83,7 @@ final class LocalCard extends VBox {
     private final Label destinationLabel = label("", "mono-muted");
     private final Button sendButton = new Button("SEND");
     private final ToggleButton hiddenToggle = new ToggleButton("HIDDEN");
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
 
     private Path current;
     private List<LocalEntry> entries = List.of();
@@ -202,18 +202,10 @@ final class LocalCard extends VBox {
             }
         });
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                clock = (now - start) / 1e9;
-                paint();
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, time -> {
+            clock = time;
+            paint();
+        });
         timer.start();
         setDestination(null);
         open(home);

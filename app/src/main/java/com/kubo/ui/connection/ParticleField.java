@@ -1,6 +1,6 @@
 package com.kubo.ui.connection;
 
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -53,7 +53,7 @@ public final class ParticleField extends Pane {
     private static final Font VALUE_FONT = Font.font("Consolas", 11);
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private final Random seed = new Random(7);
 
     /** Per column: head position in cells, its speed, and the length of its lit trail. */
@@ -85,17 +85,7 @@ public final class ParticleField extends Pane {
         getChildren().add(canvas);
         setMinSize(0, 0);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                render((now - start) / 1e9);
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, this::render);
         timer.start();
     }
 

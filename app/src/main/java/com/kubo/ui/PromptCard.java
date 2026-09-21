@@ -73,6 +73,55 @@ public final class PromptCard extends VBox {
     }
 
     /**
+     * A card that asks for nothing but a yes: what will happen, and the button that does it.
+     *
+     * <p>Typing the name of a thing back is what stands in front of something with nothing behind it. Asking
+     * for it before every small irreversible act teaches people to type it without reading, which is the
+     * opposite of what the asking is for. So this is the form for the ordinary ones, and the form above is
+     * kept for the rest.
+     *
+     * @param onConfirm receives a callback taking the reason it did not work, or null when it did
+     */
+    public static PromptCard confirm(String series, String title, String note, String action, boolean danger,
+                                     java.util.function.Consumer<java.util.function.Consumer<String>> onConfirm,
+                                     Runnable onCancel) {
+        PromptCard card = new PromptCard();
+        card.getStyleClass().addAll("float-card", "redis-prompt-card");
+        card.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+        card.setPadding(new Insets(24, 28, 24, 26));
+        card.setSpacing(12);
+        Label explanation = label(note, danger ? "card-problem" : "card-note");
+        explanation.setWrapText(true);
+        explanation.setMaxWidth(440);
+        explanation.setMinHeight(Region.USE_PREF_SIZE);
+        Label status = label("", "card-problem");
+        status.setWrapText(true);
+        status.setMinHeight(Region.USE_PREF_SIZE);
+        Button submit = new Button(action);
+        submit.getStyleClass().addAll(danger ? "danger-button" : "primary-button", "compact-button");
+        Button cancel = new Button("CANCEL");
+        cancel.getStyleClass().add("ghost-button");
+        cancel.setOnAction(event -> onCancel.run());
+        submit.setOnAction(event -> {
+            submit.setDisable(true);
+            submit.setText("WORKING\u2026");
+            onConfirm.accept(error -> {
+                submit.setDisable(false);
+                submit.setText(action);
+                if (error != null) {
+                    status.setText(error);
+                }
+            });
+        });
+        HBox buttons = new HBox(16, submit, cancel);
+        buttons.setAlignment(Pos.CENTER_LEFT);
+        card.getChildren().addAll(label(series, "series"), label(title, "card-title"), explanation, status,
+                buttons);
+        Platform.runLater(cancel::requestFocus);
+        return card;
+    }
+
+    /**
      * A card showing the plain output of a command, such as a slowlog or a failed configuration test.
      */
     public static PromptCard output(String series, String title, String text, Runnable onClose) {

@@ -15,6 +15,7 @@ import javafx.scene.Group;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -94,6 +95,8 @@ public final class ConnectionView extends StackPane {
     private final VBox keyGroup;
     private final VBox form;
     private final Button connectButton = new Button("CONNECT");
+    private final Button cancelButton = new Button("CANCEL");
+    private final ProgressIndicator connectionProgress = new ProgressIndicator();
     private final Label statusLabel = label("", "status");
 
     private final Label hostKeyHost = label("", "host-key-host");
@@ -105,8 +108,9 @@ public final class ConnectionView extends StackPane {
     private final VBox sessionList = new VBox(10);
     private final ToggleButton saveToggle = modeToggle("SAVE THIS SESSION");
     private final ToggleButton rememberToggle = modeToggle("REMEMBER PASSWORD");
-    private final Label rememberNote = label("Encrypted by Windows for your account only (DPAPI). Anyone using your open Windows "
-            + "session could connect with it.", "remember-note");
+    private final Label rememberNote = label("", "remember-note");
+    private final List<Button> sessionActions = new ArrayList<>();
+    private Button connectingSessionButton;
     private SavedSession selectedSession;
     private boolean filling;
 
@@ -159,10 +163,23 @@ public final class ConnectionView extends StackPane {
         connectButton.getStyleClass().add("primary-button");
         connectButton.setDefaultButton(true);
         connectButton.setOnAction(event -> onConnectPressed());
+        connectionProgress.getStyleClass().add("connection-progress");
+        connectionProgress.setPrefSize(15, 15);
+        connectionProgress.setMaxSize(15, 15);
+        connectionProgress.setVisible(false);
+        connectionProgress.setManaged(false);
+        connectButton.setGraphic(connectionProgress);
+        connectButton.setGraphicTextGap(12);
+        cancelButton.getStyleClass().add("ghost-button");
+        cancelButton.setFocusTraversable(false);
+        cancelButton.setOnAction(event -> cancelAttempt());
+        cancelButton.setVisible(false);
+        cancelButton.setManaged(false);
         statusLabel.setWrapText(true);
         statusLabel.setMinHeight(Region.USE_PREF_SIZE);
 
         saveToggle.setSelected(true);
+        rememberNote.setText(store.protectionNote());
         rememberNote.setWrapText(true);
         rememberNote.setMinHeight(Region.USE_PREF_SIZE);
         saveToggle.selectedProperty().addListener((observable, previous, value) -> updateRemember());
@@ -170,7 +187,7 @@ public final class ConnectionView extends StackPane {
         VBox saving = new VBox(8, new HBox(24, saveToggle, rememberToggle), rememberNote);
 
         form = new VBox(20, modes, fieldGroup("TARGET", targetField), passwordGroup, keyGroup, saving,
-                new VBox(16, connectButton, statusLabel));
+                new VBox(16, new HBox(12, connectButton, cancelButton), statusLabel));
         form.setMaxWidth(340);
 
         hostKeyCard = buildHostKeyCard();
@@ -247,7 +264,14 @@ public final class ConnectionView extends StackPane {
         }
 
         switch (state) {
-            case CONNECTING -> showConnecting(SshTarget.parse(targetField.getText()));
+            case CONNECTING -> {
+                showConnecting(SshTarget.parse(targetField.getText()));
+                // The connecting preview represents a click on the remembered session at the bottom of the list.
+                sessionActions.stream()
+                        .filter(button -> button.getStyleClass().contains("session-connect"))
+                        .reduce((first, second) -> second)
+                        .ifPresent(this::showSavedSessionProgress);
+            }
             case AWAITING_HOST_KEY -> showHostKey(new SshConnection.HostKey("203.0.113.10", "ssh-ed25519",
                     "SHA256:q3Xw1nK8v2Lr0Tz6yHc9PbE4mJ7sA5dFgU1iOoZlRkY"), new CompletableFuture<>());
             case CONNECTED -> showConnected(SshTarget.parse(targetField.getText()), 184);
@@ -333,6 +357,11 @@ public final class ConnectionView extends StackPane {
     }
 
     private void onConnectPressed() {
+        // Disabling the button normally prevents a second click. Keep the state guard as well so pressing Enter,
+        // or another control calling this method during the same attempt, can never open a parallel connection.
+        if (busy) {
+            return;
+        }
         if (connection != null) {
             disconnect();
             return;
@@ -400,7 +429,8 @@ public final class ConnectionView extends StackPane {
                     : new SshCredentials.Password(secret);
             SshConnection opened;
             try {
-                opened = SshConnection.open(target, credentials, this::askHostKey);
+                opened = SshConnection.open(target, credentials, this::askHostKey,
+                        step -> Platform.runLater(() -> showStep(thisAttempt, step)));
             } catch (SshConnectionException e) {
                 wipe(toRemember);
                 Platform.runLater(() -> {
@@ -458,6 +488,10 @@ public final class ConnectionView extends StackPane {
         }
         busy = false;
         setFormDisabled(false);
+        showConnectionProgress(false);
+        showCancel(false);
+        connectButton.setText("CONNECT");
+        setSessionActionsDisabled(false);
         connectButton.setDisable(false);
         field.setState(ParticleField.State.FAILED);
         field.setHandshake("FAILED");
@@ -494,6 +528,7 @@ public final class ConnectionView extends StackPane {
 
     private void refreshSessions() {
         List<SavedSession> sessions = store.list();
+        sessionActions.clear();
         sessionList.getChildren().clear();
         if (sessions.isEmpty()) {
             Label none = label("NONE YET.", "field-label");
@@ -514,6 +549,7 @@ public final class ConnectionView extends StackPane {
         Button delete = new Button("✕");
         delete.getStyleClass().add("session-delete");
         delete.setFocusTraversable(false);
+        sessionActions.add(delete);
         delete.setOnAction(event -> {
             event.consume();
             runStoreChange(() -> store.delete(session.id()));
@@ -534,6 +570,7 @@ public final class ConnectionView extends StackPane {
             Button forget = new Button("FORGET");
             forget.getStyleClass().add("session-link");
             forget.setFocusTraversable(false);
+            sessionActions.add(forget);
             forget.setOnAction(event -> {
                 event.consume();
                 runStoreChange(() -> store.forgetSecret(session.id()));
@@ -552,6 +589,7 @@ public final class ConnectionView extends StackPane {
         Button connect = new Button("CONNECT  →");
         connect.getStyleClass().add("session-connect");
         connect.setFocusTraversable(false);
+        sessionActions.add(connect);
         connect.setOnAction(event -> {
             event.consume();
             fill(session);
@@ -561,6 +599,9 @@ public final class ConnectionView extends StackPane {
                 showStatus("ENTER THE PASSWORD FOR " + session.target(), Tone.PENDING);
             } else if (connection == null && !busy) {
                 onConnectPressed();
+                if (busy) {
+                    showSavedSessionProgress(connect);
+                }
             }
         });
         Label used = label("LAST USED " + USED.format(Instant.ofEpochMilli(session.lastUsedMillis())), "field-label");
@@ -740,18 +781,74 @@ public final class ConnectionView extends StackPane {
     private void showConnecting(SshTarget target) {
         busy = true;
         setFormDisabled(true);
+        setSessionActionsDisabled(true);
+        showConnectionProgress(true);
         connectButton.setDisable(true);
+        connectButton.setText("CONNECTING");
+        showCancel(true);
         field.setState(ParticleField.State.CONNECTING);
-        field.setHandshake("NEGOTIATING");
+        field.setHandshake("STARTING");
         stateDot.setFill(DOT_BUSY);
-        showStatus("CONNECTING TO " + target, Tone.PENDING);
+        showStatus("OPENING A CONNECTION TO " + target, Tone.PENDING);
         updateSteps();
+    }
+
+    /**
+     * Names the wait the attempt is actually in. Pressing CONNECT used to give one line for all three waits,
+     * so a slow server looked exactly like a screen that had missed the click — and the button got pressed
+     * again. Each of these is reported by the connection itself as it begins, not on a timer.
+     */
+    private void showStep(long thisAttempt, SshConnection.Step step) {
+        if (closed || thisAttempt != attempt || !busy) {
+            return;
+        }
+        connectButton.setText(step.label());
+        field.setHandshake(step.label());
+        showStatus(step.label() + "  ·  " + explain(step), Tone.PENDING);
+    }
+
+    private static String explain(SshConnection.Step step) {
+        return switch (step) {
+            case READING_THE_KEY -> "UNLOCKING YOUR KEY FILE. NOTHING HAS BEEN SENT ANYWHERE YET";
+            case REACHING_THE_SERVER -> "WAITING FOR THE SERVER TO ANSWER. A WRONG ADDRESS OR A CLOSED PORT "
+                    + "SPENDS ITS WHOLE TIMEOUT HERE";
+            case AUTHENTICATING -> "THE SERVER ANSWERED. PROVING WHO YOU ARE";
+        };
+    }
+
+    /**
+     * Gives up on the attempt in flight. The server may still answer, but that answer now belongs to nobody:
+     * the attempt number has moved on, so the connection is closed when it arrives rather than used.
+     */
+    private void cancelAttempt() {
+        attempt++;
+        busy = false;
+        setFormDisabled(false);
+        setSessionActionsDisabled(false);
+        showConnectionProgress(false);
+        showCancel(false);
+        connectButton.setDisable(false);
+        connectButton.setText("CONNECT");
+        field.setState(ParticleField.State.IDLE);
+        field.setHandshake("—");
+        stateDot.setFill(DOT_IDLE);
+        showStatus("ATTEMPT ABANDONED. IF THE SERVER ANSWERS NOW, KUBO WILL CLOSE IT RATHER THAN USE IT",
+                Tone.PENDING);
+        updateSteps();
+    }
+
+    private void showCancel(boolean show) {
+        cancelButton.setVisible(show);
+        cancelButton.setManaged(show);
     }
 
     private void showConnected(SshTarget target, long handshakeMs) {
         busy = false;
         hideHostKey();
         setFormDisabled(true);
+        showConnectionProgress(false);
+        showCancel(false);
+        setSessionActionsDisabled(true);
         connectButton.setDisable(false);
         connectButton.setText("DISCONNECT");
         field.setState(ParticleField.State.CONNECTED);
@@ -770,7 +867,11 @@ public final class ConnectionView extends StackPane {
         }
         hideHostKey();
         setFormDisabled(false);
+        showConnectionProgress(false);
+        setSessionActionsDisabled(false);
+        showCancel(false);
         connectButton.setDisable(false);
+        connectButton.setText("CONNECT");
         field.setState(ParticleField.State.FAILED);
         field.setHandshake("FAILED");
         stateDot.setFill(DOT_ALERT);
@@ -791,6 +892,8 @@ public final class ConnectionView extends StackPane {
         connection = null;
         worker.execute(closing::close);
         setFormDisabled(false);
+        showConnectionProgress(false);
+        setSessionActionsDisabled(false);
         connectButton.setText("CONNECT");
         field.setState(ParticleField.State.IDLE);
         field.setHandshake("IDLE");
@@ -849,6 +952,48 @@ public final class ConnectionView extends StackPane {
         keyFileField.setDisable(disabled);
         browseButton.setDisable(disabled);
         passphraseField.setDisable(disabled);
+    }
+
+    private void showConnectionProgress(boolean visible) {
+        connectionProgress.setManaged(visible);
+        connectionProgress.setVisible(visible);
+        connectButton.getStyleClass().remove("connection-busy");
+        if (visible) {
+            connectButton.getStyleClass().add("connection-busy");
+            connectButton.setText("CONNECTING  ·  PLEASE WAIT");
+        } else if (connection == null) {
+            connectButton.setText("CONNECT");
+        }
+        if (!visible) {
+            hideSavedSessionProgress();
+        }
+    }
+
+    private void showSavedSessionProgress(Button button) {
+        hideSavedSessionProgress();
+        ProgressIndicator progress = new ProgressIndicator();
+        progress.getStyleClass().add("connection-progress");
+        progress.setPrefSize(12, 12);
+        progress.setMaxSize(12, 12);
+        connectingSessionButton = button;
+        button.getStyleClass().add("session-connecting");
+        button.setGraphic(progress);
+        button.setGraphicTextGap(7);
+        button.setText("CONNECTING");
+    }
+
+    private void hideSavedSessionProgress() {
+        if (connectingSessionButton == null) {
+            return;
+        }
+        connectingSessionButton.getStyleClass().remove("session-connecting");
+        connectingSessionButton.setGraphic(null);
+        connectingSessionButton.setText("CONNECT  →");
+        connectingSessionButton = null;
+    }
+
+    private void setSessionActionsDisabled(boolean disabled) {
+        sessionActions.forEach(button -> button.setDisable(disabled));
     }
 
     private void showStatus(String message, Tone tone) {

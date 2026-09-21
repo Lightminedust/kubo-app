@@ -29,7 +29,9 @@ public class CommandService {
         /** Network: firewall, web routing, listening ports and the processes behind them. */
         NETWORK,
         /** Packages: what apt and dpkg report, and the installs, removals and upgrades asked for. */
-        PACKAGES
+        PACKAGES,
+        /** Services: what systemd reports about its units and the last boot. */
+        SERVICES
     }
 
     /**

@@ -9,9 +9,9 @@ import com.kubo.files.LocalScan;
 import com.kubo.files.UploadCommands;
 import com.kubo.files.UploadCommands.Conflict;
 import com.kubo.model.files.RemoteEntry;
+import com.kubo.ui.LiveTimer;
 import com.kubo.ui.files.Transfer.State;
 import com.kubo.ui.scope.Format;
-import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -57,7 +57,7 @@ final class TransferPanel extends VBox {
     private final ScrollPane scroll = new ScrollPane(rows);
     private final Label summary = label("", "metric-label");
     private final Button collapse = new Button("▾");
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
     private double clock;
     private boolean collapsed;
 
@@ -94,18 +94,10 @@ final class TransferPanel extends VBox {
         setVisible(false);
         setManaged(false);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                clock = (now - start) / 1e9;
-                refresh();
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, time -> {
+            clock = time;
+            refresh();
+        });
     }
 
     /**
@@ -329,9 +321,9 @@ final class TransferPanel extends VBox {
 
     private static void reveal(Path saved) {
         try {
-            new ProcessBuilder("explorer.exe", "/select," + saved).start();
+            com.kubo.platform.Host.reveal(saved);
         } catch (IOException ignored) {
-            // Explorer is not available: the path is already shown.
+            // No file manager answered: the path is already shown on the card.
         }
     }
 

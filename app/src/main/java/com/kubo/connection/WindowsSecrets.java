@@ -1,5 +1,7 @@
 package com.kubo.connection;
 
+import com.kubo.platform.Host;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,7 +11,6 @@ import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,7 +31,13 @@ public final class WindowsSecrets implements SessionStore.Protection {
 
     @Override
     public boolean available() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");
+        return Host.isWindows();
+    }
+
+    @Override
+    public String explanation() {
+        return "Encrypted by Windows for your account only (DPAPI). Anyone using your open Windows session "
+                + "could connect with it.";
     }
 
     @Override
@@ -77,19 +84,53 @@ public final class WindowsSecrets implements SessionStore.Protection {
         try (OutputStream stdin = process.getOutputStream()) {
             stdin.write(input);
         }
+        try {
+            return collect(process, TimeUnit.SECONDS.toMillis(20));
+        } catch (IOException e) {
+            throw new IOException("Windows could not " + (script == PROTECT ? "encrypt" : "decrypt") + " the secret", e);
+        }
+    }
+
+    /**
+     * Waits for a process and returns everything it wrote, giving up after {@code timeoutMillis}.
+     *
+     * <p>The output is read on another thread. Reading it here would block until the process closes its output,
+     * so a PowerShell that hung without closing it would be waited on for ever, and the timeout would never be
+     * reached. A process that runs out of time is killed, which also closes its output and frees the reader.
+     *
+     * @throws IOException when the process runs out of time, fails, or is interrupted
+     */
+    static byte[] collect(Process process, long timeoutMillis) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try (InputStream stdout = process.getInputStream()) {
-            stdout.transferTo(output);
-            if (!process.waitFor(20, TimeUnit.SECONDS) || process.exitValue() != 0) {
-                process.destroyForcibly();
-                throw new IOException("Windows could not " + (script == PROTECT ? "encrypt" : "decrypt") + " the secret");
+        Thread reader = new Thread(() -> {
+            try (InputStream stdout = process.getInputStream()) {
+                stdout.transferTo(output);
+            } catch (IOException ignored) {
+                // The process was killed under us; what was read is thrown away below.
             }
+        }, "kubo-dpapi-output");
+        reader.setDaemon(true);
+        reader.start();
+        try {
+            boolean finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new IOException("No answer after " + timeoutMillis + " ms");
+            }
+            // The process has exited, so its output is closed and the reader is about to finish.
+            reader.join(TimeUnit.SECONDS.toMillis(2));
+            if (reader.isAlive()) {
+                throw new IOException("The output never closed");
+            }
+            if (process.exitValue() != 0) {
+                throw new IOException("Exit code " + process.exitValue());
+            }
+            return output.toByteArray();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
             throw new IOException("Interrupted", e);
         }
-        return output.toByteArray();
     }
 
     private static byte[] utf8(char[] secret) {

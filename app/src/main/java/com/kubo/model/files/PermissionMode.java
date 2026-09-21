@@ -123,6 +123,32 @@ public record PermissionMode(int bits) {
         return new PermissionMode(granted ? bits | bit : bits & ~bit);
     }
 
+    /** True when the owner may run it, which is what makes a script something a service can start. */
+    public boolean executable() {
+        return has(Who.OWNER, Right.EXECUTE);
+    }
+
+    /**
+     * The same rights, plus the right to run it for everyone who can already read it.
+     *
+     * <p>0644 becomes 0755 and 0600 becomes 0700: a file everybody can read becomes one everybody can run,
+     * and a private one stays private. This is deliberately not what a bare {@code chmod +x} does — that one
+     * is filtered by the umask of whoever runs it, so its result cannot be read off the command, and a
+     * setting nobody can predict is a poor thing to put behind a button.
+     *
+     * <p>The special bits are carried through untouched. Kubo never sets setuid, and never clears one
+     * somebody else set either.
+     */
+    public PermissionMode runnable() {
+        PermissionMode mode = this;
+        for (Who who : Who.values()) {
+            if (has(who, Right.READ)) {
+                mode = mode.with(who, Right.EXECUTE, true);
+            }
+        }
+        return mode;
+    }
+
     /**
      * True when one of {@link #SETUID}, {@link #SETGID} or {@link #STICKY} is set.
      */

@@ -24,7 +24,9 @@ import java.util.Objects;
  * <pre>
  * { "target": "...", "startedAt": "...", "commands": [ { "at": ..., "origin": ..., "command": ... }, ... ] }
  * </pre>
- * Command output is not stored, only its size: it can be large and may contain file contents.
+ * Command output is not stored — neither standard output nor standard error — only its size. Either can be large,
+ * and either can carry file contents, paths or a secret a program printed while failing. What happened is still
+ * recorded: the command, whether it ran as root, its exit code and how long it took.
  */
 public final class SessionLog implements AutoCloseable {
 
@@ -32,7 +34,6 @@ public final class SessionLog implements AutoCloseable {
 
     private static final String TAIL = "\n  ]\n}\n";
     private static final int TAIL_BYTES = TAIL.getBytes(StandardCharsets.UTF_8).length;
-    private static final int MAX_ERROR_CHARACTERS = 4_000;
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
             .withZone(ZoneId.systemDefault());
 
@@ -106,8 +107,7 @@ public final class SessionLog implements AutoCloseable {
         json.put("exitCode", entry.exitCode());
         json.put("durationMs", entry.duration().toMillis());
         json.put("outputBytes", entry.output().getBytes(StandardCharsets.UTF_8).length);
-        String error = entry.error().strip();
-        json.put("error", error.length() > MAX_ERROR_CHARACTERS ? error.substring(0, MAX_ERROR_CHARACTERS) + "…" : error);
+        json.put("errorBytes", entry.error().getBytes(StandardCharsets.UTF_8).length);
         return json;
     }
 }

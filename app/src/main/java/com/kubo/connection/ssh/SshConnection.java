@@ -113,11 +113,53 @@ public final class SshConnection implements AutoCloseable {
     }
 
     /**
+     * Connects and authenticates, saying which step it is on. This is the one the screen uses.
+     */
+    public static SshConnection open(SshTarget target, SshCredentials credentials, HostKeyPrompt prompt,
+                                     java.util.function.Consumer<Step> onStep) throws SshConnectionException {
+        return open(target, credentials, prompt, KNOWN_HOSTS, onStep);
+    }
+
+    /**
+     * Where an attempt has got to. Opening a connection is three separate waits, and on a slow server or a
+     * wrong address they are very different lengths: a screen that says only "please wait" for all three
+     * leaves the user with nothing to do but press the button again.
+     */
+    public enum Step {
+
+        READING_THE_KEY("READING THE KEY"),
+        REACHING_THE_SERVER("REACHING THE SERVER"),
+        AUTHENTICATING("AUTHENTICATING");
+
+        private final String label;
+
+        Step(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
+    /**
      * Connects and authenticates, trusting the servers listed in another known_hosts file, e.g. for tests.
      */
     public static SshConnection open(SshTarget target, SshCredentials credentials, HostKeyPrompt prompt,
                                      Path knownHosts) throws SshConnectionException {
+        return open(target, credentials, prompt, knownHosts, step -> { });
+    }
+
+    /**
+     * Connects and authenticates, telling the caller which step is being waited on as each one begins.
+     *
+     * @param onStep called off the UI thread, once per step, before that step is waited on
+     */
+    public static SshConnection open(SshTarget target, SshCredentials credentials, HostKeyPrompt prompt,
+                                     Path knownHosts, java.util.function.Consumer<Step> onStep)
+            throws SshConnectionException {
         Objects.requireNonNull(knownHosts, "knownHosts");
+        Objects.requireNonNull(onStep, "onStep");
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(credentials, "credentials");
         Objects.requireNonNull(prompt, "prompt");
@@ -130,13 +172,17 @@ public final class SshConnection implements AutoCloseable {
 
         try {
             // Read the key first: a wrong passphrase is reported without touching the network.
-            KeyProvider key = credentials instanceof SshCredentials.KeyFile keyFile
-                    ? loadKey(client, keyFile)
-                    : null;
+            KeyProvider key = null;
+            if (credentials instanceof SshCredentials.KeyFile keyFile) {
+                onStep.accept(Step.READING_THE_KEY);
+                key = loadKey(client, keyFile);
+            }
 
             TrustOnFirstUse verifier = createVerifier(prompt, knownHosts);
             client.addHostKeyVerifier(verifier);
+            onStep.accept(Step.REACHING_THE_SERVER);
             connect(client, target, verifier, knownHosts);
+            onStep.accept(Step.AUTHENTICATING);
             authenticate(client, target, credentials, key);
 
             client.getConnection().getKeepAlive().setKeepAliveInterval(KEEP_ALIVE_SECONDS);

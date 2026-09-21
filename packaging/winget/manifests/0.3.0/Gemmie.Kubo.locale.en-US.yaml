@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: Gemmie.Kubo
+PackageVersion: 0.3.0
+PackageLocale: en-US
+Publisher: Gemmie
+PublisherUrl: https://gemmi-e.com
+PublisherSupportUrl: https://github.com/Lightminedust/Kubo/issues
+Author: Awassi Nell Damas
+PackageName: Kubo
+PackageUrl: https://kubo.gemmi-e.com
+License: Proprietary
+LicenseUrl: https://github.com/Lightminedust/Kubo/blob/main/LICENSE.txt
+Copyright: Copyright (c) 2026 Gemmie
+ShortDescription: See your Linux server over SSH, drawn instead of tabulated.
+Description: |-
+  Kubo connects over SSH to a Linux server you own and draws it: the processor as a particle sphere,
+  the files as a branching tree that opens column by column, and the way in as a map where the firewall
+  is a pane of glass and every port sits where it can truly be reached. Docker, Redis and apt get the
+  same treatment.
+
+  Nothing is installed on the server — Kubo only runs ordinary shell commands over SSH, and leaves no
+  agent behind. Nothing leaves the operator's machine: no account, no telemetry, no cloud. Every command
+  Kubo sends is listed as it happens and written to a local log — the commands, never their output.
+
+  Brings its own Java runtime, so no runtime has to be installed first.
+Moniker: kubo
+Tags:
+- docker
+- file-manager
+- linux
+- monitoring
+- redis
+- server
+- sftp
+- ssh
+- sysadmin
+- terminal
+ReleaseNotesUrl: https://github.com/Lightminedust/Kubo/releases/tag/v0.3.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

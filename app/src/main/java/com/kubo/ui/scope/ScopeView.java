@@ -14,7 +14,7 @@ import com.kubo.monitor.ServerMonitor;
 import com.kubo.monitor.parse.MetricsParser;
 import com.kubo.ui.files.FilesWindow;
 import com.kubo.ui.logs.LogsWindow;
-import com.kubo.ui.powershell.PowerShellWindow;
+import com.kubo.ui.shell.LocalShellWindow;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -78,15 +78,17 @@ public final class ScopeView extends StackPane {
     private final Button redisButton = new Button("REDIS");
     private com.kubo.ui.redis.RedisWindow redisWindow;
     private final Button networkButton = new Button("NETWORK");
+    private final Button servicesButton = new Button("SERVICES");
     private com.kubo.ui.network.NetworkWindow networkWindow;
+    private com.kubo.ui.services.ServicesWindow servicesWindow;
     /** One root state for the whole session, so the sudo password is asked for once, not per window. */
     private volatile com.kubo.privilege.RootSession rootSession;
     /** Holds the root button once the server has said whether root is possible at all. */
     private final HBox rootSlot = new HBox();
     private StackPane rootOverlay;
     private volatile Thread disconnect;
-    private final Button powerShellButton = new Button("POWERSHELL");
-    private PowerShellWindow powerShellWindow;
+    private final Button localShellButton = new Button(com.kubo.platform.LocalShell.name());
+    private LocalShellWindow localShellWindow;
     private final Button serverTab = new Button("SERVER");
     private final Button packagesTab = new Button("PACKAGES");
     private BorderPane layout;
@@ -211,6 +213,10 @@ public final class ScopeView extends StackPane {
             redisWindow.close();
             redisWindow = null;
         }
+        if (servicesWindow != null) {
+            servicesWindow.close();
+            servicesWindow = null;
+        }
         if (networkWindow != null) {
             networkWindow.close();
             networkWindow = null;
@@ -228,9 +234,9 @@ public final class ScopeView extends StackPane {
             rootSession.close();
             rootSession = null;
         }
-        if (powerShellWindow != null) {
-            powerShellWindow.close();
-            powerShellWindow = null;
+        if (localShellWindow != null) {
+            localShellWindow.close();
+            localShellWindow = null;
         }
         if (monitor != null) {
             monitor.close();
@@ -566,6 +572,19 @@ public final class ScopeView extends StackPane {
     }
 
     /**
+     * Opens the services screen: what systemd is running, and what it would still be running after a reboot.
+     */
+    private void openServices() {
+        if (connection == null || closed) {
+            return;
+        }
+        if (servicesWindow == null || !servicesWindow.isShowing()) {
+            servicesWindow = new com.kubo.ui.services.ServicesWindow(connection, commands, rootSession);
+        }
+        servicesWindow.show();
+    }
+
+    /**
      * Opens the Redis screen, finding Redis on the host or in a container.
      */
     private void openRedis() {
@@ -578,14 +597,14 @@ public final class ScopeView extends StackPane {
         redisWindow.show();
     }
 
-    private void openPowerShell() {
+    private void openLocalShell() {
         if (closed) {
             return;
         }
-        if (powerShellWindow == null || !powerShellWindow.isShowing()) {
-            powerShellWindow = new PowerShellWindow(commands);
+        if (localShellWindow == null || !localShellWindow.isShowing()) {
+            localShellWindow = new LocalShellWindow(commands);
         }
-        powerShellWindow.show();
+        localShellWindow.show();
     }
 
     /**
@@ -629,14 +648,16 @@ public final class ScopeView extends StackPane {
         redisButton.setOnAction(event -> openRedis());
         networkButton.getStyleClass().add("ghost-button");
         networkButton.setOnAction(event -> openNetwork());
+        servicesButton.getStyleClass().add("ghost-button");
+        servicesButton.setOnAction(event -> openServices());
         serverTab.getStyleClass().addAll("scope-tab", "scope-tab-active");
         serverTab.setFocusTraversable(false);
         serverTab.setOnAction(event -> showPackages(false));
         packagesTab.getStyleClass().add("scope-tab");
         packagesTab.setFocusTraversable(false);
         packagesTab.setOnAction(event -> showPackages(true));
-        powerShellButton.getStyleClass().add("ghost-button");
-        powerShellButton.setOnAction(event -> openPowerShell());
+        localShellButton.getStyleClass().add("ghost-button");
+        localShellButton.setOnAction(event -> openLocalShell());
 
         problemLabel.setVisible(false);
         problemLabel.setManaged(false);
@@ -647,8 +668,8 @@ public final class ScopeView extends StackPane {
         rootSlot.setAlignment(Pos.CENTER_LEFT);
 
         // The other screens are somewhere to go, not the thing you are looking at: one quiet group, set apart.
-        HBox destinations = new HBox(16, filesButton, networkButton, dockerButton, redisButton, powerShellButton,
-                logsButton);
+        HBox destinations = new HBox(16, filesButton, servicesButton, networkButton, dockerButton, redisButton,
+                localShellButton, logsButton);
         destinations.getStyleClass().add("destination-group");
         destinations.setAlignment(Pos.CENTER_LEFT);
 

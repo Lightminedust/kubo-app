@@ -139,8 +139,29 @@ public final class LogsView extends BorderPane {
             titleLabel.setText("UNREADABLE LOG");
             detailLabel.setText(e.getMessage());
         }
+        // Only follow the end when the reader was already there: a list that jumps back down on every new
+        // entry is a list nobody can look through.
+        boolean following = atTheEnd();
         applyFilter();
-        Platform.runLater(() -> list.scrollTo(Math.max(0, shown.size() - 1)));
+        if (following) {
+            Platform.runLater(() -> list.scrollTo(Math.max(0, shown.size() - 1)));
+        }
+    }
+
+    /**
+     * Whether the last entry is on the screen, which is how "was the reader following the log" is asked of a
+     * list view: it does not say where it is scrolled, only which rows it has been asked to build.
+     */
+    private boolean atTheEnd() {
+        if (shown.isEmpty()) {
+            return true;
+        }
+        javafx.scene.Node skin = list.lookup(".virtual-flow");
+        if (!(skin instanceof javafx.scene.control.skin.VirtualFlow<?> flow)) {
+            return true;
+        }
+        javafx.scene.control.IndexedCell<?> last = flow.getLastVisibleCell();
+        return last == null || last.getIndex() >= shown.size() - 2;
     }
 
     private void applyFilter() {
@@ -250,7 +271,7 @@ public final class LogsView extends BorderPane {
     private void reveal() {
         try {
             Files.createDirectories(directory);
-            new ProcessBuilder("explorer.exe", directory.toString()).start();
+            com.kubo.platform.Host.openFolder(directory);
         } catch (IOException e) {
             detailLabel.setText("CANNOT OPEN " + directory + ": " + e.getMessage());
         }

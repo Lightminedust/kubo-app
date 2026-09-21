@@ -57,6 +57,17 @@ public final class BranchCamera {
         stopInertia();
     }
 
+    /**
+     * True while the view is being dragged, still gliding, or easing toward a target: the moments worth drawing at
+     * full rate. Once it has settled, a frame every so often is enough.
+     */
+    public boolean moving() {
+        return dragging
+                || Math.abs(velocityX) > 2 || Math.abs(velocityY) > 2
+                || Math.abs(targetCamX - camX) > 0.5 || Math.abs(targetCamY - camY) > 0.5
+                || Math.abs(targetZoom - zoom) > 0.001;
+    }
+
     public void stopInertia() {
         velocityX = 0;
         velocityY = 0;

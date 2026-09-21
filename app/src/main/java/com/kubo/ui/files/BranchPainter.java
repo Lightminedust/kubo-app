@@ -9,7 +9,11 @@ import com.kubo.ui.files.BranchTree.Ghost;
 import com.kubo.ui.files.BranchTree.Hit;
 import com.kubo.ui.files.BranchTree.SortKey;
 import javafx.geometry.VPos;
+import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.image.WritableImage;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.LinearGradient;
@@ -19,6 +23,7 @@ import javafx.scene.paint.Stop;
 import javafx.scene.shape.ArcType;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
+import javafx.stage.Window;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -65,6 +70,14 @@ final class BranchPainter {
 
     private static final int GRADIENT_LIMIT = 160;
     private static final int OFFSCREEN_FIBERS = 60;
+    /**
+     * Frames the fibers must stay the same before they are kept as a picture: a third of a second at the idle
+     * rate. Keeping them costs more than one ordinary frame, so it is only worth doing once the view has really
+     * stopped — not between two entries the mouse passes over, each of which lights its own fiber.
+     */
+    private static final int SETTLE_FRAMES = 10;
+    /** Beyond this the picture would cost more memory than redrawing saves: an 8K screen, say. */
+    private static final long MAX_CACHE_PIXELS = 24_000_000;
     private static final double HEADER_HEIGHT = BranchCamera.HEADER_HEIGHT;
 
     record SortChip(int column, SortKey key, double x, double y, double width, double height) {
@@ -79,6 +92,13 @@ final class BranchPainter {
     private final Map<Integer, Font> labelFonts = new HashMap<>();
     private double clock;
     private double height;
+
+    // The fibers of the last settled frame, kept as one picture, and how sure we are that they have settled.
+    private final Canvas cacheCanvas = new Canvas();
+    private WritableImage cache;
+    private long cacheHash;
+    private long previousHash;
+    private int stableFrames;
 
     // Marks set by the canvas.
     Hit hovered;
@@ -136,8 +156,9 @@ final class BranchPainter {
         if (dropColumn >= 1) {
             drawSpace(gc, dropColumn, width, true, dropColor, 1, dropCaption);
         }
+        paintFibres(gc, width, height);
         for (int k = 1; k < columns.size(); k++) {
-            drawBranch(gc, k);
+            drawBranchMarks(gc, k);
         }
         drawTravellingLights(gc);
         for (int k = 0; k < columns.size(); k++) {
@@ -327,19 +348,22 @@ final class BranchPainter {
         return world == null ? null : new double[]{sx(world[0]), sy(world[1])};
     }
 
-    private void drawBranch(GraphicsContext gc, int k) {
+    /**
+     * What a branch shows besides its fibers: the loading animation, the single fiber to a folder that failed or
+     * is empty, and the spinning mark on a folder being read again. All of it moves or is cheap, so it is drawn on
+     * every frame; the fibers themselves go through {@link #paintFibres}.
+     */
+    private void drawBranchMarks(GraphicsContext gc, int k) {
         Column parentColumn = tree.column(k - 1);
         Column column = tree.column(k);
         int parentIndex = indexOf(parentColumn.visible, parentColumn.openedPath);
         if (parentIndex < 0) {
             return;
         }
-        RemoteEntry parent = parentColumn.visible.get(parentIndex);
-        double zoom = camera.zoom;
         double px = sx(columnX(k - 1));
         double py = sy(tree.nodeY(parentColumn, parentIndex));
         double cx = sx(columnX(k));
-        double scale = clamp(zoom, 0.45, 1.3);
+        double scale = clamp(camera.zoom, 0.45, 1.3);
 
         if (column.loading) {
             drawLoading(gc, px, py, cx, clock - column.loadingStart, scale);
@@ -359,6 +383,34 @@ final class BranchPainter {
             gc.fillText(message, cx + 12, py);
             return;
         }
+        if (column.refreshing) {
+            // Reading the folder again after a change: a spinning mark on it.
+            double ring = 14 * scale;
+            gc.setStroke(CODE);
+            gc.setLineWidth(1.5);
+            gc.setGlobalAlpha(0.9);
+            gc.strokeArc(px - ring, py - ring, ring * 2, ring * 2, -((clock - column.loadingStart) * 420) % 360, 120,
+                    ArcType.OPEN);
+        }
+    }
+
+    /**
+     * The fibers from an open folder to each of its children, handed one by one to a sink: a pen that draws them,
+     * or a fingerprint that only notes what would be drawn.
+     */
+    private void columnFibres(int k, FibreSink sink) {
+        Column parentColumn = tree.column(k - 1);
+        Column column = tree.column(k);
+        int parentIndex = indexOf(parentColumn.visible, parentColumn.openedPath);
+        if (parentIndex < 0 || column.loading || !column.error.isEmpty() || column.visible.isEmpty()) {
+            return;
+        }
+        RemoteEntry parent = parentColumn.visible.get(parentIndex);
+        double zoom = camera.zoom;
+        double px = sx(columnX(k - 1));
+        double py = sy(tree.nodeY(parentColumn, parentIndex));
+        double cx = sx(columnX(k));
+        double scale = clamp(zoom, 0.45, 1.3);
 
         int count = column.visible.size();
         int first = firstVisible(column);
@@ -387,26 +439,137 @@ final class BranchPainter {
             boolean denied = child.isDirectory() && !child.readable();
             boolean highlighted = child.path().equals(column.openedPath) || child.path().equals(selectedPath)
                     || hovered != null && hovered.entry().path().equals(child.path());
-            Paint stroke = denied ? ALERT
-                    : gradients
-                    ? new LinearGradient(px, 0, cx, 0, false, CycleMethod.NO_CYCLE, new Stop(0, parentColor), new Stop(1, childColor))
-                    : childColor;
+            // A gradient from the parent's colour, a solid colour, or the red of a folder that cannot be opened.
+            Color from = denied || !gradients ? null : parentColor;
+            Color to = denied ? ALERT : childColor;
             int drawn = highlighted || denied ? 1 : strands;
             double alpha = highlighted ? 0.95 : denied ? Math.max(0.55, baseAlpha) : baseAlpha * (visible ? 1 : 0.6);
             for (int strand = 0; strand < drawn; strand++) {
                 double jitter = drawn == 1 ? 0 : (hash(child.path(), strand) - 0.5) * 18 * scale;
-                fiber(gc, px, py, cx, y, jitter, progress, stroke, alpha * (strand == 0 ? 1 : 0.55),
+                sink.fibre(px, py, cx, y, jitter, progress, from, to, alpha * (strand == 0 ? 1 : 0.55),
                         highlighted ? lineWidth * 2 : lineWidth);
             }
         }
-        if (column.refreshing) {
-            // Reading the folder again after a change: a spinning mark on it.
-            double ring = 14 * scale;
-            gc.setStroke(CODE);
-            gc.setLineWidth(1.5);
-            gc.setGlobalAlpha(0.9);
-            gc.strokeArc(px - ring, py - ring, ring * 2, ring * 2, -((clock - column.loadingStart) * 420) % 360, 120,
-                    ArcType.OPEN);
+    }
+
+    private void eachFibre(FibreSink sink) {
+        for (int k = 1; k < tree.size(); k++) {
+            columnFibres(k, sink);
+        }
+    }
+
+    /**
+     * The fibers: the costly part of a frame, every one a stroked curve that the renderer rasterizes on the CPU.
+     *
+     * <p>Once nothing about them has changed for a few frames, they are drawn a last time into a picture, and from
+     * then on that picture is laid down instead — one operation. Whether anything changed is decided by running the
+     * very code that draws them against a fingerprint instead of a pen: the same positions, colours, opacities and
+     * widths. So the picture is reused exactly when drawing again would give the same result, and never otherwise.
+     * While the view moves, a column unfolds or the hover changes, the fibers are drawn directly, as they always
+     * were.
+     */
+    private void paintFibres(GraphicsContext gc, double width, double height) {
+        double scale = renderScale(gc);
+        Fingerprint print = new Fingerprint(width, height, scale);
+        eachFibre(print);
+        if (cache != null && print.hash == cacheHash) {
+            gc.setGlobalAlpha(1);
+            gc.drawImage(cache, 0, 0, width, height);
+            return;
+        }
+        eachFibre(pen(gc));
+        stableFrames = print.hash == previousHash ? stableFrames + 1 : 0;
+        previousHash = print.hash;
+        if (stableFrames >= SETTLE_FRAMES) {
+            cache = drawCache(width, height, scale);
+            cacheHash = print.hash;
+        }
+    }
+
+    /**
+     * Draws the fibers into a picture at the screen's own pixel density, so laying it down is not a blur.
+     */
+    private WritableImage drawCache(double width, double height, double scale) {
+        int pixelsWide = (int) Math.ceil(width * scale);
+        int pixelsHigh = (int) Math.ceil(height * scale);
+        if (pixelsWide < 1 || pixelsHigh < 1 || (long) pixelsWide * pixelsHigh > MAX_CACHE_PIXELS) {
+            return null;
+        }
+        cacheCanvas.setWidth(pixelsWide);
+        cacheCanvas.setHeight(pixelsHigh);
+        GraphicsContext cg = cacheCanvas.getGraphicsContext2D();
+        cg.setTransform(1, 0, 0, 1, 0, 0);
+        cg.clearRect(0, 0, pixelsWide, pixelsHigh);
+        cg.setTransform(scale, 0, 0, scale, 0, 0);
+        eachFibre(pen(cg));
+        cg.setTransform(1, 0, 0, 1, 0, 0);
+        cg.setGlobalAlpha(1);
+        SnapshotParameters parameters = new SnapshotParameters();
+        parameters.setFill(Color.TRANSPARENT);
+        boolean sameSize = cache != null && cache.getWidth() == pixelsWide && cache.getHeight() == pixelsHigh;
+        return cacheCanvas.snapshot(parameters, sameSize ? cache : null);
+    }
+
+    private static double renderScale(GraphicsContext gc) {
+        Scene scene = gc.getCanvas().getScene();
+        Window window = scene == null ? null : scene.getWindow();
+        return window == null ? 1 : Math.max(1, window.getRenderScaleX());
+    }
+
+    private static FibreSink pen(GraphicsContext gc) {
+        return (x1, y1, x2, y2, jitter, progress, from, to, alpha, width) -> fiber(gc, x1, y1, x2, y2, jitter,
+                progress, from == null ? to : new LinearGradient(x1, 0, x2, 0, false, CycleMethod.NO_CYCLE,
+                        new Stop(0, from), new Stop(1, to)), alpha, width);
+    }
+
+    @FunctionalInterface
+    private interface FibreSink {
+        void fibre(double x1, double y1, double x2, double y2, double jitter, double progress, Color from, Color to,
+                   double alpha, double width);
+    }
+
+    /**
+     * A sink that draws nothing: it folds every value a fiber would be drawn with into one number.
+     *
+     * <p>Values are rounded to what can change a pixel — positions to a sixty-fourth of one, far finer than the
+     * rasterizer resolves. Exact values would never settle: the camera eases toward its target and keeps closing a
+     * gap of a billionth of a pixel for seconds, so the fingerprint changed on every frame and the picture was never
+     * reused.
+     */
+    private static final class Fingerprint implements FibreSink {
+
+        private static final double POSITION = 64;
+        private static final double FRACTION = 1024;
+
+        private long hash = 0xcbf29ce484222325L;
+
+        Fingerprint(double width, double height, double scale) {
+            mix(width, POSITION);
+            mix(height, POSITION);
+            mix(scale, FRACTION);
+        }
+
+        @Override
+        public void fibre(double x1, double y1, double x2, double y2, double jitter, double progress, Color from,
+                          Color to, double alpha, double width) {
+            mix(x1, POSITION);
+            mix(y1, POSITION);
+            mix(x2, POSITION);
+            mix(y2, POSITION);
+            mix(jitter, POSITION);
+            mix(progress, FRACTION);
+            mix(alpha, FRACTION);
+            mix(width, POSITION);
+            mix(from == null ? 0 : from.hashCode());
+            mix(to.hashCode());
+        }
+
+        private void mix(double value, double steps) {
+            mix(Math.round(value * steps));
+        }
+
+        private void mix(long value) {
+            hash = (hash ^ value) * 0x100000001b3L;
         }
     }
 

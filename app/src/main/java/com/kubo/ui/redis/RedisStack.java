@@ -2,7 +2,7 @@ package com.kubo.ui.redis;
 
 import com.kubo.model.redis.RedisKey;
 import com.kubo.model.redis.RedisType;
-import javafx.animation.AnimationTimer;
+import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
@@ -81,7 +81,7 @@ final class RedisStack extends Pane {
     }
 
     private final Canvas canvas = new Canvas();
-    private final AnimationTimer timer;
+    private final LiveTimer timer;
 
     private final Map<RedisType, Plate> plates = new LinkedHashMap<>();
     private List<Plate> visible = List.of();
@@ -143,17 +143,7 @@ final class RedisStack extends Pane {
         setOnMouseClicked(this::handleClick);
         setOnScroll(this::handleScroll);
 
-        timer = new AnimationTimer() {
-            private long start = -1;
-
-            @Override
-            public void handle(long now) {
-                if (start < 0) {
-                    start = now;
-                }
-                render((now - start) / 1e9);
-            }
-        };
+        timer = new LiveTimer(this, LiveTimer.AMBIENT, this::render);
         timer.start();
     }
 

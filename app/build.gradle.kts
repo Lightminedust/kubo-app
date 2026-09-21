@@ -8,10 +8,10 @@ repositories {
     mavenCentral()
 }
 
-// The version stamped on the packaged app and its installer. Override at release time with
-//   gradlew jpackage -PinstallerType=exe -PappVersion=0.2.0
+// The version stamped on the packaged app and its installers. It lives in gradle.properties so there is one
+// place to bump at release time; -PappVersion=... still overrides it for a one-off build.
 // Windows installers need a plain numeric version (major.minor.patch); jpackage rejects anything else.
-val appVersion = (project.findProperty("appVersion") as String?) ?: "0.1.0"
+val appVersion = project.property("appVersion") as String
 version = appVersion
 
 dependencies {
@@ -108,53 +108,146 @@ tasks.named("check") {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
 
-// Windows package: a self-contained Kubo folder with its own Java runtime (no Java needed on the PC).
-// gradlew jpackage            -> build/jpackage/Kubo/Kubo.exe
-// gradlew jpackage -PinstallerType=exe (or msi) -> an installer; needs the WiX Toolset on the PATH.
-// gradlew jpackage -PinstallerType=exe -PappVersion=0.2.0 -> stamp a release version (default 0.1.0).
+// Desktop packages. Everything below comes from one application image, so what someone unzips and what an
+// installer lays down are the same bytes.
+//
+//   gradlew jpackage                        a plain folder in build/jpackage
+//   gradlew portable                        build/distributions/Kubo-windows-portable.zip
+//   gradlew tarball                         build/distributions/Kubo-linux-x86_64.tar.gz
+//   gradlew jpackage -PinstallerType=exe    the Windows installer offered on the site
+//   gradlew jpackage -PinstallerType=msi    the Windows installer winget runs
+//   gradlew jpackage -PinstallerType=deb    Debian, Ubuntu and their derivatives
+//   gradlew jpackage -PinstallerType=rpm    Fedora, RHEL, Rocky, Alma, openSUSE
+//
+// jpackage cannot build for another system than the one it runs on: the Windows installers need Windows and
+// the WiX Toolset v3 on the PATH, the Linux ones need Linux with dpkg-deb or rpmbuild. Add -PappVersion=0.2.0
+// to stamp a release.
+
+val onWindows = System.getProperty("os.name").lowercase().startsWith("windows")
+val packageLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+
+/**
+ * The jpackage command line. Only the type and the destination change between the folder, the installers and
+ * the archives, so everything else is written once and cannot drift apart between them.
+ */
+fun jpackageCommand(type: String, destination: File): List<String> {
+    val binary = if (onWindows) "bin/jpackage.exe" else "bin/jpackage"
+    val jpackage = packageLauncher.get().metadata.installationPath.file(binary).asFile.absolutePath
+    // Windows wants an .ico; every other system wants a plain PNG.
+    val icon = if (onWindows) "assets/kubo.ico" else "assets/kubo.png"
+    val arguments = mutableListOf(
+        jpackage,
+        "--type", type,
+        "--name", "Kubo",
+        "--app-version", appVersion,
+        "--vendor", "Gemmie",
+        "--description", "See and manage your server over SSH",
+        "--icon", rootProject.file(icon).absolutePath,
+        "--input", layout.buildDirectory.dir("install/app/lib").get().asFile.absolutePath,
+        // Setting the project version renames the jar to app-<version>.jar, so ask the jar task for its
+        // real name rather than hard-coding it.
+        "--main-jar", tasks.jar.get().archiveFileName.get(),
+        "--main-class", "com.kubo.Launcher",
+        "--java-options", "-Dfile.encoding=UTF-8",
+        "--dest", destination.absolutePath,
+    )
+    // The app-image is just a folder; a licence screen, a home page, a menu entry and an upgrade rule only
+    // mean something to an installer. The portable archives carry LICENSE.txt beside the app instead.
+    if (type != "app-image") {
+        // Both are refused on a plain folder: there is no installer to show a licence in, and no package
+        // metadata to carry a home page.
+        arguments += listOf(
+            "--license-file", rootProject.file("LICENSE.txt").absolutePath,
+            "--about-url", "https://kubo.gemmi-e.com",
+        )
+        arguments += if (onWindows) listOf(
+            // Without these the app installs but leaves no way to launch it: no Start-menu entry, no icon.
+            "--win-menu",
+            "--win-menu-group", "Gemmie",
+            "--win-shortcut",
+            "--win-dir-chooser",
+            // A fixed id so a new version REPLACES the old install instead of stacking a second Kubo beside it.
+            // This value must never change once released.
+            "--win-upgrade-uuid", "0ef6eab5-fefa-4d5c-8eb4-5abd3e462b86",
+        ) else listOf(
+            // Package names are lower-case on Linux by convention, and required to be by dpkg.
+            "--linux-package-name", "kubo",
+            // The desktop entry, and the freedesktop category the menu files it under.
+            "--linux-shortcut",
+            "--linux-menu-group", "System",
+            // Debian's Section and rpm's Group: a tool for administering a machine.
+            "--linux-app-category", "admin",
+            "--linux-deb-maintainer", "nellawassi@gmail.com",
+            "--linux-rpm-license-type", "Proprietary",
+            // Let jpackage read the bundled binaries and declare the system libraries they need, so the
+            // package manager refuses to install it somewhere it could not run rather than failing later.
+            "--linux-package-deps",
+        )
+    }
+    return arguments
+}
+
 tasks.register<Exec>("jpackage") {
     group = "distribution"
     description = "Packages Kubo with its own Java runtime into build/jpackage."
     dependsOn(tasks.installDist)
     val installType = (project.findProperty("installerType") as String?) ?: "app-image"
-    val launcher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
-    val input = layout.buildDirectory.dir("install/app/lib")
     val output = layout.buildDirectory.dir("jpackage")
     doFirst {
         delete(output)
-        val jpackage = launcher.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath
-        val arguments = mutableListOf(
-            jpackage,
-            "--type", installType,
-            "--name", "Kubo",
-            "--app-version", appVersion,
-            "--vendor", "Gemmie",
-            "--description", "See and manage your server over SSH",
-            "--icon", rootProject.file("assets/kubo.ico").absolutePath,
-            "--license-file", rootProject.file("LICENSE.txt").absolutePath,
-            "--input", input.get().asFile.absolutePath,
-            // Setting the project version renames the jar to app-<version>.jar, so ask the jar task for its
-            // real name rather than hard-coding it.
-            "--main-jar", tasks.jar.get().archiveFileName.get(),
-            "--main-class", "com.kubo.Launcher",
-            "--java-options", "-Dfile.encoding=UTF-8",
-            "--dest", output.get().asFile.absolutePath,
-        )
-        // The app-image is just a folder; the shortcut, menu and upgrade options only mean anything to an installer.
-        if (installType != "app-image") {
-            arguments += listOf(
-                // Without these the app installs but leaves no way to launch it: no Start-menu entry, no icon.
-                "--win-menu",
-                "--win-menu-group", "Gemmie",
-                "--win-shortcut",
-                "--win-dir-chooser",
-                // A fixed id so a new version REPLACES the old install instead of stacking a second Kubo beside it.
-                // This value must never change once released.
-                "--win-upgrade-uuid", "0ef6eab5-fefa-4d5c-8eb4-5abd3e462b86",
-            )
-        }
-        commandLine(arguments)
+        commandLine(jpackageCommand(installType, output.get().asFile))
     }
+}
+
+// Built separately from `jpackage` so that asking for a portable archive always produces a folder, whatever
+// -PinstallerType happens to be set to.
+tasks.register<Exec>("appImage") {
+    group = "distribution"
+    description = "Builds the plain application folder that the portable archives are made of."
+    dependsOn(tasks.installDist)
+    val output = layout.buildDirectory.dir("app-image")
+    doFirst {
+        delete(output)
+        commandLine(jpackageCommand("app-image", output.get().asFile))
+    }
+}
+
+// The portable editions: no installer, no administrator, nothing written to the registry or to /usr, and
+// nothing left behind. Unfold them anywhere — a USB stick, a machine you cannot install on — and run Kubo.
+// The names carry no version, so a release's latest/download link keeps working from one version to the next.
+tasks.register<Zip>("portable") {
+    group = "distribution"
+    description = "Zips the application folder into a portable Windows release that needs no installer."
+    dependsOn("appImage")
+    from(layout.buildDirectory.dir("app-image"))
+    from(rootProject.file("packaging/portable/windows")) { into("Kubo") }
+    from(rootProject.file("LICENSE.txt")) { into("Kubo") }
+    archiveFileName = "Kubo-windows-portable.zip"
+    destinationDirectory = layout.buildDirectory.dir("distributions")
+}
+
+// Gradle normalises permissions inside archives rather than copying what is on disk, so everything jpackage
+// marked executable has to be marked executable again here. Miss this and the unpacked launcher will not run.
+val executableInArchive = listOf("**/bin/**", "**/*.so", "**/*.so.*", "**/jspawnhelper", "**/jexec")
+
+tasks.register<Tar>("tarball") {
+    group = "distribution"
+    description = "Packs the application folder into a portable Linux release that needs no installer."
+    dependsOn("appImage")
+    dirPermissions { unix("0755") }
+    filePermissions { unix("0644") }
+    from(layout.buildDirectory.dir("app-image")) {
+        exclude(executableInArchive)
+    }
+    from(layout.buildDirectory.dir("app-image")) {
+        include(executableInArchive)
+        filePermissions { unix("0755") }
+    }
+    from(rootProject.file("packaging/portable/linux")) { into("Kubo") }
+    from(rootProject.file("LICENSE.txt")) { into("Kubo") }
+    archiveFileName = "Kubo-linux-x86_64.tar.gz"
+    compression = Compression.GZIP
+    destinationDirectory = layout.buildDirectory.dir("distributions")
 }
 
 // Previews and console tools
@@ -212,6 +305,14 @@ tasks.register<JavaExec>("previewNetwork") {
     description = "Renders the network screen against a sample server to PNG files in build/previews."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.kubo.ui.network.NetworkPreview"
+    args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("previewServices") {
+    group = "application"
+    description = "Renders the services screen against a sample server to PNG files in build/previews."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.kubo.ui.services.ServicesPreview"
     args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
 }
 

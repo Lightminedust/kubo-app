@@ -12,7 +12,7 @@ Nothing is installed on the server. Kubo only runs ordinary shell commands throu
 
 | Side | What is needed |
 | --- | --- |
-| **Your PC** | Windows 10 or 11. The packaged app brings its own Java; building it needs **JDK 21**. |
+| **Your PC** | Windows 10 or 11, or an x86-64 Linux desktop with GTK 3. The packaged app brings its own Java; building it needs **JDK 21**. |
 | **The server** | **Any mainstream Linux server** — Debian, Ubuntu, RHEL, Rocky, Alma, Fedora, Arch, openSUSE. **Packages** needs apt/dpkg, so it is Debian-family only; every other screen works anywhere. The file manager needs **GNU tools**: coreutils (`stat -c`, `mv -T`, `readlink -f`, `mktemp`, `df -B1`, `du -b`), findutils (`find -printf`), GNU `tar`, `bash`/`sh`, `/proc`, and `ss` (iproute2). Debian, Ubuntu, Fedora, RHEL, Arch… work. |
 | **Access** | An SSH account with a password or a private key (PuTTY `.ppk`, OpenSSH, PEM). |
 
@@ -21,13 +21,55 @@ the GNU tools when the file manager opens and warns if some are missing: listing
 
 ---
 
+## Install it
+
+Every package below is built from the same application image, and each brings its own Java runtime, so there is
+nothing to install first.
+
+**Windows 10 / 11**
+
+| | |
+| --- | --- |
+| **Installer** | [`Kubo-Setup.exe`](https://github.com/Lightminedust/Kubo/releases/latest) — the usual way. Start-menu entry, and a later version replaces this one rather than sitting beside it. |
+| **Portable** | `Kubo-windows-portable.zip` — unzip anywhere and run `Kubo.exe`. No administrator, nothing in the registry; delete the folder and it is gone. |
+| **winget** | `winget install Gemmie.Kubo` — once Microsoft's index has accepted the package. See [packaging/winget](packaging/winget/README.md). |
+
+Not code-signed yet, so Windows may call the publisher unknown: **More info → Run anyway**.
+
+**Linux desktop** — x86-64, needs a graphical session and GTK 3 (`libgtk-3-0`, which every mainstream desktop
+already has). Kubo *manages* Linux servers; it does not run on one.
+
+| | |
+| --- | --- |
+| **Debian / Ubuntu** | `sudo apt install ./kubo_0.3.0_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `sudo dnf install ./kubo-0.3.0-1.x86_64.rpm` |
+| **Portable** | `tar -xzf Kubo-linux-x86_64.tar.gz && ./Kubo/bin/Kubo` |
+
+One difference on Linux: Kubo will not remember a password. Windows can encrypt one for a single account
+(DPAPI); Linux has no equivalent every machine is guaranteed to have, so Kubo stores nothing rather than
+writing a secret somewhere it could be read. Key files are still remembered by their path.
+
+---
+
 ## Run it
 
 ```powershell
 .\gradlew.bat run                # start Kubo from the sources
-.\gradlew.bat jpackage           # build/jpackage/Kubo/Kubo.exe, with its own Java runtime
-.\gradlew.bat jpackage -PinstallerType=exe   # a Windows installer (needs the WiX Toolset on the PATH)
+.\gradlew.bat jpackage           # a plain folder in build/jpackage, with its own Java runtime
+.\gradlew.bat portable           # build/distributions/Kubo-windows-portable.zip
+.\gradlew.bat jpackage -PinstallerType=exe   # the installer offered on the site
+.\gradlew.bat jpackage -PinstallerType=msi   # the installer winget runs
 ```
+
+```bash
+./gradlew tarball                          # build/distributions/Kubo-linux-x86_64.tar.gz
+./gradlew jpackage -PinstallerType=deb      # Debian, Ubuntu and derivatives
+./gradlew jpackage -PinstallerType=rpm      # Fedora, RHEL, Rocky, Alma, openSUSE
+```
+
+**jpackage cannot build for another system than the one it runs on.** The Windows installers need Windows and
+the WiX Toolset v3 on the PATH; the Linux ones need Linux with `fakeroot`, `binutils`, `dpkg-dev` and `rpm`. CI
+builds both on a tag. Add `-PappVersion=0.3.0` to stamp a release version.
 
 ---
 
@@ -66,8 +108,9 @@ the GNU tools when the file manager opens and warns if some are missing: listing
 - **Root mode**: Kubo never becomes root on its own. The **ROOT** button, in the header of the main screen and of Files, Network, Docker and Redis, asks for it once per session; the sudo
   password is then held in memory and shared by every screen, and the wordmark reads `Kubo_root` in every window
   so it is never a surprise. Leaving root mode, or disconnecting, wipes the password immediately.
-- **Transparency**: every command is listed in the shell and written to a JSON log. Command **outputs and file contents
-  are never logged**, only their size.
+- **Transparency**: every command is listed in the shell and written to a JSON log, with whether it ran as root, its
+  exit code and its duration. Command **outputs — standard output and standard error — and file contents are never
+  logged**, only their size. A failed command's error message is shown on screen while the session runs, and not kept.
 - **Safe writes**: uploads, downloads and saves land in a temporary file and take their real name only once complete;
   a cancelled or broken transfer leaves nothing half-written.
 
