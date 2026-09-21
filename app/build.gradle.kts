@@ -1,3 +1,14 @@
+// ProGuard is a task class, not a plugin id, so it arrives on the build classpath rather than through
+// plugins {}. A buildscript block has to come before plugins {}.
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.guardsquare:proguard-gradle:7.7.0")
+    }
+}
+
 plugins {
     application
     jacoco
@@ -108,6 +119,79 @@ tasks.named("check") {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
 
+// Obfuscation
+//
+// Kubo's own jar is rewritten so that its class, field and method names say nothing about what the code does,
+// and anything no entry point reaches is dropped. The libraries beside it are passed in as library jars and
+// ship exactly as published: renaming Bouncy Castle would break the lookups it does on itself, and would
+// protect nothing that is not public already. The rules, and the reason behind each one, are in
+// app/proguard-rules.pro.
+//
+// Only the packages go through it. `run`, the tests and the preview tasks use the plain classes, so what is
+// developed against is readable and what is shipped is not.
+//
+//   gradlew jpackage -PskipObfuscation     packages the readable jar, for pinning down a packaging problem
+
+val obfuscating = !project.hasProperty("skipObfuscation")
+val obfuscatedDir = layout.buildDirectory.dir("obfuscated")
+
+val obfuscate = tasks.register<proguard.gradle.ProGuardTask>("obfuscate") {
+    group = "distribution"
+    description = "Renames Kubo's own classes and drops what nothing reaches."
+    dependsOn(tasks.jar, tasks.installDist)
+
+    val ourJar = tasks.jar.get().archiveFileName.get()
+    injars(tasks.jar.get().archiveFile)
+    outjars(obfuscatedDir.get().file(ourJar))
+
+    configuration(rootProject.file("app/proguard-rules.pro"))
+
+    // The runtime Kubo is compiled against. Java 9 and later keep the platform in jmods rather than in a
+    // rt.jar, and module-info is dropped because this jar is not modular.
+    val javaHome = packageLauncher.get().metadata.installationPath.asFile
+    libraryjars(
+        mapOf("jarfilter" to "!**.jar", "filter" to "!module-info.class"),
+        File(javaHome, "jmods").listFiles()?.sorted() ?: emptyList<File>(),
+    )
+
+    // Everything that ships beside our jar: read, never rewritten.
+    doFirst {
+        layout.buildDirectory.dir("install/app/lib").get().asFile.listFiles()
+            ?.filter { it.name.endsWith(".jar") && it.name != ourJar }
+            ?.sorted()
+            ?.forEach { libraryjars(it) }
+    }
+
+    printmapping(layout.buildDirectory.file("obfuscated/mapping.txt"))
+}
+
+// What jpackage is handed: the same runtime jars, with the obfuscated one in place of ours. Built as its own
+// folder rather than by overwriting install/app/lib, so `installDist` keeps meaning what it says and a
+// packaging run never leaves an obfuscated jar behind for the next `run`.
+val packageLib = tasks.register<Sync>("packageLib") {
+    group = "distribution"
+    description = "The runtime jars jpackage is given, with Kubo's own jar obfuscated."
+    dependsOn(tasks.installDist)
+    if (obfuscating) {
+        dependsOn(obfuscate)
+    }
+    val ourJar = tasks.jar.get().archiveFileName.get()
+    from(layout.buildDirectory.dir("install/app/lib")) {
+        if (obfuscating) {
+            exclude(ourJar)
+        }
+    }
+    if (obfuscating) {
+        from(obfuscatedDir) {
+            include(ourJar)
+        }
+    }
+    into(layout.buildDirectory.dir("package-lib"))
+    doLast {
+        logger.lifecycle(if (obfuscating) "Packaging the obfuscated jar." else "Packaging the readable jar.")
+    }
+}
+
 // Desktop packages. Everything below comes from one application image, so what someone unzips and what an
 // installer lays down are the same bytes.
 //
@@ -143,7 +227,7 @@ fun jpackageCommand(type: String, destination: File): List<String> {
         "--vendor", "Gemmie",
         "--description", "See and manage your server over SSH",
         "--icon", rootProject.file(icon).absolutePath,
-        "--input", layout.buildDirectory.dir("install/app/lib").get().asFile.absolutePath,
+        "--input", layout.buildDirectory.dir("package-lib").get().asFile.absolutePath,
         // Setting the project version renames the jar to app-<version>.jar, so ask the jar task for its
         // real name rather than hard-coding it.
         "--main-jar", tasks.jar.get().archiveFileName.get(),
@@ -190,7 +274,7 @@ fun jpackageCommand(type: String, destination: File): List<String> {
 tasks.register<Exec>("jpackage") {
     group = "distribution"
     description = "Packages Kubo with its own Java runtime into build/jpackage."
-    dependsOn(tasks.installDist)
+    dependsOn(packageLib)
     val installType = (project.findProperty("installerType") as String?) ?: "app-image"
     val output = layout.buildDirectory.dir("jpackage")
     doFirst {
@@ -204,7 +288,7 @@ tasks.register<Exec>("jpackage") {
 tasks.register<Exec>("appImage") {
     group = "distribution"
     description = "Builds the plain application folder that the portable archives are made of."
-    dependsOn(tasks.installDist)
+    dependsOn(packageLib)
     val output = layout.buildDirectory.dir("app-image")
     doFirst {
         delete(output)
