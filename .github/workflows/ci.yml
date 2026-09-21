@@ -60,22 +60,39 @@ jobs:
 
       # The runner image already carries the WiX Toolset, which the .exe and .msi need.
       #
-      # Quoted properties: the default shell on the Windows runner is PowerShell, which splits
-      # -PappVersion=1.0.0 into two arguments and leaves Gradle looking for a task called .0.0. Quoting is
-      # right under every shell, so both runners are written the same way.
+      # Each package is copied aside as soon as it is built. The jpackage task empties its output directory
+      # before every run, so building the MSI deletes the installer that was there a moment earlier.
+      #
+      # bash rather than the runner's default PowerShell, for two reasons that both bit this job: PowerShell
+      # splits -PappVersion=1.0.0 into two arguments, and it does not stop the script when a command in the
+      # middle of it fails. The properties stay quoted anyway, because that is right under every shell.
+      #
+      # The installer is renamed Kubo-Setup.exe: the site and the README both link
+      # releases/latest/download/Kubo-Setup.exe, which only works if the name never carries the version.
       - name: Installer, MSI and portable zip
+        shell: bash
         run: |
+          mkdir -p packages
           ./gradlew jpackage "-PinstallerType=exe" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
+          cp app/build/jpackage/*.exe packages/Kubo-Setup.exe
           ./gradlew jpackage "-PinstallerType=msi" "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
+          cp app/build/jpackage/*.msi packages/
           ./gradlew portable "-PappVersion=${{ steps.version.outputs.number }}" --console=plain
+          cp app/build/distributions/*.zip packages/
+
+      # Six files go out of here and the Linux job; a release missing one of them is worth catching now.
+      - name: Check every package is there
+        shell: bash
+        run: |
+          ls -l packages
+          test -f packages/Kubo-Setup.exe
+          test -f packages/Kubo-${{ steps.version.outputs.number }}.msi
+          test -f packages/Kubo-windows-portable.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: Kubo-windows
-          path: |
-            app/build/jpackage/*.exe
-            app/build/jpackage/*.msi
-            app/build/distributions/*.zip
+          path: packages/*
 
   linux-packages:
     if: startsWith(github.ref, 'refs/tags/v')
