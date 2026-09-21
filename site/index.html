@@ -25,10 +25,11 @@
 
 <!--
   Kubo landing page. Self-contained: no external fonts, scripts or images.
-  Host this folder as-is on your subdomain. Drop the two videos next to this file:
+  Host this folder as-is on your subdomain. Drop the three videos next to this file:
       kubo-files.mp4      (the file manager clip)
       kubo-network.mp4    (the network clip)
-  Optional WebM versions (kubo-files.webm / kubo-network.webm) are picked up first if present.
+      kubo-services.mp4   (the services clip)
+  Optional WebM versions of each (kubo-files.webm and so on) are picked up first if present.
   The download links, and whether the winget and Linux blocks appear at all, are set by the few
   variables at the top of the script at the bottom of this file.
 -->
@@ -231,6 +232,7 @@ section.block{padding-block:88px;border-bottom:1px solid var(--line)}
 .figure .body h3{font-size:26px;margin:.25em 0 .5em;letter-spacing:-.01em;text-transform:uppercase}
 .figure .body p{color:var(--dim);margin:0 0 14px}
 .figure .body .accent-f{color:var(--violet)} .figure .body .accent-n{color:var(--cyan)}
+.figure .body .accent-s{color:var(--teal)}
 .taglist{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
 .tag{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:5px 10px}
@@ -304,6 +306,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <a href="#what">What it is</a>
       <a href="#files">Files</a>
       <a href="#network">Network</a>
+      <a href="#services">Services</a>
       <a href="#scopes">Everything</a>
       <a href="#security">Security</a>
       <a href="#contact">Contact</a>
@@ -435,6 +438,52 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     </div>
   </section>
 
+  <!-- SERVICES VIDEO -->
+  <section class="block" id="services">
+    <div class="wrap">
+      <div class="figure">
+        <div class="stage" data-tag="SERVICES.SCOPE">
+          <video autoplay muted loop playsinline preload="metadata">
+            <source src="kubo-services.webm" type="video/webm">
+            <source src="kubo-services.mp4" type="video/mp4">
+            Your browser cannot play this video.
+          </video>
+          <button class="play" type="button" data-play aria-label="Play the services demo with sound">
+            <svg viewBox="0 0 76 76" aria-hidden="true">
+              <circle class="ring" cx="38" cy="38" r="36"/>
+              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
+            </svg>
+            <span>Play with sound</span>
+          </button>
+        </div>
+        <div class="body">
+          <div class="fignum">Fig. 03 &mdash; Services</div>
+          <h3>Running now is not the same as <span class="accent-s">coming back</span></h3>
+          <p>systemd answers those as two separate questions, and nobody runs both of them against forty
+            services. So a server sits for months looking perfectly healthy, with something important that will
+            simply not be there after the next reboot &mdash; and you find out during the reboot.</p>
+          <p>Kubo asks both, for every unit, and sorts them by what the two answers add up to: <b>failed</b>,
+            <b>won't survive a reboot</b>, <b>enabled but not running</b>, <b>running</b>, <b>idle</b> &mdash;
+            each its own colour. Click one and the tree keeps growing to the right: what holds it up, then what
+            it holds up, a column at a time. Nothing is taken away, so the way you came is still behind you.</p>
+          <p>Start, stop, restart, enable, disable. Cap a runaway service's memory or its share of the processor
+            without restarting it. Send it a signal. Give it settings of its own in a drop-in, so the file your
+            package shipped is never touched. Write a whole new service with the file tree right there to pick
+            what it runs &mdash; and Kubo tells you the script isn't executable <i>before</i> the unit is
+            written, not at the first failed start.</p>
+          <p>Stopping or disabling <code>sshd</code>, or the network under it, is refused outright rather than
+            confirmed. That is the one mistake with no way back: the server keeps running, perfectly healthy,
+            and you can never reach it again.</p>
+          <div class="taglist">
+            <span class="tag">Five standings</span><span class="tag">Dependencies</span>
+            <span class="tag">Memory &amp; CPU limits</span><span class="tag">Signals</span>
+            <span class="tag">Drop-in settings</span><span class="tag">Write a new one</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- EVERYTHING -->
   <section class="block" id="scopes">
     <div class="wrap">
@@ -451,6 +500,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <p>The folder tree, edit and permissions, uploads and downloads, and your own shell beside it.</p></div>
         <div class="scope"><div class="n" style="color:var(--cyan)">NETWORK</div><h4>What's exposed</h4>
           <p>The firewall, the routing and every listening port, branched by how far it can really be reached.</p></div>
+        <div class="scope"><div class="n" style="color:var(--teal)">SERVICES</div><h4>Up, and staying up</h4>
+          <p>Every unit by what it really is &mdash; failed, won't survive a reboot, enabled but not running, running, idle &mdash; with its dependencies, its limits and its journal.</p></div>
         <div class="scope"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Containers</h4>
           <p>State, CPU and memory, ports and volumes; start, stop, restart, logs, a shell inside — and a read-only browse of the container's files.</p></div>
         <div class="scope"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Keys & memory</h4>
@@ -531,7 +582,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint">64-bit · v0.3.0 · free to use<br>
+      <p class="smallprint">64-bit · v1.0.0 · free to use<br>
         Not code-signed yet — Windows may call the publisher unknown. Choose <b>More info → Run anyway</b>.</p>
 
       <div class="platform" data-linux-card hidden>Linux desktop</div>
@@ -567,7 +618,7 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" data-linux-card hidden>x86-64 · v0.3.0 · needs a graphical session and GTK 3<br>
+      <p class="smallprint" data-linux-card hidden>x86-64 · v1.0.0 · needs a graphical session and GTK 3<br>
         Kubo <i>manages</i> Linux servers — it does not run on one. Passwords are never saved here, for want of
         encryption Kubo can trust on every machine; key files still are.</p>
     </div>
@@ -678,7 +729,7 @@ var WINGET_ID = "";
 /* The release whose Linux packages are online. Their file names carry the version, so this is the one line
    to bump when a new release is published — and the one to leave "" while there are none, which keeps the
    whole Linux block hidden instead of offering three links that 404. */
-var LINUX_VERSION = "0.3.0";
+var LINUX_VERSION = "1.0.0";
 
 if (DOWNLOAD_URL) {
   document.querySelectorAll('[data-download]').forEach(function(a){ a.href = DOWNLOAD_URL; });
