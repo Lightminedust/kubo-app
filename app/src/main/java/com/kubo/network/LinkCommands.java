@@ -58,7 +58,6 @@ public final class LinkCommands {
             + "echo '@@resolvectl'; resolvectl status 2>/dev/null; "
             + "echo '@@resolvconf'; cat /etc/resolv.conf 2>/dev/null; "
             + "echo '@@sockets'; ss -tulpnH 2>/dev/null; "
-            + "echo '@@connections'; ss -tunpH state established 2>/dev/null; "
             + "echo '@@counters'; cat /proc/net/dev 2>/dev/null";
 
     private LinkCommands() {

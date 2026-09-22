@@ -114,9 +114,13 @@ public final class NetworkService {
                 .toList();
 
         Identity identity = readIdentity(machine);
-        List<Connection> connections = readConnections(machine, sockets);
+        List<Connection> connections = readConnections(sockets);
         Map<String, Counter.Rate> rates = readRates(machine);
         List<Jail> jails = readJails(notes);
+        if (connections.isEmpty() && !sockets.isEmpty()) {
+            notes.add("No open connection was read, on a server that is listening on "
+                    + sockets.size() + " ports. If that is wrong, the ss state filter is the thing to check.");
+        }
 
         // Certificates are not read here. They change once every few months, and this runs every twelve
         // seconds. The edge card asks for them when it opens.
@@ -150,12 +154,16 @@ public final class NetworkService {
     /**
      * What is connected right now. The ports this server listens on decide which end called.
      */
-    private List<Connection> readConnections(String machine, List<ListeningSocket> sockets) {
+    private List<Connection> readConnections(List<ListeningSocket> sockets) {
         java.util.Set<Integer> listening = new LinkedHashSet<>();
         for (ListeningSocket socket : sockets) {
             listening.add(socket.port());
         }
-        return TrafficCommands.parseConnections(LinkCommands.section(machine, "connections"), listening);
+        // Its own command, not folded into the machine read. Folded in, it came back empty on a real server
+        // while every other block of the same answer was fine. Rather than ship a guess about why, this is
+        // the shape that demonstrably works, and it costs one round trip.
+        return TrafficCommands.parseConnections(runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT).output(),
+                listening);
     }
 
     /**
