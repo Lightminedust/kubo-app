@@ -531,11 +531,17 @@ final class NetworkTree extends Pane {
         drawDust(gc, width, height);
 
         if (shown.isEmpty()) {
-            gc.setFill(MUTED);
             gc.setFont(BAND_FONT);
             gc.setTextAlign(TextAlignment.CENTER);
             gc.setTextBaseline(VPos.CENTER);
-            gc.fillText(loading ? "LISTENING TO THE SERVER…" : "NOTHING IS LISTENING", width / 2, height / 2);
+            if (loading) {
+                drawPulse(gc, width / 2, height / 2);
+                gc.setFill(CYAN.deriveColor(0, 1, 1, 0.55 + 0.45 * Math.sin(clock * 2.4)));
+                gc.fillText("LISTENING TO THE SERVER", width / 2, height / 2);
+            } else {
+                gc.setFill(MUTED);
+                gc.fillText("NOTHING IS LISTENING", width / 2, height / 2);
+            }
             return;
         }
 
@@ -545,7 +551,66 @@ final class NetworkTree extends Pane {
             drawBranch(gc, branch);
         }
         drawServer(gc);
+        if (loading) {
+            drawReading(gc, width, height);
+        }
         drawLegend(gc, width, height);
+    }
+
+    /**
+     * What a re-read looks like while the picture on screen is still the old one.
+     *
+     * <p>A sweep crossing the map, the same direction a request travels on it, and rings leaving the server.
+     * It is drawn over the map and nowhere else: a reading of one panel has no business greying out the
+     * window, and a spinner in the corner says a thing is happening without saying what to.
+     */
+    private void drawReading(GraphicsContext gc, double width, double height) {
+        // The sweep. Thin strips rather than a gradient paint, because the alpha per strip is the whole effect.
+        double cycle = 2.6;
+        double head = ((clock % cycle) / cycle) * (width + 260) - 130;
+        double reach = 120;
+        int strips = 30;
+        for (int i = 0; i < strips; i++) {
+            double x = head - reach + (i * (reach * 2) / strips);
+            if (x < 0 || x > width) {
+                continue;
+            }
+            double falloff = 1 - Math.abs(x - head) / reach;
+            gc.setGlobalAlpha(0.10 * falloff * falloff);
+            gc.setFill(CYAN);
+            gc.fillRect(x, 0, (reach * 2) / strips + 1, height);
+        }
+
+        // Rings leaving the server, one every second, so the eye has something that is plainly not a loop.
+        double period = 1.15;
+        for (int ring = 0; ring < 3; ring++) {
+            double age = ((clock + ring * period / 3) % period) / period;
+            gc.setGlobalAlpha(0.28 * (1 - age));
+            gc.setStroke(CYAN);
+            gc.setLineWidth(1.4);
+            double radius = 30 + age * 190;
+            gc.strokeOval(width - 150 - radius, height / 2 - radius, radius * 2, radius * 2);
+        }
+
+        gc.setGlobalAlpha(1);
+        gc.setFont(smallFont);
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setTextBaseline(VPos.TOP);
+        gc.setFill(CYAN.deriveColor(0, 1, 1, 0.6 + 0.4 * Math.sin(clock * 3)));
+        gc.fillText("RE-READING THE SERVER", 22, 18);
+    }
+
+    /** A slow pulse where the map will appear, for the first reading of a session. */
+    private void drawPulse(GraphicsContext gc, double x, double y) {
+        for (int ring = 0; ring < 3; ring++) {
+            double age = ((clock + ring * 0.5) % 1.5) / 1.5;
+            gc.setGlobalAlpha(0.30 * (1 - age));
+            gc.setStroke(CYAN);
+            gc.setLineWidth(1.4);
+            double radius = 20 + age * 120;
+            gc.strokeOval(x - radius, y - radius, radius * 2, radius * 2);
+        }
+        gc.setGlobalAlpha(1);
     }
 
     /**
@@ -934,12 +999,6 @@ final class NetworkTree extends Pane {
         gc.setFont(smallFont);
         gc.setFill(MUTED);
         gc.fillText("THIS SERVER  ·  " + map.endpoints().size() + " LISTENING PORTS", sx, sy + 16);
-        if (loading) {
-            gc.setStroke(CYAN);
-            gc.setLineWidth(1.6);
-            double r = 26;
-            gc.strokeArc(sx - r, sy + 44 - r, r * 2, r * 2, -(clock * 240) % 360, 90, ArcType.OPEN);
-        }
     }
 
     /**

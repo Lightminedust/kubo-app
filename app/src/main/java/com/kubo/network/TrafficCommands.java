@@ -21,7 +21,7 @@ public final class TrafficCommands {
      * <p>Only established ones: the listening sockets are already read elsewhere, and the half-open states are
      * noise on a screen meant to answer "who is on this machine right now".
      */
-    public static final String CONNECTIONS = "ss -tunpH state established 2>/dev/null";
+    public static final String CONNECTIONS = "ss -tunpH state established";
 
     /** The kernel's per-interface byte counters. One reading is a number; two are a rate. */
     public static final String COUNTERS = "cat /proc/net/dev";

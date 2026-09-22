@@ -51,6 +51,7 @@ public final class NetworkPreview {
                 render(output, "network-safe", tidyServer(), -1);
                 render(output, "network-crowded", crowdedServer(), -1);
                 renderHelp(output);
+                renderReading(output);
                 renderCard(output, "network-connections",
                         new ConnectionsCard(exposedServer().conversations(), address -> { }, true, () -> { }));
                 renderCard(output, "network-firewall", new FirewallCard(exposedServer().firewall(),
@@ -111,6 +112,21 @@ public final class NetworkPreview {
         scope.flow().fit();
         scope.flow().freeze(2.0);
         write(scene, output, name);
+        scope.shutdown();
+    }
+
+    /** The map while a reading is in flight, which is a state nobody could see in a still picture before. */
+    private static void renderReading(Path output) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.showForPreview(exposedServer(), -1);
+        scope.flow().fit();
+        scope.flow().setLoading(true);
+        scope.flow().freeze(1.35);
+        write(scene, output, "network-reading");
         scope.shutdown();
     }
 

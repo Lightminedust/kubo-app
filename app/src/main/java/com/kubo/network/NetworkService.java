@@ -114,7 +114,7 @@ public final class NetworkService {
                 .toList();
 
         Identity identity = readIdentity(machine);
-        List<Connection> connections = readConnections(sockets);
+        List<Connection> connections = readConnections(sockets, notes);
         Map<String, Counter.Rate> rates = readRates(machine);
         List<Jail> jails = readJails(notes);
         if (connections.isEmpty() && !sockets.isEmpty()) {
@@ -154,16 +154,41 @@ public final class NetworkService {
     /**
      * What is connected right now. The ports this server listens on decide which end called.
      */
-    private List<Connection> readConnections(List<ListeningSocket> sockets) {
+    private List<Connection> readConnections(List<ListeningSocket> sockets, List<String> notes) {
         java.util.Set<Integer> listening = new LinkedHashSet<>();
         for (ListeningSocket socket : sockets) {
             listening.add(socket.port());
         }
-        // Its own command, not folded into the machine read. Folded in, it came back empty on a real server
-        // while every other block of the same answer was fine. Rather than ship a guess about why, this is
-        // the shape that demonstrably works, and it costs one round trip.
-        return TrafficCommands.parseConnections(runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT).output(),
-                listening);
+        // Root first, because only root can name the process holding a connection.
+        CommandEntry elevated = runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT);
+        List<Connection> connections = TrafficCommands.parseConnections(elevated.output(), listening);
+        if (!connections.isEmpty() || !usesSudo()) {
+            return connections;
+        }
+
+        // On at least one real server this same command lists every connection as the ordinary user and
+        // nothing at all through sudo. Why is not understood yet. What is certain is which of the two answers
+        // is worth showing: the one with rows in it. The reason sudo gave is carried to the screen so the next
+        // person to look at this has something better than a guess.
+        CommandEntry plain = run(TrafficCommands.CONNECTIONS, TIMEOUT);
+        List<Connection> withoutRoot = TrafficCommands.parseConnections(plain.output(), listening);
+        if (withoutRoot.isEmpty()) {
+            return connections;
+        }
+        String said = elevated.error().isBlank() ? elevated.output() : elevated.error();
+        notes.add("Reading the open connections as root came back empty, so they are listed as the connected "
+                + "user instead and the programs holding them cannot be named."
+                + (said.isBlank() ? "" : " sudo said: " + firstLine(said)));
+        return withoutRoot;
+    }
+
+    /** True when acting as root means going through sudo rather than already being root. */
+    private boolean usesSudo() {
+        return privilege != null && privilege.available() && !privilege.needsPassword();
+    }
+
+    private static String firstLine(String text) {
+        return text == null ? "" : text.strip().lines().findFirst().orElse("");
     }
 
     /**
