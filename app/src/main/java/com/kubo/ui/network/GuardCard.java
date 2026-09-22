@@ -6,6 +6,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
@@ -32,8 +33,9 @@ final class GuardCard extends VBox {
     }
 
     private final Label status = new Label();
+    private final VBox certificates = new VBox(8);
 
-    GuardCard(List<Jail> jails, List<Certificate> certificates, Instant now, Hands hands, Runnable onClose) {
+    GuardCard(List<Jail> jails, Instant now, Hands hands, Runnable onClose) {
         getStyleClass().addAll("float-card", "help-card");
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
         setSpacing(14);
@@ -63,7 +65,17 @@ final class GuardCard extends VBox {
             }
         }
 
-        body.getChildren().addAll(label("CERTIFICATES", "series"), certificateList(certificates, now));
+        // Certificates are read when this card opens rather than on every poll: they change once every few
+        // months and the screen re-reads every twelve seconds.
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.getStyleClass().add("connection-progress");
+        spinner.setPrefSize(14, 14);
+        spinner.setMaxSize(14, 14);
+        HBox reading = new HBox(10, spinner, label("READING THE CERTIFICATES", "card-note"));
+        reading.setAlignment(Pos.CENTER_LEFT);
+        certificates.getChildren().add(reading);
+
+        body.getChildren().addAll(label("CERTIFICATES", "series"), certificates);
         body.getChildren().add(status);
 
         ScrollPane scroll = new ScrollPane(body);
@@ -74,6 +86,11 @@ final class GuardCard extends VBox {
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
         getChildren().addAll(header, scroll);
+    }
+
+    /** Fills the certificates once they come back. */
+    void showCertificates(List<Certificate> found, Instant now) {
+        certificates.getChildren().setAll(certificateList(found, now));
     }
 
     /** What came of the last ban or unban, kept until the next one. */

@@ -34,11 +34,19 @@ public final class GuardCommands {
     public static final String PRESENT = "command -v fail2ban-client >/dev/null 2>&1 && echo YES || echo NO";
 
     /** The jail list, then the full status of every jail, in one round trip. */
-    public static final String JAILS =
+    private static final String JAILS_ONLY =
             "LC_ALL=C fail2ban-client status 2>&1; "
             + "for J in $(LC_ALL=C fail2ban-client status 2>/dev/null "
             + "| sed -n 's/.*Jail list:\\s*//p' | tr ',' ' '); do "
             + "echo \"=== $J\"; LC_ALL=C fail2ban-client status \"$J\" 2>&1; done";
+
+    /** Whether fail2ban is there, and everything it knows, in one round trip. */
+    public static final String WATCH = "echo '@@present'; " + PRESENT + "; echo '@@jails'; " + JAILS_ONLY;
+
+    /** True when the answer to {@link #WATCH} says fail2ban is installed. */
+    public static boolean installed(String output) {
+        return LinkCommands.section(output, "present").strip().equals("YES");
+    }
 
     private GuardCommands() {
     }
@@ -74,7 +82,7 @@ public final class GuardCommands {
     }
 
     /**
-     * Jails from the output of {@link #JAILS}.
+     * Jails from the output of {@link #WATCH}.
      *
      * <p>fail2ban prints a tree of bulleted lines whose labels have changed wording between versions, so each
      * value is found by the word that has stayed put rather than by its position.

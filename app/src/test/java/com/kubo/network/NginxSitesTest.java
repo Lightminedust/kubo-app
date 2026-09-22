@@ -22,6 +22,13 @@ class NginxSitesTest {
             === enabled
             example.com
             old-site
+            === names
+            --- default
+             server_name _;
+            --- example.com
+              server_name gemmi-e.com www.gemmi-e.com;
+            --- api.example.com
+              server_name api.gemmi-e.com;
             """;
 
     @Test
@@ -34,6 +41,18 @@ class NginxSitesTest {
         assertTrue(sites.isEnabled("example.com"));
         assertFalse(sites.isEnabled("api.example.com"));
         assertEquals(List.of("default", "api.example.com"), sites.disabled());
+    }
+
+    @Test
+    @DisplayName("a file is shown by the domains it answers to, not only by its name")
+    void readsServerNames() {
+        NginxSites sites = NetworkCommands.parseSites(OUTPUT);
+
+        assertEquals(List.of("gemmi-e.com", "www.gemmi-e.com"), sites.namesOf("example.com"));
+        assertEquals(List.of("api.gemmi-e.com"), sites.namesOf("api.example.com"));
+        // "_" is nginx saying "anything", which is not a name anybody types.
+        assertEquals(List.of(), sites.namesOf("default"));
+        assertEquals(List.of(), sites.namesOf("old-site"));
     }
 
     @Test

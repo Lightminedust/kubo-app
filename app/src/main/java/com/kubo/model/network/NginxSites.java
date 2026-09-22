@@ -10,15 +10,31 @@ import java.util.List;
  * {@code sites-enabled}. A site that exists and is off is invisible to {@code nginx -T}, so it never appeared on
  * this screen at all, which is exactly the file somebody is looking for when a site stopped answering.
  */
-public record NginxSites(List<String> available, List<String> enabled) {
+public record NginxSites(List<String> available, List<String> enabled,
+                         java.util.Map<String, List<String>> serverNames) {
 
     public NginxSites {
         available = List.copyOf(available == null ? List.of() : available);
         enabled = List.copyOf(enabled == null ? List.of() : enabled);
+        serverNames = java.util.Map.copyOf(serverNames == null ? java.util.Map.of() : serverNames);
+    }
+
+    public NginxSites(List<String> available, List<String> enabled) {
+        this(available, enabled, java.util.Map.of());
     }
 
     public static NginxSites none() {
-        return new NginxSites(List.of(), List.of());
+        return new NginxSites(List.of(), List.of(), java.util.Map.of());
+    }
+
+    /**
+     * The domains a site file answers to.
+     *
+     * <p>The file is called gemmie and the site is called gemmi-e.com. Only one of those is what somebody
+     * types in a browser, and until now the card showed the other one.
+     */
+    public List<String> namesOf(String site) {
+        return serverNames.getOrDefault(site, List.of());
     }
 
     public boolean isEnabled(String site) {

@@ -121,7 +121,13 @@ public final class NetworkCommands {
     /** The sites available and the sites enabled, so the screen can tell one from the other. */
     public static final String NGINX_SITES =
             "for D in available enabled; do echo \"=== $D\"; "
-            + "ls -1 /etc/nginx/sites-$D 2>/dev/null; done";
+            + "ls -1 /etc/nginx/sites-$D 2>/dev/null; done; "
+            // What each file answers to. The file name is an administrator's filing choice; the server_name is
+            // the thing a visitor types.
+            + "echo '=== names'; for F in /etc/nginx/sites-available/*; do "
+            // ${F##*/} rather than basename: no nested quoting, so nothing to get wrong.
+            + "[ -f \"$F\" ] && { echo \"--- ${F##*/}\"; "
+            + "grep -hE '^[[:space:]]*server_name' \"$F\" 2>/dev/null; }; done";
 
     /** A site file name. Anything else never reaches a path. */
     private static final Pattern SITE = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
@@ -159,18 +165,33 @@ public final class NetworkCommands {
     public static com.kubo.model.network.NginxSites parseSites(String output) {
         java.util.List<String> available = new java.util.ArrayList<>();
         java.util.List<String> enabled = new java.util.ArrayList<>();
+        java.util.Map<String, java.util.List<String>> names = new java.util.LinkedHashMap<>();
         java.util.List<String> into = null;
+        String file = null;
         for (String line : output.split("\\R")) {
             String text = line.strip();
             if (text.equals("=== available")) {
                 into = available;
+                file = null;
             } else if (text.equals("=== enabled")) {
                 into = enabled;
+                file = null;
+            } else if (text.equals("=== names")) {
+                into = null;
+            } else if (text.startsWith("--- ")) {
+                file = text.substring(4).strip();
             } else if (into != null && !text.isEmpty() && SITE.matcher(text).matches()) {
                 into.add(text);
+            } else if (file != null && text.startsWith("server_name")) {
+                for (String name : text.substring("server_name".length()).replace(";", "").strip().split("\\s+")) {
+                    // "_" is nginx's way of saying "anything", which is not a name anybody types.
+                    if (!name.isBlank() && !name.equals("_")) {
+                        names.computeIfAbsent(file, key -> new java.util.ArrayList<>()).add(name);
+                    }
+                }
             }
         }
-        return new com.kubo.model.network.NginxSites(available, enabled);
+        return new com.kubo.model.network.NginxSites(available, enabled, names);
     }
 
     public static String pm2Restart(String app) {

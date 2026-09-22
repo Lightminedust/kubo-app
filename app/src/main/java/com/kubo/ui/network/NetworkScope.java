@@ -580,7 +580,8 @@ public final class NetworkScope extends StackPane {
     }
 
     private void showEdge() {
-        guard = new GuardCard(map.jails(), map.certificates(), java.time.Instant.now(), new GuardCard.Hands() {
+        java.time.Instant now = java.time.Instant.now();
+        guard = new GuardCard(map.jails(), now, new GuardCard.Hands() {
             @Override
             public void ban(String jail, String address) {
                 sendGuard(() -> network.ban(jail, address), address + " banned in " + jail);
@@ -592,6 +593,24 @@ public final class NetworkScope extends StackPane {
             }
         }, this::hideOverlay);
         showOverlay(guard);
+
+        if (network == null) {
+            guard.showCertificates(java.util.List.of(), now);
+            return;
+        }
+        java.util.List<com.kubo.model.network.Vhost> vhosts = map.vhosts();
+        GuardCard opened = guard;
+        runWithRoot(() -> worker.execute(() -> {
+            java.util.List<com.kubo.model.network.Certificate> found;
+            try {
+                found = network.certificates(vhosts);
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the certificates failed", e);
+                found = java.util.List.of();
+            }
+            java.util.List<com.kubo.model.network.Certificate> read = found;
+            javafx.application.Platform.runLater(() -> opened.showCertificates(read, now));
+        }));
     }
 
     /**
@@ -672,10 +691,34 @@ public final class NetworkScope extends StackPane {
      * somebody changes it, and the refresh already costs enough.
      */
     private void showSites() {
+        // The card opens now and fills when the listing comes back. Waiting for the read first left the screen
+        // showing nothing for as long as the connection was busy, which reads as broken rather than as slow.
+        sitesCard = new SitesCard(new SitesCard.Hands() {
+            @Override
+            public void enable(String site) {
+                send(result -> sitesCard.report(result, site + " switched on and Nginx reloaded"),
+                        () -> network.enableSite(site));
+            }
+
+            @Override
+            public void disable(String site) {
+                send(result -> sitesCard.report(result, site + " switched off and Nginx reloaded"),
+                        () -> network.disableSite(site));
+            }
+
+            @Override
+            public void test() {
+                send(result -> sitesCard.report(result, "The configuration is valid"),
+                        () -> network.testNginx());
+            }
+        }, this::hideOverlay);
+        showOverlay(sitesCard);
+
         if (network == null) {
-            showOverlay(new SitesCard(NginxSites.none(), noSites(), this::hideOverlay));
+            sitesCard.show(NginxSites.none());
             return;
         }
+        SitesCard opened = sitesCard;
         runWithRoot(() -> worker.execute(() -> {
             NginxSites read;
             try {
@@ -685,45 +728,8 @@ public final class NetworkScope extends StackPane {
                 read = NginxSites.none();
             }
             NginxSites sites = read;
-            javafx.application.Platform.runLater(() -> {
-                sitesCard = new SitesCard(sites, new SitesCard.Hands() {
-                    @Override
-                    public void enable(String site) {
-                        send(result -> sitesCard.report(result, site + " switched on and Nginx reloaded"),
-                                () -> network.enableSite(site));
-                    }
-
-                    @Override
-                    public void disable(String site) {
-                        send(result -> sitesCard.report(result, site + " switched off and Nginx reloaded"),
-                                () -> network.disableSite(site));
-                    }
-
-                    @Override
-                    public void test() {
-                        send(result -> sitesCard.report(result, "The configuration is valid"),
-                                () -> network.testNginx());
-                    }
-                }, this::hideOverlay);
-                showOverlay(sitesCard);
-            });
+            javafx.application.Platform.runLater(() -> opened.show(sites));
         }));
-    }
-
-    private static SitesCard.Hands noSites() {
-        return new SitesCard.Hands() {
-            @Override
-            public void enable(String site) {
-            }
-
-            @Override
-            public void disable(String site) {
-            }
-
-            @Override
-            public void test() {
-            }
-        };
     }
 
     /**

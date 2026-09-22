@@ -88,7 +88,13 @@ public final class NetworkService {
      */
     public NetworkMap read() {
         List<String> notes = new ArrayList<>();
-        List<ListeningSocket> sockets = NetworkCommands.parseSockets(run(NetworkCommands.SOCKETS).output());
+        // One command for everything the machine reports. The connection runs commands one at a time, so six
+        // reads meant six waits and anything asked for meanwhile queued behind them. Through sudo, because
+        // ss only names a process it is allowed to read: without that every row said "not named without root",
+        // including with root mode on.
+        String machine = runAsRoot(LinkCommands.MACHINE, TIMEOUT).output();
+        List<ListeningSocket> sockets =
+                NetworkCommands.parseSockets(LinkCommands.section(machine, "sockets"));
         if (sockets.stream().noneMatch(ListeningSocket::hasPid)) {
             notes.add("No process could be named for the listening ports. Naming another user's process needs root.");
         }
@@ -107,14 +113,15 @@ public final class NetworkService {
                 .sorted(Comparator.comparing(Risk::level).thenComparingInt(Risk::port))
                 .toList();
 
-        Identity identity = readIdentity();
-        List<Connection> connections = readConnections(sockets);
-        Map<String, Counter.Rate> rates = readRates();
+        Identity identity = readIdentity(machine);
+        List<Connection> connections = readConnections(machine, sockets);
+        Map<String, Counter.Rate> rates = readRates(machine);
         List<Jail> jails = readJails(notes);
-        List<Certificate> certificates = readCertificates(vhosts);
 
+        // Certificates are not read here. They change once every few months, and this runs every twelve
+        // seconds. The edge card asks for them when it opens.
         return new NetworkMap(firewall, vhosts, endpoints, pm2, risks, notes, identity, connections, rates,
-                jails, certificates, Naming.of(identity, dockerNetworks()));
+                jails, List.of(), Naming.of(identity, dockerNetworks()));
     }
 
     /**
@@ -123,16 +130,17 @@ public final class NetworkService {
      * <p>Each reading is asked for as JSON and read from the plain output when that comes back empty, which is
      * what an iproute2 older than 2018 gives.
      */
-    private Identity readIdentity() {
-        List<Link> links = LinkCommands.parseLinksJson(run(LinkCommands.LINKS_JSON).output());
+    private Identity readIdentity(String machine) {
+        List<Link> links = LinkCommands.parseLinksJson(LinkCommands.section(machine, "links"));
         if (links.isEmpty()) {
+            // Only an iproute2 older than 2018 lands here, and only then does it cost a second round trip.
             links = LinkCommands.parseLinksText(run(LinkCommands.LINKS_TEXT).output());
         }
-        List<Route> routes = LinkCommands.parseRoutesJson(run(LinkCommands.ROUTES_JSON).output());
+        List<Route> routes = LinkCommands.parseRoutesJson(LinkCommands.section(machine, "routes"));
         if (routes.isEmpty()) {
             routes = LinkCommands.parseRoutesText(run(LinkCommands.ROUTES_TEXT).output());
         }
-        Resolvers resolvers = LinkCommands.parseResolvers(run(LinkCommands.RESOLVERS).output());
+        Resolvers resolvers = LinkCommands.parseResolvers(LinkCommands.resolverSections(machine));
         // The address the operator typed to get here. It is the one address known to work from outside, and it
         // costs nothing: no third party is asked, which is the whole point.
         String reachedAt = connection.target() == null ? "" : connection.target().host();
@@ -142,16 +150,12 @@ public final class NetworkService {
     /**
      * What is connected right now. The ports this server listens on decide which end called.
      */
-    private List<Connection> readConnections(List<ListeningSocket> sockets) {
+    private List<Connection> readConnections(String machine, List<ListeningSocket> sockets) {
         java.util.Set<Integer> listening = new LinkedHashSet<>();
         for (ListeningSocket socket : sockets) {
             listening.add(socket.port());
         }
-        // Through sudo: ss lists every connection to anyone, but it only names the process behind one when it
-        // is allowed to read that process. Without root every row of the table said "not named without root",
-        // including with root mode on, because this one read was never elevated.
-        return TrafficCommands.parseConnections(runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT).output(),
-                listening);
+        return TrafficCommands.parseConnections(LinkCommands.section(machine, "connections"), listening);
     }
 
     /**
@@ -160,10 +164,10 @@ public final class NetworkService {
      * <p>Empty on the first read of a session, and after any reading where a counter went backwards. Showing
      * nothing is right there: a made-up first value would be a number the reader has no way to check.
      */
-    private Map<String, Counter.Rate> readRates() {
+    private Map<String, Counter.Rate> readRates(String machine) {
         Instant now = Instant.now();
         Map<String, Counter> current = new HashMap<>();
-        for (Counter counter : TrafficCommands.parseCounters(run(TrafficCommands.COUNTERS).output())) {
+        for (Counter counter : TrafficCommands.parseCounters(LinkCommands.section(machine, "counters"))) {
             current.put(counter.device(), counter);
         }
         Map<String, Counter.Rate> rates = new HashMap<>();
@@ -185,10 +189,11 @@ public final class NetworkService {
      * The fail2ban jails. Its socket is root-owned on every install Kubo has seen, so this goes through sudo.
      */
     private List<Jail> readJails(List<String> notes) {
-        if (!run(GuardCommands.PRESENT).output().strip().equals("YES")) {
+        String output = runAsRoot(GuardCommands.WATCH, TIMEOUT).output();
+        if (!GuardCommands.installed(output)) {
             return List.of();
         }
-        List<Jail> jails = GuardCommands.parseJails(runAsRoot(GuardCommands.JAILS, TIMEOUT).output());
+        List<Jail> jails = GuardCommands.parseJails(output);
         if (jails.isEmpty()) {
             notes.add("fail2ban is installed but its status could not be read. Reading it needs root.");
         }
@@ -198,7 +203,7 @@ public final class NetworkService {
     /**
      * The certificates Nginx points at, read once each however many server blocks share them.
      */
-    private List<Certificate> readCertificates(List<Vhost> vhosts) {
+    public List<Certificate> certificates(List<Vhost> vhosts) {
         java.util.Set<String> files = new LinkedHashSet<>();
         for (Vhost vhost : vhosts) {
             if (!vhost.certificate().isBlank()) {

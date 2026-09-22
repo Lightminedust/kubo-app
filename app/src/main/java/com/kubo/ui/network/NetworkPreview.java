@@ -59,20 +59,23 @@ public final class NetworkPreview {
                                     com.kubo.model.server.ListeningPort.Protocol protocol) { }
                             @Override public void delete(com.kubo.model.network.FirewallRule rule) { }
                         }, () -> { }));
-                renderCard(output, "network-sites", new SitesCard(
-                        new com.kubo.model.network.NginxSites(
-                                java.util.List.of("default", "example.com", "api.example.com"),
-                                java.util.List.of("example.com", "old-site")),
-                        new SitesCard.Hands() {
-                            @Override public void enable(String site) { }
-                            @Override public void disable(String site) { }
-                            @Override public void test() { }
-                        }, () -> { }));
-                renderCard(output, "network-edge", new GuardCard(sampleJails(), sampleCertificates(),
-                        java.time.Instant.now(), new GuardCard.Hands() {
-                            @Override public void ban(String jail, String address) { }
-                            @Override public void unban(String jail, String address) { }
-                        }, () -> { }));
+                SitesCard sitesCard = new SitesCard(new SitesCard.Hands() {
+                    @Override public void enable(String site) { }
+                    @Override public void disable(String site) { }
+                    @Override public void test() { }
+                }, () -> { });
+                sitesCard.show(new com.kubo.model.network.NginxSites(
+                        java.util.List.of("default", "example.com", "api.example.com"),
+                        java.util.List.of("example.com", "old-site"),
+                        java.util.Map.of("example.com", java.util.List.of("gemmi-e.com", "www.gemmi-e.com"),
+                                "api.example.com", java.util.List.of("api.gemmi-e.com"))));
+                renderCard(output, "network-sites", sitesCard);
+                GuardCard edge = new GuardCard(sampleJails(), java.time.Instant.now(), new GuardCard.Hands() {
+                    @Override public void ban(String jail, String address) { }
+                    @Override public void unban(String jail, String address) { }
+                }, () -> { });
+                edge.showCertificates(sampleCertificates(), java.time.Instant.now());
+                renderCard(output, "network-edge", edge);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {

@@ -44,7 +44,53 @@ public final class LinkCommands {
      */
     public static final String RESOLVERS = "resolvectl status 2>/dev/null; echo '---'; cat /etc/resolv.conf 2>/dev/null";
 
+    /**
+     * Everything about the machine in one command.
+     *
+     * <p>Six separate reads meant six round trips on a connection that runs one command at a time, and the
+     * screen polls every twelve seconds. Anything else asked for while that was in flight waited behind it,
+     * which is what made opening a card feel broken. Each answer is announced by a marker so the same parsers
+     * read it.
+     */
+    public static final String MACHINE =
+            "echo '@@links'; ip -j addr show 2>/dev/null; "
+            + "echo '@@routes'; ip -j route show 2>/dev/null; "
+            + "echo '@@resolvectl'; resolvectl status 2>/dev/null; "
+            + "echo '@@resolvconf'; cat /etc/resolv.conf 2>/dev/null; "
+            + "echo '@@sockets'; ss -tulpnH 2>/dev/null; "
+            + "echo '@@connections'; ss -tunpH state established 2>/dev/null; "
+            + "echo '@@counters'; cat /proc/net/dev 2>/dev/null";
+
     private LinkCommands() {
+    }
+
+    /**
+     * One announced block of {@link #MACHINE}, or an empty string when it is not there.
+     */
+    public static String section(String output, String marker) {
+        String head = "@@" + marker;
+        int start = -1;
+        String[] lines = output == null ? new String[0] : output.split("\\R");
+        StringBuilder found = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].strip();
+            if (line.equals(head)) {
+                start = i;
+                continue;
+            }
+            if (start >= 0) {
+                if (line.startsWith("@@")) {
+                    break;
+                }
+                found.append(lines[i]).append('\n');
+            }
+        }
+        return found.toString();
+    }
+
+    /** The two halves {@link #parseResolvers(String)} expects, taken out of one answer. */
+    public static String resolverSections(String output) {
+        return section(output, "resolvectl") + "\n---\n" + section(output, "resolvconf");
     }
 
     // Interfaces
