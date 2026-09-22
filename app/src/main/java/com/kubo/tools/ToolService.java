@@ -25,6 +25,8 @@ import java.util.Set;
 public final class ToolService {
 
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(20);
+    /** Three pings, three rounds of mtr or a whois to the other side of the world all fit inside this. */
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(40);
     /** Installing fetches over the network and unpacks; a minute is short for a slow mirror. */
     private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(3);
 
@@ -36,6 +38,20 @@ public final class ToolService {
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = Objects.requireNonNull(commands, "commands");
         this.privilege = privilege;
+    }
+
+    /**
+     * Runs one probe and returns what the server printed, whether it worked or not.
+     *
+     * <p>None of them needs root and all of them are bounded by their own arguments, so a probe cannot outlive
+     * the click that started it.
+     */
+    public CommandEntry probe(String command) {
+        CommandEntry raw = connection.exec(AdminPath.with(command), null, PROBE_TIMEOUT);
+        CommandEntry entry = new CommandEntry(raw.executedAt(), command, false, raw.exitCode(), raw.output(),
+                raw.error(), raw.duration());
+        commands.add(entry, Origin.NETWORK);
+        return entry;
     }
 
     /** True when Kubo could install something right now, which needs root. */

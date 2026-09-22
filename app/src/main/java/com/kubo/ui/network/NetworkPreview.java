@@ -58,8 +58,20 @@ public final class NetworkPreview {
                                 com.kubo.model.tools.Tool.WHOIS),
                         com.kubo.model.tools.PackageManager.APT);
                 renderCard(output, "network-tools", toolsCard);
+                renderCard(output, "network-diagnose", new DiagnosticsCard(sampleIdentity(),
+                        java.util.Set.of(com.kubo.model.tools.Tool.PING, com.kubo.model.tools.Tool.DIG),
+                        new DiagnosticsCard.Hands() {
+                            @Override public void probe(String title,
+                                    java.util.function.Supplier<String> command,
+                                    java.util.function.Consumer<String> answer) { }
+                            @Override public void openTools() { }
+                        }, () -> { }));
                 renderCard(output, "network-connections",
-                        new ConnectionsCard(exposedServer().conversations(), address -> { }, true, () -> { }));
+                        new ConnectionsCard(exposedServer().conversations(), new ConnectionsCard.Hands() {
+                            @Override public void ban(String address) { }
+                            @Override public void whois(String address,
+                                    java.util.function.Consumer<String> answer) { }
+                        }, true, true, () -> { }));
                 renderCard(output, "network-firewall", new FirewallCard(exposedServer().firewall(),
                         new FirewallCard.Hands() {
                             @Override public void allowFrom(String source, int port,

@@ -582,8 +582,33 @@ public final class NetworkScope extends StackPane {
      */
     private void showConnections() {
         boolean canBan = !map.jails().isEmpty();
-        showOverlay(new ConnectionsCard(map.conversations(),
-                address -> banEverywhere(address), canBan, this::hideOverlay));
+        ConnectionsCard.Hands hands = new ConnectionsCard.Hands() {
+            @Override
+            public void ban(String address) {
+                banEverywhere(address);
+            }
+
+            @Override
+            public void whois(String address, java.util.function.Consumer<String> done) {
+                runProbe(() -> com.kubo.tools.ProbeCommands.whois(address), done);
+            }
+        };
+        // whois is asked for once, when the card opens, rather than on every row.
+        if (tools == null) {
+            showOverlay(new ConnectionsCard(map.conversations(), hands, canBan, false, this::hideOverlay));
+            return;
+        }
+        worker.execute(() -> {
+            boolean present;
+            try {
+                present = tools.present().contains(com.kubo.model.tools.Tool.WHOIS);
+            } catch (RuntimeException e) {
+                present = false;
+            }
+            boolean canWhois = present;
+            javafx.application.Platform.runLater(() -> showOverlay(
+                    new ConnectionsCard(map.conversations(), hands, canBan, canWhois, this::hideOverlay)));
+        });
     }
 
     private void showEdge() {
@@ -770,6 +795,79 @@ public final class NetworkScope extends StackPane {
     }
 
     /**
+     * The probes: does the gateway answer, do the resolvers resolve, who owns this address.
+     *
+     * <p>Which buttons work depends on what the server has, so the tools are read first. The card opens
+     * straight away all the same, with everything disabled until the answer comes.
+     */
+    private void showDiagnostics() {
+        DiagnosticsCard[] card = new DiagnosticsCard[1];
+        java.util.function.Consumer<java.util.Set<com.kubo.model.tools.Tool>> open = present -> {
+            card[0] = new DiagnosticsCard(map.identity(), present, new DiagnosticsCard.Hands() {
+                @Override
+                public void probe(String title, java.util.function.Supplier<String> command,
+                                  java.util.function.Consumer<String> done) {
+                    runProbe(command, done);
+                }
+
+                @Override
+                public void openTools() {
+                    showTools();
+                }
+            }, NetworkScope.this::hideOverlay);
+            showOverlay(card[0]);
+        };
+        if (tools == null) {
+            open.accept(java.util.Set.of());
+            return;
+        }
+        worker.execute(() -> {
+            java.util.Set<com.kubo.model.tools.Tool> present;
+            try {
+                present = tools.present();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the tools failed", e);
+                present = java.util.Set.of();
+            }
+            java.util.Set<com.kubo.model.tools.Tool> found = present;
+            javafx.application.Platform.runLater(() -> open.accept(found));
+        });
+    }
+
+    /**
+     * Runs one probe. What the server printed is shown whether the command succeeded or not: a ping that gets
+     * no reply fails, and its output is exactly the answer somebody clicked for.
+     */
+    private void runProbe(java.util.function.Supplier<String> command,
+                          java.util.function.Consumer<String> done) {
+        if (tools == null) {
+            done.accept("No connection.");
+            return;
+        }
+        String built;
+        try {
+            built = command.get();
+        } catch (IllegalArgumentException e) {
+            // Kubo refusing to send it, in its own words, before anything leaves.
+            done.accept(e.getMessage());
+            return;
+        }
+        worker.execute(() -> {
+            String answer;
+            try {
+                CommandEntry result = tools.probe(built);
+                String text = result.output().isBlank() ? result.error() : result.output();
+                answer = text.isBlank() ? "The command printed nothing." : text.strip();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "A probe failed", e);
+                answer = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            String said = answer;
+            javafx.application.Platform.runLater(() -> done.accept(said));
+        });
+    }
+
+    /**
      * What this server already has, and what Kubo could install on it.
      *
      * <p>The card opens now and fills when the server answers, like the others. Installing needs root whoever
@@ -882,14 +980,14 @@ public final class NetworkScope extends StackPane {
         Button edge = rail("THE EDGE", event -> showEdge());
         Button rules = rail("FIREWALL RULES", event -> showFirewall());
         Button sites = rail("NGINX SITES", event -> showSites());
-        Button reload = rail("TEST & RELOAD NGINX", event -> reloadNginx());
+        Button diagnose = rail("DIAGNOSE", event -> showDiagnostics());
         Button shell = rail("SHELL", event -> console.showShell());
         Button help = rail("?", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, rules, sites,
-                separator(), reload, shell, spacer, help);
+                separator(), diagnose, shell, spacer, help);
         rail.setAlignment(Pos.CENTER_LEFT);
         rail.setPadding(new Insets(0, 0, 10, 0));
         return rail;
