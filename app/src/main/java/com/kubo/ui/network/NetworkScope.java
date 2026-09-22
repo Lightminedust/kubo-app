@@ -59,6 +59,8 @@ public final class NetworkScope extends StackPane {
     private static final Color CYAN = Color.web("#35e8ff");
 
     private final NetworkService network;
+    /** Only for the tools card: what this server already has, and what could install the rest. */
+    private final com.kubo.tools.ToolService tools;
     private final RootSession root;
     private final ServerConsole console;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -103,6 +105,8 @@ public final class NetworkScope extends StackPane {
     public NetworkScope(NetworkService network, RootSession root, SshConnection connection, CommandService commands) {
         this.network = network;
         this.root = root;
+        this.tools = connection == null || root == null ? null
+                : new com.kubo.tools.ToolService(connection, commands, root.privilege());
         this.console = new ServerConsole(connection, commands, root);
         getStyleClass().add("scope-view");
 
@@ -765,6 +769,69 @@ public final class NetworkScope extends StackPane {
         }));
     }
 
+    /**
+     * What this server already has, and what Kubo could install on it.
+     *
+     * <p>The card opens now and fills when the server answers, like the others. Installing needs root whoever
+     * is connected: no package manager writes to /usr as an ordinary user, and asking as one would only
+     * produce a refusal nobody can act on.
+     */
+    private void showTools() {
+        boolean canInstall = tools != null && tools.canInstall();
+        com.kubo.ui.ToolsCard card = new com.kubo.ui.ToolsCard(
+                (tool, done) -> installTool(tool, done), canInstall,
+                "Installing writes to the system, so it needs root. Turn on ROOT in the header, then open this "
+                        + "again.", this::hideOverlay);
+        showOverlay(card);
+        if (tools == null) {
+            card.show(java.util.Set.of(), com.kubo.model.tools.PackageManager.NONE);
+            return;
+        }
+        worker.execute(() -> {
+            com.kubo.tools.ToolService.Reading read;
+            try {
+                read = tools.read();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the tools failed", e);
+                String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                javafx.application.Platform.runLater(() -> card.showProblem(reason));
+                return;
+            }
+            com.kubo.tools.ToolService.Reading answer = read;
+            javafx.application.Platform.runLater(() -> card.show(answer.present(), answer.manager()));
+        });
+    }
+
+    /** Installs one tool, then re-reads: a tool that just arrived changes what the next reading can say. */
+    private void installTool(com.kubo.model.tools.Tool tool, java.util.function.Consumer<String> done) {
+        if (tools == null) {
+            done.accept("No connection.");
+            return;
+        }
+        runWithRoot(() -> worker.execute(() -> {
+            String trouble;
+            try {
+                com.kubo.tools.ToolService.Reading before = tools.read();
+                CommandEntry result = tools.install(tool, before.manager());
+                trouble = result.success() ? null
+                        : firstLine(result.error().isBlank() ? result.output() : result.error());
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                // Kubo refusing, in its own words.
+                trouble = e.getMessage();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Installing a tool failed", e);
+                trouble = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            String said = trouble;
+            javafx.application.Platform.runLater(() -> {
+                done.accept(said);
+                if (said == null) {
+                    refresh(false);
+                }
+            });
+        }));
+    }
+
     // Building
 
     private VBox buildMasthead() {
@@ -781,7 +848,9 @@ public final class NetworkScope extends StackPane {
         camera.getStyleClass().add("zoom-bar");
         RootButton rootButton = new RootButton(root,
                 network == null ? RootButton.noVerification() : verification(), this::showOverlay, this::hideOverlay);
-        HBox identity = new HBox(12, wordmark, mark, kicker, spacer, rootButton, camera);
+        // Beside ROOT, because installing needs root and the two questions are asked in the same breath.
+        Button toolbox = rail("TOOLS", event -> showTools());
+        HBox identity = new HBox(12, wordmark, mark, kicker, spacer, toolbox, rootButton, camera);
         identity.setAlignment(Pos.CENTER_LEFT);
 
         VBox naming = new VBox(2, headline, caption);

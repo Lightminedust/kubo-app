@@ -52,6 +52,12 @@ public final class NetworkPreview {
                 render(output, "network-crowded", crowdedServer(), -1);
                 renderHelp(output);
                 renderReading(output);
+                com.kubo.ui.ToolsCard toolsCard = new com.kubo.ui.ToolsCard((tool, report) -> { }, true, "",
+                        () -> { });
+                toolsCard.show(java.util.Set.of(com.kubo.model.tools.Tool.PING,
+                                com.kubo.model.tools.Tool.WHOIS),
+                        com.kubo.model.tools.PackageManager.APT);
+                renderCard(output, "network-tools", toolsCard);
                 renderCard(output, "network-connections",
                         new ConnectionsCard(exposedServer().conversations(), address -> { }, true, () -> { }));
                 renderCard(output, "network-firewall", new FirewallCard(exposedServer().firewall(),
