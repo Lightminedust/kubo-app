@@ -261,7 +261,16 @@ public final class NetworkService {
      * a second unreliable answer.
      */
     private Firewall readFirewall(List<String> notes) {
-        List<Firewall.Kind> tools = FirewallCommands.parseTools(run(FirewallCommands.DETECT).output());
+        // Asked as root. On plenty of servers /usr/sbin/nft and /usr/sbin/iptables are executable by root
+        // only, and command -v answers nothing for anybody else. Looking as the connected user and concluding
+        // "no firewall" from that is how this screen came to tell a protected server it was wide open.
+        CommandEntry found = runAsRoot(FirewallCommands.DETECT, TIMEOUT);
+        if (!found.success()) {
+            // The look itself failed. That is not the same as finding nothing, and it must not read as it.
+            notes.add(Firewall.unchecked().problem());
+            return Firewall.unchecked();
+        }
+        List<Firewall.Kind> tools = FirewallCommands.parseTools(found.output());
         if (tools.isEmpty()) {
             notes.add(Firewall.absent().problem());
             return Firewall.absent();

@@ -27,7 +27,7 @@ public final class FirewallCommands {
 
     /** Which firewall tools exist, most specific first. One line each, so the order of the answer is the order below. */
     public static final String DETECT = "for T in ufw firewall-cmd nft iptables; do "
-            + "command -v \"$T\" >/dev/null 2>&1 && printf '%s\\n' \"$T\"; done";
+            + "command -v \"$T\" >/dev/null 2>&1 && printf '%s\\n' \"$T\"; done; true";
 
     /** UFW's numbered rules. Needs root; the caller wraps it. */
     public static final String UFW = "ufw status numbered";

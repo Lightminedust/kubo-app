@@ -45,12 +45,25 @@ public record Firewall(Kind kind, State state, List<FirewallRule> rules) {
         /** A firewall is there but its status could not be read, which usually needs root. */
         UNREADABLE,
         /** A firewall is running with rules Kubo does not know how to read. */
-        UNRECOGNISED
+        UNRECOGNISED,
+        /**
+         * The look for a firewall did not come back.
+         *
+         * <p>Separate from {@link #ABSENT} on purpose. A command that failed and a command that answered
+         * "nothing installed" look the same from here, and reading the first as the second is how a screen
+         * ends up telling somebody their server is unprotected when it is not.
+         */
+        UNCHECKED
     }
 
     public Firewall {
         kind = kind == null ? Kind.NONE : kind;
         rules = List.copyOf(rules == null ? List.of() : rules);
+    }
+
+    /** The look did not come back. Not the same thing as nothing being there. */
+    public static Firewall unchecked() {
+        return new Firewall(Kind.NONE, State.UNCHECKED, List.of());
     }
 
     public static Firewall absent() {
@@ -108,7 +121,7 @@ public record Firewall(Kind kind, State state, List<FirewallRule> rules) {
             case ACTIVE -> "ON";
             case INACTIVE -> "OFF";
             case ABSENT -> "NONE";
-            case UNREADABLE, UNRECOGNISED -> "?";
+            case UNREADABLE, UNRECOGNISED, UNCHECKED -> "?";
         };
     }
 
@@ -127,6 +140,10 @@ public record Firewall(Kind kind, State state, List<FirewallRule> rules) {
             case UNRECOGNISED -> title() + " is running, but Kubo cannot read which ports it allows: either its "
                     + "rules need root — turn on ROOT in the header and refresh — or they are in a form Kubo does "
                     + "not read. Your server may well be protected; nothing below assumes it is.";
+            case UNCHECKED -> "Kubo could not find out whether this server has a firewall: the command that "
+                    + "looks for ufw, firewalld, nft and iptables did not answer. This is not a statement that "
+                    + "there is no firewall. Turn on ROOT and re-read, and check it yourself in the shell with "
+                    + "command -v ufw nft iptables.";
         };
     }
 }

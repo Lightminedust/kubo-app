@@ -741,6 +741,7 @@ final class NetworkTree extends Pane {
             case ABSENT -> "NO FIREWALL ON THIS MACHINE";
             case UNREADABLE -> "COULD NOT BE READ  \u00b7  NEEDS ROOT";
             case UNRECOGNISED -> "RUNNING  \u00b7  CANNOT READ ITS RULES";
+            case UNCHECKED -> "COULD NOT BE CHECKED  \u00b7  NOT THE SAME AS NONE";
         }, x, Math.max(46, top - 10));
     }
 
@@ -1051,7 +1052,7 @@ final class NetworkTree extends Pane {
         return switch (firewall.state()) {
             case ACTIVE -> GREEN;
             case INACTIVE, ABSENT -> ALERT;
-            case UNREADABLE, UNRECOGNISED -> AMBER;
+            case UNREADABLE, UNRECOGNISED, UNCHECKED -> AMBER;
         };
     }
 
