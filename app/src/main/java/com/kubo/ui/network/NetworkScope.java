@@ -3,7 +3,10 @@ package com.kubo.ui.network;
 import com.kubo.command.CommandEntry;
 import com.kubo.model.network.Endpoint;
 import com.kubo.model.network.Firewall;
+import com.kubo.model.network.FirewallRule;
 import com.kubo.model.network.NetworkMap;
+import com.kubo.model.network.NginxSites;
+import com.kubo.network.NetworkCommands;
 import com.kubo.model.network.PmApp;
 import com.kubo.model.network.Risk;
 import com.kubo.model.network.ServiceOwner;
@@ -91,6 +94,8 @@ public final class NetworkScope extends StackPane {
     private final MachinePanel machine = new MachinePanel();
     /** The edge card while it is open, so a ban can report into the card it was clicked in. */
     private GuardCard guard;
+    private FirewallCard firewallCard;
+    private SitesCard sitesCard;
     private Endpoint selected;
     private StackPane overlay;
     private ContextMenu menu;
@@ -636,6 +641,121 @@ public final class NetworkScope extends StackPane {
         }));
     }
 
+    /**
+     * Every firewall rule, with the two edits the screen could not make.
+     */
+    private void showFirewall() {
+        firewallCard = new FirewallCard(map.firewall(), new FirewallCard.Hands() {
+            @Override
+            public void allowFrom(String source, int port, Protocol protocol) {
+                send(result -> firewallCard.report(result, "Port " + port + " opened to " + source),
+                        () -> network.allowFrom(source, port, protocol));
+            }
+
+            @Override
+            public void delete(FirewallRule rule) {
+                // The numbers move as soon as one rule goes, so the card is rebuilt from the next reading
+                // rather than left showing a list that is one rule out of date.
+                send(result -> {
+                    firewallCard.report(result, "Rule " + rule.index() + " deleted");
+                    if (result == null) {
+                        hideOverlay();
+                    }
+                }, () -> network.deleteRule(rule.index()));
+            }
+        }, this::hideOverlay);
+        showOverlay(firewallCard);
+    }
+
+    /**
+     * The Nginx sites. The listing is read when the card opens rather than on every poll: it changes only when
+     * somebody changes it, and the refresh already costs enough.
+     */
+    private void showSites() {
+        if (network == null) {
+            showOverlay(new SitesCard(NginxSites.none(), noSites(), this::hideOverlay));
+            return;
+        }
+        runWithRoot(() -> worker.execute(() -> {
+            NginxSites read;
+            try {
+                read = NetworkCommands.parseSites(network.nginxSites().output());
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the Nginx sites failed", e);
+                read = NginxSites.none();
+            }
+            NginxSites sites = read;
+            javafx.application.Platform.runLater(() -> {
+                sitesCard = new SitesCard(sites, new SitesCard.Hands() {
+                    @Override
+                    public void enable(String site) {
+                        send(result -> sitesCard.report(result, site + " switched on and Nginx reloaded"),
+                                () -> network.enableSite(site));
+                    }
+
+                    @Override
+                    public void disable(String site) {
+                        send(result -> sitesCard.report(result, site + " switched off and Nginx reloaded"),
+                                () -> network.disableSite(site));
+                    }
+
+                    @Override
+                    public void test() {
+                        send(result -> sitesCard.report(result, "The configuration is valid"),
+                                () -> network.testNginx());
+                    }
+                }, this::hideOverlay);
+                showOverlay(sitesCard);
+            });
+        }));
+    }
+
+    private static SitesCard.Hands noSites() {
+        return new SitesCard.Hands() {
+            @Override
+            public void enable(String site) {
+            }
+
+            @Override
+            public void disable(String site) {
+            }
+
+            @Override
+            public void test() {
+            }
+        };
+    }
+
+    /**
+     * Runs one command for a card and hands it back the reason it failed, or null.
+     */
+    private void send(java.util.function.Consumer<String> done, java.util.function.Supplier<CommandEntry> work) {
+        if (network == null) {
+            return;
+        }
+        runWithRoot(() -> worker.execute(() -> {
+            String trouble;
+            try {
+                CommandEntry result = work.get();
+                trouble = result.success() ? null
+                        : firstLine(result.error().isBlank() ? result.output() : result.error());
+            } catch (IllegalArgumentException e) {
+                // Kubo refusing to send it, in its own words.
+                trouble = e.getMessage();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "A network action failed", e);
+                trouble = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            String said = trouble;
+            javafx.application.Platform.runLater(() -> {
+                done.accept(said);
+                if (said == null) {
+                    refresh(false);
+                }
+            });
+        }));
+    }
+
     // Building
 
     private VBox buildMasthead() {
@@ -682,14 +802,16 @@ public final class NetworkScope extends StackPane {
         });
         Button connections = rail("CONNECTIONS", event -> showConnections());
         Button edge = rail("THE EDGE", event -> showEdge());
+        Button rules = rail("FIREWALL RULES", event -> showFirewall());
+        Button sites = rail("NGINX SITES", event -> showSites());
         Button reload = rail("TEST & RELOAD NGINX", event -> reloadNginx());
         Button shell = rail("SHELL", event -> console.showShell());
         Button help = rail("?", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, separator(),
-                reload, shell, spacer, help);
+        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, rules, sites,
+                separator(), reload, shell, spacer, help);
         rail.setAlignment(Pos.CENTER_LEFT);
         rail.setPadding(new Insets(0, 0, 10, 0));
         return rail;

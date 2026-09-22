@@ -127,7 +127,9 @@ public final class ServicesPreview {
     private static void renderScope(Path output) throws IOException {
         ServicesScope scope = new ServicesScope(null, null, null, null, null);
         StackPane holder = new StackPane(scope);
-        Scene scene = new Scene(holder, 1400, 900, Color.web("#050508"));
+        // Shorter than the other screens: twenty running services do not fill a 900-pixel window, and a
+        // picture that is half empty says less about the screen than a picture the list fills.
+        Scene scene = new Scene(holder, 1400, 720, Color.web("#050508"));
         scene.getStylesheets().add(com.kubo.KuboApp.STYLESHEET);
         holder.applyCss();
         holder.layout();

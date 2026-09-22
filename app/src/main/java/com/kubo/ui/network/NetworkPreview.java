@@ -53,6 +53,21 @@ public final class NetworkPreview {
                 renderHelp(output);
                 renderCard(output, "network-connections",
                         new ConnectionsCard(sampleConnections(), address -> { }, true, () -> { }));
+                renderCard(output, "network-firewall", new FirewallCard(exposedServer().firewall(),
+                        new FirewallCard.Hands() {
+                            @Override public void allowFrom(String source, int port,
+                                    com.kubo.model.server.ListeningPort.Protocol protocol) { }
+                            @Override public void delete(com.kubo.model.network.FirewallRule rule) { }
+                        }, () -> { }));
+                renderCard(output, "network-sites", new SitesCard(
+                        new com.kubo.model.network.NginxSites(
+                                java.util.List.of("default", "example.com", "api.example.com"),
+                                java.util.List.of("example.com", "old-site")),
+                        new SitesCard.Hands() {
+                            @Override public void enable(String site) { }
+                            @Override public void disable(String site) { }
+                            @Override public void test() { }
+                        }, () -> { }));
                 renderCard(output, "network-edge", new GuardCard(sampleJails(), sampleCertificates(),
                         java.time.Instant.now(), new GuardCard.Hands() {
                             @Override public void ban(String jail, String address) { }

@@ -153,6 +153,26 @@ public final class NetworkCommands {
         return "rm -f " + enabled + " && nginx -t 2>&1 && systemctl reload nginx";
     }
 
+    /**
+     * The two listings from {@link #NGINX_SITES}, told apart by the marker line before each.
+     */
+    public static com.kubo.model.network.NginxSites parseSites(String output) {
+        java.util.List<String> available = new java.util.ArrayList<>();
+        java.util.List<String> enabled = new java.util.ArrayList<>();
+        java.util.List<String> into = null;
+        for (String line : output.split("\\R")) {
+            String text = line.strip();
+            if (text.equals("=== available")) {
+                into = available;
+            } else if (text.equals("=== enabled")) {
+                into = enabled;
+            } else if (into != null && !text.isEmpty() && SITE.matcher(text).matches()) {
+                into.add(text);
+            }
+        }
+        return new com.kubo.model.network.NginxSites(available, enabled);
+    }
+
     public static String pm2Restart(String app) {
         return "pm2 restart " + ShellQuote.quote(requireApp(app));
     }
