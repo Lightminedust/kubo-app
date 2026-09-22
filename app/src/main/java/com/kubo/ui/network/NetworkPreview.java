@@ -125,6 +125,8 @@ public final class NetworkPreview {
         scope.showForPreview(exposedServer(), -1);
         scope.flow().fit();
         scope.flow().setLoading(true);
+        scope.machine().setReading(true);
+        scope.layout();
         scope.flow().freeze(1.35);
         write(scene, output, "network-reading");
         scope.shutdown();

@@ -160,6 +160,7 @@ public final class NetworkScope extends StackPane {
         }
         if (announce) {
             flow.setLoading(true);
+            machine.setReading(true);
         }
         worker.execute(() -> {
             NetworkMap read;
@@ -171,12 +172,14 @@ public final class NetworkScope extends StackPane {
                 LOG.log(System.Logger.Level.ERROR, "Reading the network failed", e);
                 Platform.runLater(() -> {
                     flow.setLoading(false);
+                    machine.setReading(false);
                     showReadFailure(e);
                 });
                 return;
             }
             Platform.runLater(() -> {
                 flow.setLoading(false);
+                machine.setReading(false);
                 apply(read);
             });
         });
@@ -916,6 +919,11 @@ public final class NetworkScope extends StackPane {
     }
 
     // Previews reach in through these.
+
+    /** For the previews: the panel down the left, so a still picture can show it mid-read. */
+    MachinePanel machine() {
+        return machine;
+    }
 
     NetworkTree flow() {
         return flow;

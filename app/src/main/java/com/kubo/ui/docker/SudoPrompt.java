@@ -24,6 +24,8 @@ public final class SudoPrompt extends VBox {
     private final PasswordField field = new PasswordField();
     private final Label status = new Label();
     private final Button confirm = new Button("AUTHORISE");
+    /** Runs under the field while sudo is being asked. A password check is a round trip, not an instant. */
+    private final com.kubo.ui.Pulse pulse = new com.kubo.ui.Pulse();
     private final Runnable onCancel;
 
     /**
@@ -88,6 +90,7 @@ public final class SudoPrompt extends VBox {
     private void setBusy(boolean busy) {
         confirm.setDisable(busy);
         field.setDisable(busy);
+        pulse.setRunning(busy);
         confirm.setText(busy ? "CHECKING…" : "AUTHORISE");
         if (busy) {
             status.setText("");

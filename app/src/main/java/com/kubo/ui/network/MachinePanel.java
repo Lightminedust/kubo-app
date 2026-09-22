@@ -37,10 +37,17 @@ final class MachinePanel extends VBox {
     private Identity identity = Identity.empty();
     private Map<String, Counter.Rate> rates = Map.of();
     private Naming naming = Naming.none();
+    /**
+     * What the panel is currently drawn from. Everything here changes once in a blue moon and the screen
+     * re-reads every twelve seconds, so rebuilding the whole column each time made it blink for no reason.
+     */
+    private String drawnFrom = "";
+    private final java.util.Map<String, Label> speeds = new java.util.LinkedHashMap<>();
+    private final com.kubo.ui.Pulse pulse = new com.kubo.ui.Pulse();
 
     MachinePanel() {
         VBox column = new VBox(12,
-                label("THE MACHINE", "series"),
+                label("THE MACHINE", "series"), pulse,
                 caption("REACHED AT"), reached,
                 caption("INTERFACES"), links,
                 caption("ROUTING"), routing,
@@ -68,6 +75,16 @@ final class MachinePanel extends VBox {
         this.rates = rates;
         this.naming = naming;
         reached.setText(identity.reachedAt().isBlank() ? "unknown" : identity.reachedAt());
+
+        // The rate is the only thing that really moves between two readings. When nothing else changed, only
+        // the rate is written, and the panel stops flickering.
+        String signature = signature(identity);
+        if (signature.equals(drawnFrom)) {
+            writeSpeeds(rates);
+            return;
+        }
+        drawnFrom = signature;
+        speeds.clear();
 
         links.getChildren().clear();
         List<Link> real = identity.realLinks().stream().filter(link -> !Naming.virtual(link)).toList();
@@ -122,6 +139,37 @@ final class MachinePanel extends VBox {
         }
     }
 
+    /** Says the panel is waiting on the server, in the panel. */
+    void setReading(boolean reading) {
+        pulse.setRunning(reading);
+    }
+
+    /**
+     * Everything on this panel except the rate. Two readings with the same one draw the same picture.
+     */
+    private static String signature(Identity identity) {
+        StringBuilder text = new StringBuilder(identity.reachedAt());
+        for (Link link : identity.links()) {
+            text.append('|').append(link.name()).append(link.state()).append(link.mtu()).append(link.mac());
+            for (Link.Address address : link.addresses()) {
+                text.append(',').append(address.cidr());
+            }
+        }
+        for (Route route : identity.routes()) {
+            text.append('|').append(route.destination()).append(route.gateway()).append(route.device());
+        }
+        text.append('|').append(identity.resolvers().servers())
+                .append(identity.resolvers().searchDomains()).append(identity.resolvers().source());
+        return text.toString();
+    }
+
+    private void writeSpeeds(Map<String, Counter.Rate> rates) {
+        for (var entry : speeds.entrySet()) {
+            Counter.Rate rate = rates.get(entry.getKey());
+            entry.getValue().setText(rate == null ? "" : speed(rate));
+        }
+    }
+
     private static String describe(Route route) {
         String gateway = route.gateway().isBlank() ? "" : "via " + route.gateway() + " ";
         return gateway + "on " + route.device();
@@ -132,7 +180,9 @@ final class MachinePanel extends VBox {
         Label state = label(link.up() ? "UP" : "DOWN", link.up() ? "card-success" : "card-problem");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox head = new HBox(10, name, state, spacer, label(rate == null ? "" : speed(rate), "mono-muted"));
+        Label speed = label(rate == null ? "" : speed(rate), "mono-muted");
+        speeds.put(link.name(), speed);
+        HBox head = new HBox(10, name, state, spacer, speed);
         head.setAlignment(Pos.CENTER_LEFT);
 
         VBox block = new VBox(3, head);
