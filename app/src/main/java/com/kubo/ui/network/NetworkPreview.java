@@ -51,6 +51,13 @@ public final class NetworkPreview {
                 render(output, "network-safe", tidyServer(), -1);
                 render(output, "network-crowded", crowdedServer(), -1);
                 renderHelp(output);
+                renderCard(output, "network-connections",
+                        new ConnectionsCard(sampleConnections(), address -> { }, true, () -> { }));
+                renderCard(output, "network-edge", new GuardCard(sampleJails(), sampleCertificates(),
+                        java.time.Instant.now(), new GuardCard.Hands() {
+                            @Override public void ban(String jail, String address) { }
+                            @Override public void unban(String jail, String address) { }
+                        }, () -> { }));
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
@@ -70,6 +77,21 @@ public final class NetworkPreview {
         scope.showForPreview(map, select);
         scope.flow().fit();
         scope.flow().freeze(2.4);
+        write(scene, output, name);
+        scope.shutdown();
+    }
+
+    /** The two cards the rail opens, over the screen they belong to. */
+    private static void renderCard(Path output, String name, javafx.scene.layout.Region card) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        StackPane holder = new StackPane(scope, card);
+        Scene scene = new Scene(holder, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        holder.applyCss();
+        holder.layout();
+        scope.showForPreview(exposedServer(), -1);
+        scope.flow().fit();
+        scope.flow().freeze(2.0);
         write(scene, output, name);
         scope.shutdown();
     }
@@ -147,7 +169,62 @@ public final class NetworkPreview {
         List<Endpoint> endpoints = NetworkService.correlate(sockets, pm2, containers, vhosts, firewall);
         List<Risk> risks = endpoints.stream().map(Risk::of).flatMap(java.util.Optional::stream).toList();
         return new NetworkMap(firewall, vhosts, endpoints, pm2, risks,
-                List.of("Nginx is installed but its configuration could not be read, which needs root."));
+                List.of("Nginx is installed but its configuration could not be read, which needs root."),
+                sampleIdentity(), sampleConnections(), sampleRates(), sampleJails(), sampleCertificates());
+    }
+
+    /**
+     * A machine with one public interface, a Docker bridge and a resolver, which is what a small VPS looks like.
+     */
+    static com.kubo.model.network.Identity sampleIdentity() {
+        com.kubo.model.network.Link lo = new com.kubo.model.network.Link("lo", "UNKNOWN", "", 65536,
+                List.of(new com.kubo.model.network.Link.Address("127.0.0.1", 8, false)));
+        com.kubo.model.network.Link eth0 = new com.kubo.model.network.Link("eth0", "UP", "96:00:02:d1:4f:aa", 1500,
+                List.of(new com.kubo.model.network.Link.Address("203.0.113.10", 24, false),
+                        new com.kubo.model.network.Link.Address("2001:db8:2044:1::1", 64, true)));
+        com.kubo.model.network.Link docker0 = new com.kubo.model.network.Link("docker0", "DOWN",
+                "02:42:1b:9c:11:02", 1500,
+                List.of(new com.kubo.model.network.Link.Address("172.17.0.1", 16, false)));
+        return new com.kubo.model.network.Identity(List.of(lo, eth0, docker0),
+                List.of(new com.kubo.model.network.Route("default", "203.0.113.1", "eth0", "", 100),
+                        new com.kubo.model.network.Route("172.17.0.0/16", "", "docker0", "172.17.0.1", -1)),
+                new com.kubo.model.network.Resolvers(List.of("1.1.1.1", "8.8.8.8"), List.of("example.com"),
+                        com.kubo.model.network.Resolvers.RESOLVECTL),
+                "203.0.113.10");
+    }
+
+    static List<com.kubo.model.network.Connection> sampleConnections() {
+        return List.of(
+                new com.kubo.model.network.Connection(Protocol.TCP, "203.0.113.10", 22, "86.15.2.9", 51234,
+                        "sshd", 8213, true),
+                new com.kubo.model.network.Connection(Protocol.TCP, "203.0.113.10", 443, "45.135.232.17", 40122,
+                        "nginx", 700, true),
+                new com.kubo.model.network.Connection(Protocol.TCP, "203.0.113.10", 443, "45.135.232.17", 40123,
+                        "nginx", 700, true),
+                new com.kubo.model.network.Connection(Protocol.TCP, "127.0.0.1", 44210, "127.0.0.1", 6379,
+                        "node", 1490, false));
+    }
+
+    static java.util.Map<String, com.kubo.model.network.Counter.Rate> sampleRates() {
+        return java.util.Map.of("eth0", new com.kubo.model.network.Counter.Rate(184_320, 2_411_724));
+    }
+
+    static List<com.kubo.model.network.Jail> sampleJails() {
+        return List.of(
+                new com.kubo.model.network.Jail("sshd", 3, 1892, 57,
+                        List.of("45.135.232.17", "193.32.162.8")),
+                new com.kubo.model.network.Jail("nginx-http-auth", 0, 0, 0, List.of()));
+    }
+
+    static List<com.kubo.model.network.Certificate> sampleCertificates() {
+        java.time.Instant now = java.time.Instant.now();
+        return List.of(
+                new com.kubo.model.network.Certificate("/etc/letsencrypt/live/example.com/fullchain.pem",
+                        now.plus(java.time.Duration.ofDays(64)), "CN = example.com", "CN = R11", ""),
+                new com.kubo.model.network.Certificate("/etc/letsencrypt/live/api.example.com/fullchain.pem",
+                        now.plus(java.time.Duration.ofDays(9)), "CN = api.example.com", "CN = R11", ""),
+                com.kubo.model.network.Certificate.unreadable("/etc/ssl/private/old.pem",
+                        "Could not open file or uri for loading certificate: Permission denied"));
     }
 
     /**

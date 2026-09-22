@@ -88,6 +88,9 @@ public final class NetworkScope extends StackPane {
     private static final System.Logger LOG = System.getLogger(NetworkScope.class.getName());
 
     private NetworkMap map = NetworkMap.empty();
+    private final MachinePanel machine = new MachinePanel();
+    /** The edge card while it is open, so a ban can report into the card it was clicked in. */
+    private GuardCard guard;
     private Endpoint selected;
     private StackPane overlay;
     private ContextMenu menu;
@@ -105,6 +108,7 @@ public final class NetworkScope extends StackPane {
         }
 
         BorderPane body = new BorderPane(flow);
+        body.setLeft(machine);
         body.setRight(buildInspector());
 
         BorderPane layout = new BorderPane(body);
@@ -200,6 +204,8 @@ public final class NetworkScope extends StackPane {
         headline.setStyle("-fx-text-fill: " + web(alerts > 0 ? ALERT : exposed > 0 ? OPEN : SAFE) + ";");
         caption.setText((read.endpoints().size() + " LISTENING PORTS   ·   " + read.vhosts().size()
                 + " NGINX SERVER BLOCKS   ·   " + read.pm2().size() + " PM2 APPS").toUpperCase(Locale.ROOT));
+
+        machine.show(read.identity(), read.rates());
 
         exposedValue.setText(String.valueOf(exposed));
         exposedValue.setStyle("-fx-text-fill: " + web(exposed > 0 ? OPEN : SAFE) + ";");
@@ -558,6 +564,78 @@ public final class NetworkScope extends StackPane {
         }
     }
 
+    /**
+     * Who is connected right now. Banning is offered only when fail2ban answered, because a ban command sent to
+     * a server that does not run fail2ban fails with a message nobody can act on.
+     */
+    private void showConnections() {
+        boolean canBan = !map.jails().isEmpty();
+        showOverlay(new ConnectionsCard(map.connections(),
+                address -> banEverywhere(address), canBan, this::hideOverlay));
+    }
+
+    private void showEdge() {
+        guard = new GuardCard(map.jails(), map.certificates(), java.time.Instant.now(), new GuardCard.Hands() {
+            @Override
+            public void ban(String jail, String address) {
+                sendGuard(() -> network.ban(jail, address), address + " banned in " + jail);
+            }
+
+            @Override
+            public void unban(String jail, String address) {
+                sendGuard(() -> network.unban(jail, address), "Ban lifted on " + address);
+            }
+        }, this::hideOverlay);
+        showOverlay(guard);
+    }
+
+    /**
+     * Bans an address in the first jail there is.
+     *
+     * <p>fail2ban bans per jail, and from the connection list there is no way to know which jail a stranger
+     * belongs in. The first one is used, which on nearly every server is sshd, and the edge card is where a
+     * specific jail can be chosen.
+     */
+    private void banEverywhere(String address) {
+        if (map.jails().isEmpty() || network == null) {
+            return;
+        }
+        String jail = map.jails().get(0).name();
+        sendGuard(() -> network.ban(jail, address), address + " banned in " + jail);
+    }
+
+    /**
+     * Runs a ban or an unban and reports into the card it was asked from.
+     */
+    private void sendGuard(java.util.function.Supplier<CommandEntry> work, String done) {
+        if (network == null) {
+            return;
+        }
+        runWithRoot(() -> worker.execute(() -> {
+            String trouble;
+            try {
+                CommandEntry result = work.get();
+                trouble = result.success() ? null
+                        : firstLine(result.error().isBlank() ? result.output() : result.error());
+            } catch (IllegalArgumentException e) {
+                // Kubo refusing to send it: its own words, not the server's.
+                trouble = e.getMessage();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "A fail2ban action failed", e);
+                trouble = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            String said = trouble;
+            javafx.application.Platform.runLater(() -> {
+                if (guard != null) {
+                    guard.report(said, done);
+                }
+                if (said == null) {
+                    refresh(false);
+                }
+            });
+        }));
+    }
+
     // Building
 
     private VBox buildMasthead() {
@@ -602,13 +680,16 @@ public final class NetworkScope extends StackPane {
             flow.setShowIsolated(!flow.showsIsolated());
             isolatedToggle.setText(flow.showsIsolated() ? "HIDE LOOPBACK" : "SHOW LOOPBACK");
         });
+        Button connections = rail("CONNECTIONS", event -> showConnections());
+        Button edge = rail("THE EDGE", event -> showEdge());
         Button reload = rail("TEST & RELOAD NGINX", event -> reloadNginx());
         Button shell = rail("SHELL", event -> console.showShell());
         Button help = rail("?", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), reload, shell, spacer, help);
+        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, separator(),
+                reload, shell, spacer, help);
         rail.setAlignment(Pos.CENTER_LEFT);
         rail.setPadding(new Insets(0, 0, 10, 0));
         return rail;
