@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kubo — see and manage your server</title>
-<meta name="description" content="Kubo is a desktop app for Windows and Linux that connects to your own Linux server over SSH and lets you see and manage it visually. Nothing is installed on the server; nothing leaves your machine.">
+<title>Kubo · See and manage your Linux server</title>
+<meta name="description" content="Kubo is a desktop app for Windows and Linux. It connects to your Linux server over SSH and manages its files, services, ports, firewall, Docker, Redis and packages. Nothing is installed on the server.">
 
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
@@ -15,12 +15,12 @@
      uncomment the two og:image lines to get a picture in the preview. -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kubo.gemmi-e.com/">
-<meta property="og:title" content="Kubo — stop reading your server, start seeing it">
-<meta property="og:description" content="A desktop app that connects to your own Linux server over SSH and turns it into something you can look at. Nothing installed on the server; nothing leaves your machine.">
+<meta property="og:title" content="Kubo · See and manage your Linux server">
+<meta property="og:description" content="A desktop app that manages your Linux server over SSH: files, services, ports, firewall, Docker, Redis and packages. Nothing is installed on the server.">
 <!-- <meta property="og:image" content="https://kubo.gemmi-e.com/assets/social.png"> -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Kubo — stop reading your server, start seeing it">
-<meta name="twitter:description" content="Connect to your own Linux server over SSH and see it: performance, real exposure, files, Docker, Redis, packages. Nothing leaves your machine.">
+<meta name="twitter:title" content="Kubo · See and manage your Linux server">
+<meta name="twitter:description" content="Manage your Linux server over SSH: files, services, ports, firewall, Docker, Redis and packages. Nothing is installed on the server.">
 <!-- <meta name="twitter:image" content="https://kubo.gemmi-e.com/assets/social.png"> -->
 
 <!--
@@ -147,6 +147,7 @@ section.block{padding-block:88px;border-bottom:1px solid var(--line)}
 .head{max-width:720px;margin-bottom:40px}
 .head h2{font-size:clamp(28px,4vw,40px);margin:.4em 0 .3em;font-weight:700;letter-spacing:-.01em;text-transform:uppercase}
 .head p{color:var(--dim);margin:0;font-size:16.5px}
+.head p + p{margin-top:14px}
 
 /* ---- video figure ---- */
 .figure{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
@@ -333,22 +334,22 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     <a class="brand" href="#top"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</a>
     <button class="nav-toggle" onclick="document.getElementById('nav').classList.toggle('open')">MENU</button>
     <nav class="nav" id="nav">
-      <a href="#what" lang="en">What it is</a>
-      <a href="#what" lang="fr">Ce que c'est</a>
+      <a href="#what" lang="en">Overview</a>
+      <a href="#what" lang="fr">Présentation</a>
       <a href="#files" lang="en">Files</a>
       <a href="#files" lang="fr">Fichiers</a>
       <a href="#network" lang="en">Network</a>
-      <a href="#network" lang="fr">R&eacute;seau</a>
+      <a href="#network" lang="fr">Réseau</a>
       <a href="#services">Services</a>
-      <a href="#scopes" lang="en">Everything</a>
-      <a href="#scopes" lang="fr">Tout</a>
+      <a href="#scopes" lang="en">All screens</a>
+      <a href="#scopes" lang="fr">Écrans</a>
       <a href="#security" lang="en">Security</a>
-      <a href="#security" lang="fr">S&eacute;curit&eacute;</a>
+      <a href="#security" lang="fr">Sécurité</a>
       <a href="#contact">Contact</a>
-      <a class="btn primary" href="#download" lang="en">Get Kubo</a>
-      <a class="btn primary" href="#download" lang="fr">Obtenir Kubo</a>
+      <a class="btn primary" href="#download" lang="en">Download</a>
+      <a class="btn primary" href="#download" lang="fr">Télécharger</a>
       <button class="lang" type="button" data-lang-switch>
-        <span lang="en">Fran&ccedil;ais</span><span lang="fr">English</span>
+        <span lang="en">Français</span><span lang="fr">English</span>
       </button>
     </nav>
   </div>
@@ -360,28 +361,27 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <section class="hero">
     <canvas id="rain" aria-hidden="true"></canvas>
     <div class="wrap">
-      <span class="kicker" lang="en">Your server, drawn</span>
-      <span class="kicker" lang="fr">Votre serveur, dessin&eacute;</span>
-      <h1 lang="en">Stop reading<br>your server.<br>Start seein<span class="u">g</span> it.</h1>
-      <h1 lang="fr">Arr&ecirc;tez de lire<br>votre serveur.<br>Re<span class="u">g</span>ardez-le.</h1>
-      <p class="lede" lang="en">A desktop app for Windows and Linux that connects to <b>your own Linux server</b> over SSH
-        and draws it instead of tabulating it — live performance, what is really exposed, your files, Docker,
-        Redis, packages. <b>Nothing is installed on the server, and nothing ever leaves your machine.</b></p>
-      <p class="lede" lang="fr">Une application de bureau, Windows et Linux, qui se connecte en SSH &agrave;
-        <b>votre propre serveur Linux</b> et le dessine au lieu de le mettre en tableau — la charge en direct,
-        ce qui est vraiment expos&eacute;, vos fichiers, Docker, Redis, les paquets.
-        <b>Rien n'est install&eacute; sur le serveur, et rien ne quitte jamais votre machine.</b></p>
+      <span class="kicker" lang="en">Linux server management</span>
+      <span class="kicker" lang="fr">Administration de serveurs Linux</span>
+      <h1 lang="en">See your<br>server.<br>Mana<span class="u">g</span>e it.</h1>
+      <h1 lang="fr">Voyez votre<br>serveur.<br><span class="u">G</span>érez-le.</h1>
+      <p class="lede" lang="en">Kubo is a desktop app for Windows and Linux. It connects to your server over SSH and
+        gives you its files, services, ports, firewall, Docker containers, Redis and packages in one interface.
+        <b>Nothing is installed on the server.</b></p>
+      <p class="lede" lang="fr">Kubo est une application de bureau pour Windows et Linux. Elle se connecte à votre
+        serveur en SSH et réunit ses fichiers, services, ports, pare-feu, conteneurs Docker, Redis et paquets dans
+        une seule interface. <b>Rien n'est installé sur le serveur.</b></p>
       <div class="cta" lang="en">
         <a class="btn primary" href="#download" data-download data-explain="exe">Download for Windows</a>
-        <a class="btn" href="#download">On Linux →</a>
-        <a class="btn" href="#files">See it move ↓</a>
-        <span class="meta">Brings its own Java · 75 MB · free</span>
+        <a class="btn" href="#download">Linux →</a>
+        <a class="btn" href="#files">See it in action ↓</a>
+        <span class="meta">Java included · 75 MB · Free</span>
       </div>
       <div class="cta" lang="fr">
-        <a class="btn primary" href="#download" data-download data-explain="exe">T&eacute;l&eacute;charger pour Windows</a>
-        <a class="btn" href="#download">Sur Linux →</a>
-        <a class="btn" href="#files">Le voir en action ↓</a>
-        <span class="meta">Java embarqu&eacute; · 75 Mo · gratuit</span>
+        <a class="btn primary" href="#download" data-download data-explain="exe">Télécharger pour Windows</a>
+        <a class="btn" href="#download">Linux →</a>
+        <a class="btn" href="#files">Voir la démo ↓</a>
+        <span class="meta">Java inclus · 75 Mo · Gratuit</span>
       </div>
     </div>
   </section>
@@ -389,18 +389,18 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <!-- TRUST STRIP -->
   <section class="trust">
     <div class="wrap">
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--teal)"></span>Nothing installed</h3>
-        <p>Kubo only runs ordinary shell commands over SSH. No agent, no daemon, nothing left behind on the server.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--teal)"></span>Rien d'install&eacute;</h3>
-        <p>Kubo n'ex&eacute;cute que des commandes shell ordinaires, par SSH. Aucun agent, aucun d&eacute;mon, rien qui reste sur le serveur.</p></div>
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--cyan)"></span>Nothing leaves your machine</h3>
-        <p>It talks to your server and to no one else. No telemetry, no account, no cloud. Your data stays yours.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--cyan)"></span>Rien ne quitte votre machine</h3>
-        <p>Il parle &agrave; votre serveur et &agrave; personne d'autre. Aucune t&eacute;l&eacute;m&eacute;trie, aucun compte, aucun cloud. Vos donn&eacute;es restent les v&ocirc;tres.</p></div>
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--magenta)"></span>Every command shown</h3>
-        <p>Everything Kubo sends is listed as it happens and written to a local log — the commands, never their output.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--magenta)"></span>Chaque commande affich&eacute;e</h3>
-        <p>Tout ce que Kubo envoie est list&eacute; au moment o&ugrave; il l'envoie, et &eacute;crit dans un journal local — les commandes, jamais leur sortie.</p></div>
+      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--teal)"></span>No agent</h3>
+        <p>Kubo only runs standard shell commands over SSH. There is nothing to install on the server.</p></div>
+      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--teal)"></span>Aucun agent</h3>
+        <p>Kubo n'exécute que des commandes shell standard via SSH. Il n'y a rien à installer sur le serveur.</p></div>
+      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--cyan)"></span>No cloud</h3>
+        <p>Kubo connects to your server and nothing else. No account, no telemetry.</p></div>
+      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--cyan)"></span>Aucun cloud</h3>
+        <p>Kubo se connecte à votre serveur et à rien d'autre. Pas de compte, pas de télémétrie.</p></div>
+      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--magenta)"></span>Every command logged</h3>
+        <p>Each command Kubo sends is displayed and saved on your computer. Outputs are never stored.</p></div>
+      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--magenta)"></span>Chaque commande journalisée</h3>
+        <p>Chaque commande envoyée est affichée et enregistrée sur votre ordinateur. Les sorties ne sont jamais conservées.</p></div>
     </div>
   </section>
 
@@ -408,17 +408,20 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <section class="block" id="what">
     <div class="wrap">
       <div class="head">
-        <span class="kicker" lang="en">What it is</span>
-        <span class="kicker" lang="fr">Ce que c'est</span>
-        <h2 lang="en">A terminal you can read at a glance</h2>
-        <h2 lang="fr">Un terminal qui se lit d'un coup d'&oelig;il</h2>
-        <p lang="en">The command line still works — Kubo doesn't replace it, it sits beside it. You can manage a container
-          on a map and in a shell at the same time, and the log shows you both. It's built for the person who
-          runs one server and wants to actually understand it, not decode it.</p>
-        <p lang="fr">La ligne de commande marche toujours — Kubo ne la remplace pas, il se met &agrave; c&ocirc;t&eacute;.
-          Vous pouvez g&eacute;rer un conteneur sur une carte et dans un shell en m&ecirc;me temps, et le journal vous
-          montre les deux. C'est fait pour celui qui administre un serveur et veut vraiment le comprendre, pas le
-          d&eacute;chiffrer.</p>
+        <span class="kicker" lang="en">Overview</span>
+        <span class="kicker" lang="fr">Présentation</span>
+        <h2 lang="en">What the terminal doesn't show you</h2>
+        <h2 lang="fr">Ce que le terminal ne vous montre pas</h2>
+        <p lang="en">A service that won't restart after a reboot. A database port open to the internet. A container
+          slowly eating memory. All of it is visible from a shell, if you know which command to run and when.
+          Kubo runs those commands for you and shows the result.</p>
+        <p lang="fr">Un service qui ne redémarrera pas au prochain reboot. Un port de base de données ouvert sur
+          Internet. Un conteneur qui consomme de plus en plus de mémoire. Tout cela se voit depuis un shell, à
+          condition de savoir quelle commande lancer, et quand. Kubo les lance pour vous et affiche le résultat.</p>
+        <p lang="en">The terminal stays available inside the app. Anything that changes the server asks for
+          confirmation first.</p>
+        <p lang="fr">Le terminal reste disponible dans l'application. Toute action qui modifie le serveur demande
+          une confirmation.</p>
       </div>
     </div>
   </section>
@@ -431,10 +434,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <video autoplay muted loop playsinline preload="metadata">
             <source src="kubo-files.webm" type="video/webm">
             <source src="kubo-files.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vid&eacute;o.</span>
+            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
           </video>
           <button class="play" type="button" data-play aria-label="Play the files demo with sound"
-                  data-aria-fr="Lire la d&eacute;monstration des fichiers avec le son">
+                  data-aria-fr="Lire la démo des fichiers avec le son">
             <svg viewBox="0 0 76 76" aria-hidden="true">
               <circle class="ring" cx="38" cy="38" r="36"/>
               <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
@@ -443,37 +446,24 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           </button>
         </div>
         <div class="body">
-          <div class="fignum" lang="en">Fig. 01 — File manager</div>
-          <div class="fignum" lang="fr">Fig. 01 — Gestionnaire de fichiers</div>
-          <h3 lang="en">Your files, as a <span class="accent-f">living tree</span></h3>
-          <h3 lang="fr">Vos fichiers, comme un <span class="accent-f">arbre vivant</span></h3>
-          <p lang="en">The folders open left to right, one column per level, every entry a point of light on a fibre —
-            from <code>/</code> down to your home and beyond. Single-click for details, double-click to open,
-            drag to pan with inertia.</p>
-          <p lang="fr">Les dossiers s'ouvrent de gauche &agrave; droite, une colonne par niveau, chaque entr&eacute;e
-            un point de lumi&egrave;re sur une fibre — de <code>/</code> jusqu'&agrave; votre dossier personnel et
-            au-del&agrave;. Un clic pour le d&eacute;tail, un double-clic pour ouvrir, un glisser pour d&eacute;placer
-            la vue avec son inertie.</p>
-          <p lang="en">Right-click any entry to edit, rename, copy, move, set permissions, download or delete; drop files
-            from your PC onto a folder to upload them. Folders you can't open are drawn in red before you even
-            try. It's the everyday SSH file browser — quicker to read, and quicker to trust, than the tools most
-            people put up with.</p>
-          <p lang="fr">Clic droit sur n'importe quelle entr&eacute;e pour &eacute;diter, renommer, copier,
-            d&eacute;placer, changer les droits, t&eacute;l&eacute;charger ou supprimer ; d&eacute;posez des fichiers
-            de votre PC sur un dossier pour les envoyer. Les dossiers que vous ne pouvez pas ouvrir sont dessin&eacute;s
-            en rouge avant m&ecirc;me d'essayer. C'est l'explorateur SSH de tous les jours — plus rapide &agrave; lire,
-            et plus facile &agrave; croire, que les outils qu'on subit d'habitude.</p>
-          <p lang="en">And there's a shell right there that lists every command it sends, so you always see exactly what
-            touched your server.</p>
-          <p lang="fr">Et un shell juste &agrave; c&ocirc;t&eacute;, qui liste chaque commande envoy&eacute;e :
-            vous voyez toujours exactement ce qui a touch&eacute; votre serveur.</p>
+          <div class="fignum" lang="en">Fig. 01 · Files</div>
+          <div class="fignum" lang="fr">Fig. 01 · Fichiers</div>
+          <h3 lang="en">Manage your files <span class="accent-f">without SFTP</span></h3>
+          <h3 lang="fr">Gérez vos fichiers <span class="accent-f">sans client SFTP</span></h3>
+          <p lang="en">Browse the whole filesystem, edit a file, change permissions, copy, move, delete. Drag files
+            from your computer to upload them.</p>
+          <p lang="fr">Parcourez tout le système de fichiers, modifiez un fichier, changez les droits, copiez,
+            déplacez, supprimez. Glissez des fichiers depuis votre ordinateur pour les envoyer.</p>
+          <p lang="en">Root mode unlocks the folders that belong to root. A shell opens in the current folder.</p>
+          <p lang="fr">Le mode root donne accès aux dossiers qui appartiennent à root. Un shell s'ouvre dans le
+            dossier courant.</p>
           <div class="taglist" lang="en">
-            <span class="tag">Browse</span><span class="tag">Edit</span><span class="tag">Upload / download</span>
-            <span class="tag">Permissions</span><span class="tag">Safe transfers</span><span class="tag">Shell</span>
+            <span class="tag">Edit</span><span class="tag">Permissions</span><span class="tag">Upload</span>
+            <span class="tag">Download</span><span class="tag">Root mode</span><span class="tag">Shell</span>
           </div>
           <div class="taglist" lang="fr">
-            <span class="tag">Naviguer</span><span class="tag">&Eacute;diter</span><span class="tag">Envoi / t&eacute;l&eacute;chargement</span>
-            <span class="tag">Droits</span><span class="tag">Transferts s&ucirc;rs</span><span class="tag">Shell</span>
+            <span class="tag">Édition</span><span class="tag">Droits</span><span class="tag">Envoi</span>
+            <span class="tag">Téléchargement</span><span class="tag">Mode root</span><span class="tag">Shell</span>
           </div>
         </div>
       </div>
@@ -488,10 +478,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <video autoplay muted loop playsinline preload="metadata">
             <source src="kubo-network.webm" type="video/webm">
             <source src="kubo-network.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vid&eacute;o.</span>
+            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
           </video>
           <button class="play" type="button" data-play aria-label="Play the network demo with sound"
-                  data-aria-fr="Lire la d&eacute;monstration du r&eacute;seau avec le son">
+                  data-aria-fr="Lire la démo du réseau avec le son">
             <svg viewBox="0 0 76 76" aria-hidden="true">
               <circle class="ring" cx="38" cy="38" r="36"/>
               <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
@@ -500,37 +490,25 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           </button>
         </div>
         <div class="body">
-          <div class="fignum" lang="en">Fig. 02 — Network</div>
-          <div class="fignum" lang="fr">Fig. 02 — R&eacute;seau</div>
-          <h3 lang="en">See what is <span class="accent-n">really exposed</span></h3>
-          <h3 lang="fr">Voyez ce qui est <span class="accent-n">vraiment expos&eacute;</span></h3>
-          <p lang="en">The way in, read left to right: the internet on one side, your server on the other, and the firewall
-            as a pane of glass between them. Your ports branch off by how far they can truly be reached —
-            exposed, open, shielded, private, local — so an open database screams and a loopback-only port stays
-            quiet.</p>
-          <p lang="fr">Le chemin d'entr&eacute;e, lu de gauche &agrave; droite : Internet d'un c&ocirc;t&eacute;, votre
-            serveur de l'autre, et le pare-feu comme une vitre entre les deux. Vos ports se rangent selon d'o&ugrave;
-            on peut vraiment les atteindre — expos&eacute;, ouvert, abrit&eacute;, priv&eacute;,
-            local — donc une base de donn&eacute;es ouverte saute aux yeux, et un port qui n'&eacute;coute que la boucle
-            locale reste discret.</p>
-          <p lang="en">Kubo cross-references <code>ss</code>, PM2 and Docker to name what holds each port, and reads whichever
-            firewall you actually run — UFW, firewalld, nftables or iptables. When it can't read the rules, it
-            says so, and never pretends a firewall it couldn't read is protecting you.</p>
-          <p lang="fr">Kubo recoupe <code>ss</code>, PM2 et Docker pour nommer ce qui tient chaque port, et lit le
-            pare-feu que vous utilisez vraiment — UFW, firewalld, nftables ou iptables. Quand il n'arrive pas &agrave;
-            lire les r&egrave;gles, il le dit, et ne fait jamais croire qu'un pare-feu qu'il n'a pas su lire vous
-            prot&egrave;ge.</p>
-          <p lang="en">From here you can open or close a port, restart or kill what holds it, reload Nginx — each change
-            confirmed by typing the port or PID back first.</p>
-          <p lang="fr">De l&agrave;, vous pouvez ouvrir ou fermer un port, red&eacute;marrer ou tuer ce qui le tient,
-            recharger Nginx — chaque changement confirm&eacute; en retapant d'abord le port ou le PID.</p>
+          <div class="fignum" lang="en">Fig. 02 · Network</div>
+          <div class="fignum" lang="fr">Fig. 02 · Réseau</div>
+          <h3 lang="en">Know which ports are <span class="accent-n">really exposed</span></h3>
+          <h3 lang="fr">Sachez quels ports sont <span class="accent-n">vraiment exposés</span></h3>
+          <p lang="en">A port that is listening is not necessarily reachable. Kubo compares each listening port with
+            your firewall rules and tells you whether it is open to the internet, blocked, or local only.</p>
+          <p lang="fr">Un port en écoute n'est pas forcément accessible. Kubo compare chaque port avec les règles de
+            votre pare-feu et vous dit s'il est ouvert sur Internet, bloqué, ou seulement local.</p>
+          <p lang="en">It reads UFW, firewalld, nftables and iptables, and names the process, PM2 app or Docker
+            container behind each port. If it cannot read the rules, it says so.</p>
+          <p lang="fr">Il lit UFW, firewalld, nftables et iptables, et nomme le processus, l'application PM2 ou le
+            conteneur Docker derrière chaque port. S'il ne peut pas lire les règles, il le dit.</p>
           <div class="taglist" lang="en">
-            <span class="tag">Real exposure</span><span class="tag">UFW · firewalld · nftables</span>
-            <span class="tag">Nginx routing</span><span class="tag">PM2 · Docker</span><span class="tag">One-click actions</span>
+            <span class="tag">Listening ports</span><span class="tag">Firewall</span><span class="tag">Nginx</span>
+            <span class="tag">PM2</span><span class="tag">Docker</span>
           </div>
           <div class="taglist" lang="fr">
-            <span class="tag">Exposition r&eacute;elle</span><span class="tag">UFW · firewalld · nftables</span>
-            <span class="tag">Routage Nginx</span><span class="tag">PM2 · Docker</span><span class="tag">Actions en un clic</span>
+            <span class="tag">Ports en écoute</span><span class="tag">Pare-feu</span><span class="tag">Nginx</span>
+            <span class="tag">PM2</span><span class="tag">Docker</span>
           </div>
         </div>
       </div>
@@ -545,10 +523,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <video autoplay muted loop playsinline preload="metadata">
             <source src="kubo-services.webm" type="video/webm">
             <source src="kubo-services.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vid&eacute;o.</span>
+            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
           </video>
           <button class="play" type="button" data-play aria-label="Play the services demo with sound"
-                  data-aria-fr="Lire la d&eacute;monstration des services avec le son">
+                  data-aria-fr="Lire la démo des services avec le son">
             <svg viewBox="0 0 76 76" aria-hidden="true">
               <circle class="ring" cx="38" cy="38" r="36"/>
               <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
@@ -557,54 +535,31 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           </button>
         </div>
         <div class="body">
-          <div class="fignum" lang="en">Fig. 03 &mdash; Services</div>
-          <div class="fignum" lang="fr">Fig. 03 &mdash; Services</div>
-          <h3 lang="en">Running now is not the same as <span class="accent-s">coming back</span></h3>
-          <h3 lang="fr">Il tourne aujourd'hui. <span class="accent-s">Sera-t-il l&agrave; demain ?</span></h3>
-          <p lang="en">systemd answers those as two separate questions, and nobody runs both of them against forty
-            services. So a server sits for months looking perfectly healthy, with something important that will
-            simply not be there after the next reboot &mdash; and you find out during the reboot.</p>
-          <p lang="fr">systemd r&eacute;pond &agrave; ces deux questions s&eacute;par&eacute;ment, et personne ne
-            les pose toutes les deux sur quarante services. Alors un serveur tourne pendant des mois, l'air en
-            parfaite sant&eacute;, avec quelque chose d'important qui ne sera tout simplement plus l&agrave; au
-            prochain red&eacute;marrage &mdash; et vous l'apprenez pendant le red&eacute;marrage.</p>
-          <p lang="en">Kubo asks both, for every unit, and sorts them by what the two answers add up to: <b>failed</b>,
-            <b>won't survive a reboot</b>, <b>enabled but not running</b>, <b>running</b>, <b>idle</b> &mdash;
-            each its own colour. Click one and the tree keeps growing to the right: what holds it up, then what
-            it holds up, a column at a time. Nothing is taken away, so the way you came is still behind you.</p>
-          <p lang="fr">Kubo pose les deux, pour chaque unit&eacute;, et les range selon ce que les deux
-            r&eacute;ponses donnent ensemble : <b>en &eacute;chec</b>, <b>ne survivra pas au red&eacute;marrage</b>,
-            <b>activ&eacute; mais arr&ecirc;t&eacute;</b>, <b>en marche</b>, <b>au repos</b> &mdash; chacun sa
-            couleur. Cliquez sur l'un et l'arbre continue vers la droite : ce qui le tient debout, puis ce qu'il
-            tient debout, une colonne &agrave; la fois. Rien n'est retir&eacute;, donc le chemin parcouru reste
-            derri&egrave;re vous.</p>
-          <p lang="en">Start, stop, restart, enable, disable. Cap a runaway service's memory or its share of the processor
-            without restarting it. Send it a signal. Give it settings of its own in a drop-in, so the file your
-            package shipped is never touched. Write a whole new service with the file tree right there to pick
-            what it runs &mdash; and Kubo tells you the script isn't executable <i>before</i> the unit is
-            written, not at the first failed start.</p>
-          <p lang="fr">D&eacute;marrer, arr&ecirc;ter, red&eacute;marrer, activer, d&eacute;sactiver. Plafonner la
-            m&eacute;moire d'un service qui s'emballe, ou sa part de processeur, sans le red&eacute;marrer. Lui
-            envoyer un signal. Lui donner ses propres r&eacute;glages dans un fichier &agrave; part, pour que celui
-            livr&eacute; par votre paquet ne soit jamais touch&eacute;. &Eacute;crire un service entier, avec
-            l'arbre des fichiers juste l&agrave; pour choisir ce qu'il lance &mdash; et Kubo vous pr&eacute;vient que le script
-            n'est pas ex&eacute;cutable <i>avant</i> d'&eacute;crire l'unit&eacute;, et non au premier
-            d&eacute;marrage rat&eacute;.</p>
-          <p lang="en">Stopping or disabling <code>sshd</code>, or the network under it, is refused outright rather than
-            confirmed. That is the one mistake with no way back: the server keeps running, perfectly healthy,
-            and you can never reach it again.</p>
-          <p lang="fr">Arr&ecirc;ter ou d&eacute;sactiver <code>sshd</code>, ou le r&eacute;seau en dessous, est
-            refus&eacute; net plut&ocirc;t que confirm&eacute;. C'est la seule erreur sans retour : le serveur
-            continue de tourner, en parfaite sant&eacute;, et vous ne pouvez plus jamais l'atteindre.</p>
+          <div class="fignum" lang="en">Fig. 03 · Services</div>
+          <div class="fignum" lang="fr">Fig. 03 · Services</div>
+          <h3 lang="en">Running now does not mean <span class="accent-s">running after a reboot</span></h3>
+          <h3 lang="fr">Actif maintenant ne veut pas dire <span class="accent-s">actif après un reboot</span></h3>
+          <p lang="en">A service can be running without being enabled at boot. It works until the next restart,
+            then it is gone. Kubo checks both states for every service and sorts them: failed, won't survive a
+            reboot, enabled but stopped, running, idle.</p>
+          <p lang="fr">Un service peut tourner sans être activé au démarrage. Il fonctionne jusqu'au prochain
+            redémarrage, puis disparaît. Kubo vérifie les deux états pour chaque service et les classe : en échec,
+            perdu au prochain reboot, activé mais arrêté, actif, inactif.</p>
+          <p lang="en">Select a service to see what it depends on and what depends on it. Start, stop, enable,
+            disable. Limit its memory or CPU without restarting it. Override its settings without touching the
+            original unit file. Turn any script on the server into a service.</p>
+          <p lang="fr">Sélectionnez un service pour voir ses dépendances et ce qui dépend de lui. Démarrez, arrêtez,
+            activez, désactivez. Limitez sa mémoire ou son CPU sans le redémarrer. Modifiez ses réglages sans
+            toucher au fichier d'origine. Transformez n'importe quel script du serveur en service.</p>
+          <p lang="en">Kubo refuses to stop SSH or the network. You would lose access to the server.</p>
+          <p lang="fr">Kubo refuse d'arrêter SSH ou le réseau. Vous perdriez l'accès au serveur.</p>
           <div class="taglist" lang="en">
-            <span class="tag">Five standings</span><span class="tag">Dependencies</span>
-            <span class="tag">Memory &amp; CPU limits</span><span class="tag">Signals</span>
-            <span class="tag">Drop-in settings</span><span class="tag">Write a new one</span>
+            <span class="tag">Boot state</span><span class="tag">Dependencies</span><span class="tag">CPU and memory limits</span>
+            <span class="tag">Overrides</span><span class="tag">New service</span>
           </div>
           <div class="taglist" lang="fr">
-            <span class="tag">Cinq &eacute;tats</span><span class="tag">D&eacute;pendances</span>
-            <span class="tag">Limites m&eacute;moire &amp; CPU</span><span class="tag">Signaux</span>
-            <span class="tag">Surcharges</span><span class="tag">Cr&eacute;er un service</span>
+            <span class="tag">État au démarrage</span><span class="tag">Dépendances</span><span class="tag">Limites CPU et mémoire</span>
+            <span class="tag">Surcharges</span><span class="tag">Nouveau service</span>
           </div>
         </div>
       </div>
@@ -615,45 +570,43 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <section class="block" id="scopes">
     <div class="wrap">
       <div class="head">
-        <span class="kicker" lang="en">The whole thing</span>
-        <span class="kicker" lang="fr">L'ensemble</span>
-        <h2 lang="en">Seven ways to see one server</h2>
-        <h2 lang="fr">Sept fa&ccedil;ons de voir un serveur</h2>
-        <p lang="en">Each screen is the same server told a different way. All of it read-only until you ask for a change,
-          and every change simulated or confirmed first.</p>
-        <p lang="fr">Chaque &eacute;cran est le m&ecirc;me serveur racont&eacute; autrement. Tout est en lecture
-          seule tant que vous ne demandez rien, et chaque changement est simul&eacute; ou confirm&eacute; avant
-          d'&ecirc;tre fait.</p>
+        <span class="kicker" lang="en">All screens</span>
+        <span class="kicker" lang="fr">Écrans</span>
+        <h2 lang="en">Seven screens</h2>
+        <h2 lang="fr">Sept écrans</h2>
+        <p lang="en">Everything is read-only until you act. Every change is confirmed or simulated first.</p>
+        <p lang="fr">Tout est en lecture seule tant que vous n'agissez pas. Chaque modification est confirmée ou
+          simulée avant d'être appliquée.</p>
       </div>
       <div class="scopes">
-        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">SCOPE</div><h4>The machine itself</h4>
-          <p>OS, kernel, CPU, RAM — the processor as a spinning particle sphere, with memory, swap, load and steal read around it.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">SCOPE</div><h4>La machine elle-m&ecirc;me</h4>
-          <p>OS, noyau, processeur, RAM — le processeur en sph&egrave;re de particules qui tourne, avec la m&eacute;moire, le swap, la charge et le steal lus autour.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">FILES</div><h4>Browse & manage</h4>
-          <p>The folder tree, edit and permissions, uploads and downloads, and your own shell beside it.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">FICHIERS</div><h4>Naviguer et g&eacute;rer</h4>
-          <p>L'arbre des dossiers, l'&eacute;dition et les droits, les envois et les t&eacute;l&eacute;chargements, et votre propre shell &agrave; c&ocirc;t&eacute;.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--cyan)">NETWORK</div><h4>What's exposed</h4>
-          <p>The firewall, the routing and every listening port, branched by how far it can really be reached.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--cyan)">R&Eacute;SEAU</div><h4>Ce qui est expos&eacute;</h4>
-          <p>Le pare-feu, le routage et chaque port en &eacute;coute, rang&eacute;s selon d'o&ugrave; on peut vraiment les atteindre.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--teal)">SERVICES</div><h4>Up, and staying up</h4>
-          <p>Every unit by what it really is &mdash; failed, won't survive a reboot, enabled but not running, running, idle &mdash; with its dependencies, its limits and its journal.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">SERVICES</div><h4>En marche, et qui le restera</h4>
-          <p>Chaque unit&eacute; selon ce qu'elle est vraiment &mdash; en &eacute;chec, ne survivra pas au red&eacute;marrage, activ&eacute;e mais arr&ecirc;t&eacute;e, en marche, au repos &mdash; avec ses d&eacute;pendances, ses limites et son journal.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">SCOPE</div><h4>The machine</h4>
+          <p>OS, kernel, CPU, memory, swap and load, live.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">SCOPE</div><h4>La machine</h4>
+          <p>OS, noyau, CPU, mémoire, swap et charge, en direct.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">FILES</div><h4>Files</h4>
+          <p>Browse, edit, permissions, upload, download and a shell.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">FICHIERS</div><h4>Fichiers</h4>
+          <p>Navigation, édition, droits, envoi, téléchargement et un shell.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--cyan)">NETWORK</div><h4>Exposure</h4>
+          <p>Listening ports, firewall rules, and what is actually reachable.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--cyan)">RÉSEAU</div><h4>Exposition</h4>
+          <p>Ports en écoute, règles du pare-feu, et ce qui est réellement accessible.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--teal)">SERVICES</div><h4>systemd</h4>
+          <p>Units, boot state, dependencies, limits and journal.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">SERVICES</div><h4>systemd</h4>
+          <p>Unités, état au démarrage, dépendances, limites et journal.</p></div>
         <div class="scope" lang="en"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Containers</h4>
-          <p>State, CPU and memory, ports and volumes; start, stop, restart, logs, a shell inside — and a read-only browse of the container's files.</p></div>
+          <p>State, resources, ports, volumes, logs, and a shell inside each container.</p></div>
         <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Conteneurs</h4>
-          <p>&Eacute;tat, processeur et m&eacute;moire, ports et volumes ; d&eacute;marrer, arr&ecirc;ter, red&eacute;marrer, les journaux, un shell dedans — et les fichiers du conteneur en lecture seule.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Keys & memory</h4>
-          <p>A stack of lit slabs, one per type, with full key CRUD, JSON edit, memory profiling, SLOWLOG and a live CLI. Never runs <code>KEYS *</code>.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Cl&eacute;s et m&eacute;moire</h4>
-          <p>Une pile de dalles lumineuses, une par type, avec la gestion compl&egrave;te des cl&eacute;s, l'&eacute;dition JSON, le profil m&eacute;moire, le SLOWLOG et une console en direct. N'ex&eacute;cute jamais <code>KEYS *</code>.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--amber)">PACKAGES</div><h4>apt & dpkg</h4>
-          <p>Everything installed as a branching tree — what's for the system, what you asked for, what's waiting. Install and upgrade, simulated first.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--amber)">PAQUETS</div><h4>apt et dpkg</h4>
-          <p>Tout ce qui est install&eacute; en arbre — ce qui sert au syst&egrave;me, ce que vous avez demand&eacute;, ce qui attend. Installer et mettre &agrave; jour, simul&eacute; d'abord.</p></div>
+          <p>État, ressources, ports, volumes, logs, et un shell dans chaque conteneur.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Keys and memory</h4>
+          <p>Keys by type, JSON editing, memory usage, slow log and a CLI. Never runs <code>KEYS *</code>.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Clés et mémoire</h4>
+          <p>Clés par type, édition JSON, usage mémoire, slowlog et une CLI. N'exécute jamais <code>KEYS *</code>.</p></div>
+        <div class="scope" lang="en"><div class="n" style="color:var(--amber)">PACKAGES</div><h4>apt</h4>
+          <p>Installed packages and pending upgrades. Every install is simulated before it runs.</p></div>
+        <div class="scope" lang="fr"><div class="n" style="color:var(--amber)">PAQUETS</div><h4>apt</h4>
+          <p>Paquets installés et mises à jour en attente. Chaque installation est simulée avant d'être lancée.</p></div>
       </div>
     </div>
   </section>
@@ -664,29 +617,26 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
       <div class="sec">
         <div>
           <span class="kicker" lang="en">Security</span>
-          <span class="kicker" lang="fr">S&eacute;curit&eacute;</span>
-          <h2 lang="en" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Built to be trusted with the keys to your server</h2>
-          <h2 lang="fr" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Fait pour qu'on lui confie les cl&eacute;s de son serveur</h2>
-          <p lang="en" style="color:var(--dim);margin:0">Kubo asks for a lot — SSH access, sometimes root. So it's built so you never have to take that on faith.</p>
-          <p lang="fr" style="color:var(--dim);margin:0">Kubo demande beaucoup — un acc&egrave;s SSH, parfois root. Il est donc construit pour que vous n'ayez jamais &agrave; le croire sur parole.</p>
-          <p class="note" lang="en">It connects to the servers you name, over SSH, with the credentials you supply — and to
-            nothing else. No account. No cloud. No phone-home.</p>
-          <p class="note" lang="fr">Il se connecte aux serveurs que vous nommez, en SSH, avec les identifiants que
-            vous fournissez &mdash; et &agrave; rien d'autre. Aucun compte. Aucun cloud. Rien qui reparte
-            ailleurs.</p>
+          <span class="kicker" lang="fr">Sécurité</span>
+          <h2 lang="en" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Built to hold root access</h2>
+          <h2 lang="fr" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Conçu pour détenir un accès root</h2>
+          <p lang="en" style="color:var(--dim);margin:0">Kubo needs SSH access, and sometimes root. This is how it handles them.</p>
+          <p lang="fr" style="color:var(--dim);margin:0">Kubo a besoin d'un accès SSH, parfois root. Voici comment il les gère.</p>
+          <p class="note" lang="en">Kubo only connects to the servers you add. Nothing is sent anywhere else.</p>
+          <p class="note" lang="fr">Kubo ne se connecte qu'aux serveurs que vous ajoutez. Rien n'est envoyé ailleurs.</p>
         </div>
         <div>
           <ul>
-            <li lang="en"><span class="mono">01</span><div><b>Host keys, checked</b><span>First contact shows the fingerprint and asks. A server whose key changed is refused outright.</span></div></li>
-            <li lang="fr"><span class="mono">01</span><div><b>Cl&eacute;s d'h&ocirc;te v&eacute;rifi&eacute;es</b><span>Au premier contact, l'empreinte est montr&eacute;e et la question pos&eacute;e. Un serveur dont la cl&eacute; a chang&eacute; est refus&eacute; net.</span></div></li>
-            <li lang="en"><span class="mono">02</span><div><b>Secrets held, then wiped</b><span>Passwords and passphrases live in memory as raw bytes and are wiped after use. Saved only if you tick "remember", encrypted with Windows DPAPI for your account.</span></div></li>
-            <li lang="fr"><span class="mono">02</span><div><b>Secrets gard&eacute;s, puis effac&eacute;s</b><span>Mots de passe et phrases secr&egrave;tes vivent en m&eacute;moire sous forme d'octets bruts, et sont effac&eacute;s apr&egrave;s usage. Enregistr&eacute;s seulement si vous cochez &laquo;&nbsp;retenir&nbsp;&raquo;, chiffr&eacute;s par DPAPI pour votre compte Windows.</span></div></li>
-            <li lang="en"><span class="mono">03</span><div><b>Root only when you say so</b><span>Kubo never elevates on its own. One button asks for sudo, once per session, and every window shows <code>Kubo_root</code> while it's on.</span></div></li>
-            <li lang="fr"><span class="mono">03</span><div><b>Root seulement quand vous le dites</b><span>Kubo ne s'&eacute;l&egrave;ve jamais de lui-m&ecirc;me. Un bouton demande sudo, une fois par session, et chaque fen&ecirc;tre affiche <code>Kubo_root</code> tant que c'est actif.</span></div></li>
-            <li lang="en"><span class="mono">04</span><div><b>Nothing destructive by surprise</b><span>Changes are simulated or confirmed by typing the name back; commands that need root are fixed templates, never built from what you type.</span></div></li>
-            <li lang="fr"><span class="mono">04</span><div><b>Rien de destructeur par surprise</b><span>Les changements sont simul&eacute;s ou confirm&eacute;s en retapant le nom ; les commandes qui demandent root sont des mod&egrave;les fixes, jamais construits &agrave; partir de ce que vous tapez.</span></div></li>
-            <li lang="en"><span class="mono">05</span><div><b>Everything on the record</b><span>Every command is listed and logged locally — the command and its size, never the output or your files.</span></div></li>
-            <li lang="fr"><span class="mono">05</span><div><b>Tout est consign&eacute;</b><span>Chaque commande est list&eacute;e et journalis&eacute;e en local &mdash; la commande et sa taille, jamais la sortie ni vos fichiers.</span></div></li>
+            <li lang="en"><span class="mono">01</span><div><b>Host keys verified</b><span>On first connection, the server's fingerprint is shown for approval. If the key changes later, the connection is refused.</span></div></li>
+            <li lang="fr"><span class="mono">01</span><div><b>Clés d'hôte vérifiées</b><span>À la première connexion, l'empreinte du serveur est affichée pour validation. Si la clé change ensuite, la connexion est refusée.</span></div></li>
+            <li lang="en"><span class="mono">02</span><div><b>Passwords not kept</b><span>Passwords stay in memory only while they are needed, then they are erased. They are saved only if you ask, encrypted with Windows DPAPI.</span></div></li>
+            <li lang="fr"><span class="mono">02</span><div><b>Mots de passe non conservés</b><span>Les mots de passe restent en mémoire le temps nécessaire, puis sont effacés. Ils ne sont enregistrés que si vous le demandez, chiffrés avec DPAPI sous Windows.</span></div></li>
+            <li lang="en"><span class="mono">03</span><div><b>Root on demand</b><span>Kubo never elevates on its own. You enable root once per session, and every window shows <code>Kubo_root</code> while it is on.</span></div></li>
+            <li lang="fr"><span class="mono">03</span><div><b>Root à la demande</b><span>Kubo ne passe jamais root de lui-même. Vous l'activez une fois par session, et chaque fenêtre affiche <code>Kubo_root</code> tant qu'il est actif.</span></div></li>
+            <li lang="en"><span class="mono">04</span><div><b>No surprise deletions</b><span>Destructive actions require typing the name of the target. Root commands are fixed templates, never built from your input.</span></div></li>
+            <li lang="fr"><span class="mono">04</span><div><b>Aucune suppression par erreur</b><span>Les actions destructives demandent de retaper le nom de la cible. Les commandes root sont des modèles fixes, jamais construites à partir de votre saisie.</span></div></li>
+            <li lang="en"><span class="mono">05</span><div><b>Local log</b><span>Every command is logged on your computer. Outputs and file contents are never stored.</span></div></li>
+            <li lang="fr"><span class="mono">05</span><div><b>Journal local</b><span>Chaque commande est journalisée sur votre ordinateur. Les sorties et le contenu des fichiers ne sont jamais enregistrés.</span></div></li>
           </ul>
         </div>
       </div>
@@ -696,67 +646,61 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <!-- DOWNLOAD -->
   <section class="block" id="download" style="text-align:center">
     <div class="wrap">
-      <span class="kicker" style="justify-content:center" lang="en">Get Kubo</span>
-      <span class="kicker" style="justify-content:center" lang="fr">Obtenir Kubo</span>
-      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="en">Free to use. Yours to keep.</h2>
-      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="fr">Gratuit. Et il est &agrave; vous.</h2>
-      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="en">Kubo brings its own Java runtime, so there is
-        no runtime to install first. No account to create, nothing to configure — point it at your server and go.
-        Every package below holds the same application; take whichever suits the machine you are on.</p>
-      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="fr">Kubo embarque son propre Java : il n'y a
-        rien &agrave; installer avant. Aucun compte &agrave; cr&eacute;er, rien &agrave; configurer — donnez-lui
-        l'adresse de votre serveur et c'est parti. Tous les paquets ci-dessous contiennent la m&ecirc;me
-        application ; prenez celui qui convient &agrave; la machine sur laquelle vous &ecirc;tes.</p>
+      <span class="kicker" style="justify-content:center" lang="en">Download</span>
+      <span class="kicker" style="justify-content:center" lang="fr">Télécharger</span>
+      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="en">Free. No account.</h2>
+      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="fr">Gratuit. Sans compte.</h2>
+      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="en">Java is included. There is nothing
+        to configure: enter your server address and connect. Every package contains the same application.</p>
+      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="fr">Java est inclus. Il n'y a rien à
+        configurer : entrez l'adresse de votre serveur et connectez-vous. Tous les paquets contiennent la même
+        application.</p>
 
       <div class="platform">Windows 10 / 11</div>
 
       <div class="gets">
         <div class="get lead">
-          <span class="n" lang="en">01 — Installer</span>
-          <span class="n" lang="fr">01 — Installeur</span>
+          <span class="n" lang="en">01 · Installer</span>
+          <span class="n" lang="fr">01 · Installeur</span>
           <h3>Kubo-Setup.exe</h3>
-          <p lang="en">The usual way. Installs Kubo, adds it to the Start menu, and a later version replaces this one
-            instead of sitting beside it.</p>
-          <p lang="fr">La m&eacute;thode habituelle. Installe Kubo, l'ajoute au menu D&eacute;marrer, et une version
-            ult&eacute;rieure remplacera celle-ci au lieu de s'installer &agrave; c&ocirc;t&eacute;.</p>
+          <p lang="en">Installs Kubo with a Start menu shortcut. A new version replaces the previous one.</p>
+          <p lang="fr">Installe Kubo avec un raccourci dans le menu Démarrer. Une nouvelle version remplace la
+            précédente.</p>
           <div class="foot" lang="en">
             <a class="btn primary" href="#" data-download data-explain="exe">Download for Windows</a>
             <span class="size">75 MB</span>
           </div>
           <div class="foot" lang="fr">
-            <a class="btn primary" href="#" data-download data-explain="exe">T&eacute;l&eacute;charger pour Windows</a>
+            <a class="btn primary" href="#" data-download data-explain="exe">Télécharger pour Windows</a>
             <span class="size">75 Mo</span>
           </div>
         </div>
 
         <div class="get" data-zip-card hidden>
-          <span class="n">02 — Portable</span>
+          <span class="n">02 · Portable</span>
           <h3 lang="en">No installation</h3>
           <h3 lang="fr">Sans installation</h3>
-          <p lang="en">A zip you unfold wherever you like — a folder of your own, an external drive, a work laptop you
-            cannot install on. Nothing is written to the registry, and deleting the folder removes it.</p>
-          <p lang="fr">Un zip &agrave; d&eacute;compresser o&ugrave; vous voulez — un dossier &agrave; vous, un disque
-            externe, un portable de travail sur lequel vous ne pouvez rien installer. Rien n'est &eacute;crit dans
-            le registre, et supprimer le dossier suffit &agrave; l'enlever.</p>
+          <p lang="en">Unzip it anywhere and run it. No administrator rights, nothing written to the registry.
+            Delete the folder to remove it.</p>
+          <p lang="fr">Décompressez où vous voulez et lancez. Pas de droits administrateur, rien dans le registre.
+            Supprimez le dossier pour le retirer.</p>
           <div class="foot" lang="en">
             <a class="btn" href="#" data-zip data-explain="zip">Download the .zip</a>
             <span class="size">73 MB</span>
           </div>
           <div class="foot" lang="fr">
-            <a class="btn" href="#" data-zip data-explain="zip">T&eacute;l&eacute;charger le .zip</a>
+            <a class="btn" href="#" data-zip data-explain="zip">Télécharger le .zip</a>
             <span class="size">73 Mo</span>
           </div>
         </div>
 
         <div class="get" data-winget-card hidden>
-          <span class="n">03 — winget</span>
+          <span class="n">03 · winget</span>
           <h3 lang="en">From the terminal</h3>
           <h3 lang="fr">Depuis le terminal</h3>
-          <p lang="en">If you already live in a terminal, Windows' own package manager can fetch it, and
-            <code>winget upgrade</code> keeps it current along with everything else.</p>
-          <p lang="fr">Si vous vivez d&eacute;j&agrave; dans un terminal, le gestionnaire de paquets de Windows
-            peut le r&eacute;cup&eacute;rer, et <code>winget upgrade</code> le garde &agrave; jour avec le
-            reste.</p>
+          <p lang="en">Install it with Windows' package manager. <code>winget upgrade</code> keeps it up to date.</p>
+          <p lang="fr">Installez avec le gestionnaire de paquets de Windows. <code>winget upgrade</code> le garde à
+            jour.</p>
           <div class="cmd">
             <code data-winget-command>winget install Gemmie.Kubo</code>
             <button type="button" data-copy="[data-winget-command]" data-explain="winget"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
@@ -764,11 +708,12 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" lang="en">64-bit · v1.0.0 · free to use<br>
-        Not code-signed yet — Windows may call the publisher unknown. Choose <b>More info → Run anyway</b>.</p>
-      <p class="smallprint" lang="fr">64 bits · v1.0.0 · gratuit<br>
-        Pas encore sign&eacute; — Windows peut annoncer un &eacute;diteur inconnu. Choisissez
-        <b>Informations compl&eacute;mentaires → Ex&eacute;cuter quand m&ecirc;me</b>.</p>
+      <p class="smallprint" lang="en">64-bit · v1.0.0 · Free<br>
+        The installer is not signed yet. If Windows warns about an unknown publisher, click
+        <b>More info → Run anyway</b>.</p>
+      <p class="smallprint" lang="fr">64 bits · v1.0.0 · Gratuit<br>
+        L'installeur n'est pas encore signé. Si Windows signale un éditeur inconnu, cliquez sur
+        <b>Informations complémentaires → Exécuter quand même</b>.</p>
 
       <div class="platform" data-linux-card hidden lang="en">Linux desktop</div>
       <div class="platform" data-linux-card hidden lang="fr">Bureau Linux</div>
@@ -777,55 +722,49 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         <div class="get">
           <span class="n">Debian · Ubuntu</span>
           <h3>.deb</h3>
-          <p lang="en">Installs like any other package, with a menu entry and an icon. Mint, Pop!_OS and the rest of the
-            family too.</p>
-          <p lang="fr">S'installe comme n'importe quel paquet, avec une entr&eacute;e de menu et une ic&ocirc;ne.
-            Mint, Pop!_OS et le reste de la famille aussi.</p>
+          <p lang="en">Debian, Ubuntu, Mint, Pop!_OS. Adds Kubo to the applications menu.</p>
+          <p lang="fr">Debian, Ubuntu, Mint, Pop!_OS. Ajoute Kubo au menu des applications.</p>
           <div class="foot" lang="en">
             <a class="btn" href="#" data-deb data-explain="deb">Download the .deb</a>
           </div>
           <div class="foot" lang="fr">
-            <a class="btn" href="#" data-deb data-explain="deb">T&eacute;l&eacute;charger le .deb</a>
+            <a class="btn" href="#" data-deb data-explain="deb">Télécharger le .deb</a>
           </div>
         </div>
 
         <div class="get">
           <span class="n">Fedora · RHEL · openSUSE</span>
           <h3>.rpm</h3>
-          <p lang="en">The same package for the rpm side of the world — Rocky, Alma and CentOS Stream included.</p>
-          <p lang="fr">Le m&ecirc;me paquet pour le monde rpm — Rocky, Alma et CentOS Stream compris.</p>
+          <p lang="en">Fedora, RHEL, Rocky, Alma, openSUSE.</p>
+          <p lang="fr">Fedora, RHEL, Rocky, Alma, openSUSE.</p>
           <div class="foot" lang="en">
             <a class="btn" href="#" data-rpm data-explain="rpm">Download the .rpm</a>
           </div>
           <div class="foot" lang="fr">
-            <a class="btn" href="#" data-rpm data-explain="rpm">T&eacute;l&eacute;charger le .rpm</a>
+            <a class="btn" href="#" data-rpm data-explain="rpm">Télécharger le .rpm</a>
           </div>
         </div>
 
         <div class="get">
-          <span class="n" lang="en">Anything else</span>
-          <span class="n" lang="fr">Tout le reste</span>
+          <span class="n" lang="en">Other distributions</span>
+          <span class="n" lang="fr">Autres distributions</span>
           <h3>.tar.gz</h3>
-          <p lang="en">Unpack it and run <code>Kubo/bin/Kubo</code>. Nothing is installed, nothing is written outside your
-            home folder.</p>
-          <p lang="fr">D&eacute;compressez et lancez <code>Kubo/bin/Kubo</code>. Rien n'est install&eacute;, rien
-            n'est &eacute;crit hors de votre dossier personnel.</p>
+          <p lang="en">Extract it and run <code>Kubo/bin/Kubo</code>. Nothing is installed.</p>
+          <p lang="fr">Décompressez et lancez <code>Kubo/bin/Kubo</code>. Rien n'est installé.</p>
           <div class="foot" lang="en">
             <a class="btn" href="#" data-targz data-explain="targz">Download the archive</a>
           </div>
           <div class="foot" lang="fr">
-            <a class="btn" href="#" data-targz data-explain="targz">T&eacute;l&eacute;charger l'archive</a>
+            <a class="btn" href="#" data-targz data-explain="targz">Télécharger l'archive</a>
           </div>
         </div>
       </div>
 
-      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.0.0 · needs a graphical session and GTK 3<br>
-        Kubo <i>manages</i> Linux servers — it does not run on one. Passwords are never saved here, for want of
-        encryption Kubo can trust on every machine; key files still are.</p>
-      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.0.0 · demande une session graphique et GTK 3<br>
-        Kubo <i>administre</i> des serveurs Linux — il ne tourne pas sur l'un d'eux. Les mots de passe ne sont
-        jamais enregistr&eacute;s ici, faute d'un chiffrement fiable sur toutes les machines ;
-        les fichiers de cl&eacute;, eux, le sont toujours.</p>
+      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.0.0 · Requires a desktop session and GTK 3<br>
+        Kubo runs on your computer, not on the server. On Linux, passwords are never saved. Key files are.</p>
+      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.0.0 · Nécessite une session graphique et GTK 3<br>
+        Kubo tourne sur votre ordinateur, pas sur le serveur. Sous Linux, les mots de passe ne sont jamais
+        enregistrés. Les fichiers de clé, si.</p>
     </div>
   </section>
 
@@ -833,75 +772,60 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <section class="block" id="contact">
     <div class="wrap">
       <div class="head">
-        <span class="kicker" lang="en">Who is behind it</span>
-        <span class="kicker" lang="fr">Qui est derri&egrave;re</span>
-        <h2 lang="en">Kubo is built by one person</h2>
-        <h2 lang="fr">Kubo est fait par une seule personne</h2>
-        <p lang="en">Designed, written and maintained by <b>Awassi Nell Damas</b> at <b>Gemmie</b>, a one-architect studio in
-          Kigali. A bug, a feature you need, a server tool you wish existed — or a project of your own — write,
-          and the answer comes from the person who wrote the code. Usually within 24 hours.</p>
-        <p lang="fr">Con&ccedil;u, &eacute;crit et maintenu par <b>Awassi Nell Damas</b> chez <b>Gemmie</b>, un
-          studio d'un seul architecte &agrave; Kigali. Un bug, une fonction dont vous avez besoin, un outil serveur
-          qui manque — ou un projet &agrave; vous — &eacute;crivez, et la r&eacute;ponse vient de celui qui a
-          &eacute;crit le code. En g&eacute;n&eacute;ral sous 24 heures.</p>
+        <span class="kicker">Contact</span>
+        <h2 lang="en">Built by one developer</h2>
+        <h2 lang="fr">Développé par une seule personne</h2>
+        <p lang="en">Kubo is designed and maintained by <b>Awassi Nell Damas</b> at <b>Gemmie</b>, in Kigali. For a
+          bug, a feature request or a project, write to me directly. I reply within 24 hours.</p>
+        <p lang="fr">Kubo est conçu et maintenu par <b>Awassi Nell Damas</b> chez <b>Gemmie</b>, à Kigali. Pour un
+          bug, une demande de fonctionnalité ou un projet, écrivez-moi directement. Je réponds sous 24 heures.</p>
       </div>
       <div class="links">
         <a class="link" href="https://gemmi-e.com/contact" target="_blank" rel="noopener">
-          <span class="n" lang="en">01 — Portfolio &amp; hire</span>
-          <span class="n" lang="fr">01 — Portfolio &amp; missions</span>
+          <span class="n">01 · Portfolio</span>
           <b>gemmi-e.com</b>
-          <span class="d" lang="en">The studio behind Kubo — web, mobile, backend and Linux infrastructure — and the
-            contact form that lands straight in my inbox.</span>
-          <span class="d" lang="fr">Le studio derri&egrave;re Kubo — web, mobile, backend et infrastructure
-            Linux — et le formulaire de contact qui arrive directement dans ma bo&icirc;te.</span>
+          <span class="d" lang="en">Web, mobile, backend and Linux infrastructure. Contact form for projects.</span>
+          <span class="d" lang="fr">Web, mobile, backend et infrastructure Linux. Formulaire de contact pour vos projets.</span>
           <span class="go" lang="en">Start a project →</span>
-          <span class="go" lang="fr">D&eacute;marrer un projet →</span>
+          <span class="go" lang="fr">Démarrer un projet →</span>
         </a>
         <a class="link" href="https://github.com/Lightminedust" target="_blank" rel="noopener">
-          <span class="n" lang="en">02 — The author</span>
-          <span class="n" lang="fr">02 — L'auteur</span>
+          <span class="n">02 · GitHub</span>
           <b>github.com/Lightminedust</b>
-          <span class="d" lang="en">Everything else I build, in the open. Follow along to see what comes next.</span>
-          <span class="d" lang="fr">Tout le reste de ce que je construis, en public. Suivez pour voir
-            ce qui vient ensuite.</span>
-          <span class="go" lang="en">Follow on GitHub →</span>
-          <span class="go" lang="fr">Suivre sur GitHub →</span>
+          <span class="d" lang="en">My other projects.</span>
+          <span class="d" lang="fr">Mes autres projets.</span>
+          <span class="go" lang="en">Follow →</span>
+          <span class="go" lang="fr">Suivre →</span>
         </a>
         <a class="link" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener">
-          <span class="n" lang="en">03 — Kubo itself</span>
-          <span class="n" lang="fr">03 — Kubo lui-m&ecirc;me</span>
+          <span class="n">03 · Kubo</span>
           <b>github.com/Lightminedust/Kubo</b>
-          <span class="d" lang="en">Releases, changelog and issues. Report a bug or ask for a feature there — it is read.</span>
-          <span class="d" lang="fr">Les versions, les nouveaut&eacute;s et les tickets. Signalez un bug ou demandez
-            une fonction l&agrave; — c'est lu.</span>
+          <span class="d" lang="en">Releases and issues. Report bugs here.</span>
+          <span class="d" lang="fr">Versions et tickets. Signalez les bugs ici.</span>
           <span class="go" lang="en">Open the repository →</span>
-          <span class="go" lang="fr">Ouvrir le d&eacute;p&ocirc;t →</span>
+          <span class="go" lang="fr">Ouvrir le dépôt →</span>
         </a>
       </div>
       <div class="mailrow">
-        <span class="kicker" lang="en">Or just write</span>
-        <span class="kicker" lang="fr">Ou &eacute;crivez-moi</span>
+        <span class="kicker" lang="en">Email</span>
+        <span class="kicker" lang="fr">Par email</span>
         <a class="btn primary" href="mailto:nellawassi@gmail.com?subject=Kubo">nellawassi@gmail.com</a>
-        <span class="meta" lang="en">Answered within 24 hours</span>
-        <span class="meta" lang="fr">R&eacute;ponse sous 24 heures</span>
+        <span class="meta" lang="en">Reply within 24 hours</span>
+        <span class="meta" lang="fr">Réponse sous 24 heures</span>
       </div>
 
       <div class="support">
-        <span class="kicker" lang="en">Support the work</span>
-        <span class="kicker" lang="fr">Soutenir le travail</span>
-        <p lang="en">Kubo is free. There is nothing to buy, no subscription, no account — and it is built by
-          <b>one independent student engineer</b>, on personal time and personal server bills.</p>
-        <p lang="fr">Kubo est gratuit. Il n'y a rien &agrave; acheter, aucun abonnement, aucun compte — et il est
-          fait par <b>un ing&eacute;nieur &eacute;tudiant, seul et ind&eacute;pendant</b>, sur son temps et ses
-          propres factures de serveur.</p>
-        <p lang="en">If it saved you an hour, the two things that actually help are a <b>star on GitHub</b> and a
-          <b>link shared</b> somewhere people like you will see it.</p>
-        <p lang="fr">S'il vous a fait gagner une heure, les deux choses qui aident vraiment sont une
-          <b>&eacute;toile sur GitHub</b> et un <b>lien partag&eacute;</b> l&agrave; o&ugrave; des gens comme vous
-          le verront.</p>
+        <span class="kicker" lang="en">Support</span>
+        <span class="kicker" lang="fr">Soutenir</span>
+        <p lang="en">Kubo is free, with no subscription and no account. It is developed by an independent student,
+          on personal time and a personal server budget.</p>
+        <p lang="fr">Kubo est gratuit, sans abonnement ni compte. Il est développé par un étudiant indépendant, sur
+          son temps libre et avec son propre budget serveur.</p>
+        <p lang="en">If it is useful to you, a star on GitHub or a shared link helps.</p>
+        <p lang="fr">S'il vous est utile, une étoile sur GitHub ou un lien partagé aide.</p>
         <div class="row">
           <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">★ Star on GitHub</a>
-          <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">★ Mettre une &eacute;toile</a>
+          <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">★ Étoile sur GitHub</a>
           <div class="cmd">
             <code id="share-link">https://kubo.gemmi-e.com</code>
             <button type="button" data-copy="#share-link"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
@@ -929,24 +853,23 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
   <div class="wrap">
     <div>
       <div class="brand" style="font-size:20px;margin-bottom:10px"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</div>
-      <div class="legal" lang="en">A Gemmie product · nothing leaves your machine.</div>
-      <div class="legal" lang="fr">Un produit Gemmie · rien ne quitte votre machine.</div>
+      <div class="legal" lang="en">A Gemmie product.</div>
+      <div class="legal" lang="fr">Un produit Gemmie.</div>
       <div class="footlinks">
         <a href="https://gemmi-e.com/contact" target="_blank" rel="noopener">Portfolio</a>
         <a href="https://github.com/Lightminedust" target="_blank" rel="noopener">GitHub</a>
         <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">Kubo repository</a>
-        <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">D&eacute;p&ocirc;t Kubo</a>
-        <a href="mailto:nellawassi@gmail.com?subject=Kubo" lang="en">Email</a>
-        <a href="mailto:nellawassi@gmail.com?subject=Kubo" lang="fr">Courriel</a>
+        <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">Dépôt Kubo</a>
+        <a href="mailto:nellawassi@gmail.com?subject=Kubo">Email</a>
       </div>
-    </div>
-    <div class="legal" style="text-align:right" lang="fr">
-      Kubo est la propri&eacute;t&eacute; intellectuelle de Gemmie.<br>
-      © 2026 Gemmie. Gratuit. · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
     </div>
     <div class="legal" style="text-align:right" lang="en">
       Kubo is the intellectual property of Gemmie.<br>
-      © 2026 Gemmie. Free to use. · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
+      © 2026 Gemmie · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
+    </div>
+    <div class="legal" style="text-align:right" lang="fr">
+      Kubo est la propriété intellectuelle de Gemmie.<br>
+      © 2026 Gemmie · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
     </div>
   </div>
 </footer>
@@ -972,8 +895,8 @@ document.querySelectorAll('[data-lang-switch]').forEach(function(button){
 });
 /* The tab title is in the head, where a lang attribute cannot reach it. */
 var TITLES = {
-  en: "Kubo — stop reading your server, start seeing it",
-  fr: "Kubo — arrêtez de lire votre serveur, voyez-le"
+  en: "Kubo · See and manage your Linux server",
+  fr: "Kubo · Voyez et gérez votre serveur Linux"
 };
 /* An aria-label cannot carry a lang, so the spoken label is swapped with the rest. The English one
    stays in the attribute and the French one waits in data-aria-fr beside it. */
@@ -1032,56 +955,56 @@ if (LINUX_VERSION) {
 
   var SHEETS = {
     exe: { kind: "Installer", title: "Kubo-Setup.exe", note: "75 MB", steps: [
-      "Run the file your browser just saved.",
-      "Windows will call the publisher unknown \u2014 it is not code-signed yet. Choose <b>More info \u2192 Run anyway</b>.",
-      "Kubo lands in your Start menu. Point it at your server; nothing gets installed on it." ]},
+      "Run the file you just downloaded.",
+      "If Windows warns about an unknown publisher, click <b>More info → Run anyway</b>.",
+      "Open Kubo from the Start menu and enter your server address." ]},
     zip: { kind: "Portable", title: "No installation", note: "73 MB", steps: [
-      "Unzip the folder anywhere \u2014 your desktop, a USB stick.",
-      "Run <code>Kubo.exe</code> inside it. No administrator, nothing in the registry.",
-      "Your servers and logs live in <code>%USERPROFILE%\\.kubo</code>. Delete the folder and Kubo is gone." ]},
-    deb: { kind: "Debian \u00b7 Ubuntu", title: "The .deb", note: "56 MB", steps: [
+      "Unzip the folder anywhere.",
+      "Run <code>Kubo.exe</code>. No administrator rights needed.",
+      "Your servers and logs are stored in <code>%USERPROFILE%\\.kubo</code>." ]},
+    deb: { kind: "Debian · Ubuntu", title: "The .deb", note: "56 MB", steps: [
       "<code>sudo apt install ./kubo_" + v + "_amd64.deb</code>",
-      "Open Kubo from your applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
-      "Remove it with <code>sudo apt remove kubo</code>." ]},
-    rpm: { kind: "Fedora \u00b7 RHEL \u00b7 openSUSE", title: "The .rpm", note: "56 MB", steps: [
+      "Open Kubo from the applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
+      "Uninstall with <code>sudo apt remove kubo</code>." ]},
+    rpm: { kind: "Fedora · RHEL · openSUSE", title: "The .rpm", note: "56 MB", steps: [
       "<code>sudo dnf install ./kubo-" + v + "-1.x86_64.rpm</code>",
-      "Open Kubo from your applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
-      "Remove it with <code>sudo dnf remove kubo</code>." ]},
+      "Open Kubo from the applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
+      "Uninstall with <code>sudo dnf remove kubo</code>." ]},
     targz: { kind: "Portable", title: "The archive", note: "75 MB", steps: [
       "<code>tar -xzf Kubo-linux-x86_64.tar.gz</code>",
-      "<code>./Kubo/bin/Kubo</code> \u2014 nothing is installed, nothing needs root.",
-      "Settings live in <code>~/.kubo</code>. Delete the folder and Kubo is gone." ]},
+      "Run <code>./Kubo/bin/Kubo</code>. No root needed.",
+      "Settings are stored in <code>~/.kubo</code>." ]},
     winget: { kind: "winget", title: "Copied", note: "Windows package manager", steps: [
       "Paste it into PowerShell or Windows Terminal.",
-      "<code>winget upgrade</code> then keeps Kubo current along with everything else.",
-      "Remove it with <code>winget uninstall " + (WINGET_ID || "Gemmie.Kubo") + "</code>." ]}
+      "<code>winget upgrade</code> keeps Kubo up to date.",
+      "Uninstall with <code>winget uninstall " + (WINGET_ID || "Gemmie.Kubo") + "</code>." ]}
   };
 
   var SHEETS_FR = {
     exe: { kind: "Installeur", title: "Kubo-Setup.exe", note: "75 Mo", steps: [
-      "Lancez le fichier que votre navigateur vient d'enregistrer.",
-      "Windows annoncera un \u00e9diteur inconnu \u2014 il n'est pas encore sign\u00e9. Choisissez <b>Informations compl\u00e9mentaires \u2192 Ex\u00e9cuter quand m\u00eame</b>.",
-      "Kubo arrive dans votre menu D\u00e9marrer. Donnez-lui votre serveur ; rien n'y sera install\u00e9." ]},
+      "Lancez le fichier téléchargé.",
+      "Si Windows signale un éditeur inconnu, cliquez sur <b>Informations complémentaires → Exécuter quand même</b>.",
+      "Ouvrez Kubo depuis le menu Démarrer et entrez l'adresse de votre serveur." ]},
     zip: { kind: "Portable", title: "Sans installation", note: "73 Mo", steps: [
-      "D\u00e9compressez le dossier o\u00f9 vous voulez \u2014 votre bureau, une cl\u00e9 USB.",
-      "Lancez <code>Kubo.exe</code> \u00e0 l'int\u00e9rieur. Aucun administrateur, rien dans le registre.",
-      "Vos serveurs et vos journaux vivent dans <code>%USERPROFILE%\\.kubo</code>. Supprimez le dossier et Kubo a disparu." ]},
-    deb: { kind: "Debian \u00b7 Ubuntu", title: "Le .deb", note: "56 Mo", steps: [
+      "Décompressez le dossier où vous voulez.",
+      "Lancez <code>Kubo.exe</code>. Aucun droit administrateur requis.",
+      "Vos serveurs et vos journaux sont enregistrés dans <code>%USERPROFILE%\\.kubo</code>." ]},
+    deb: { kind: "Debian · Ubuntu", title: "Le .deb", note: "56 Mo", steps: [
       "<code>sudo apt install ./kubo_" + v + "_amd64.deb</code>",
-      "Ouvrez Kubo depuis votre menu d'applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
-      "Pour l'enlever : <code>sudo apt remove kubo</code>." ]},
-    rpm: { kind: "Fedora \u00b7 RHEL \u00b7 openSUSE", title: "Le .rpm", note: "56 Mo", steps: [
+      "Ouvrez Kubo depuis le menu des applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
+      "Désinstallation : <code>sudo apt remove kubo</code>." ]},
+    rpm: { kind: "Fedora · RHEL · openSUSE", title: "Le .rpm", note: "56 Mo", steps: [
       "<code>sudo dnf install ./kubo-" + v + "-1.x86_64.rpm</code>",
-      "Ouvrez Kubo depuis votre menu d'applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
-      "Pour l'enlever : <code>sudo dnf remove kubo</code>." ]},
+      "Ouvrez Kubo depuis le menu des applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
+      "Désinstallation : <code>sudo dnf remove kubo</code>." ]},
     targz: { kind: "Portable", title: "L'archive", note: "75 Mo", steps: [
       "<code>tar -xzf Kubo-linux-x86_64.tar.gz</code>",
-      "<code>./Kubo/bin/Kubo</code> \u2014 rien n'est install\u00e9, rien ne demande root.",
-      "Les r\u00e9glages vivent dans <code>~/.kubo</code>. Supprimez le dossier et Kubo a disparu." ]},
-    winget: { kind: "winget", title: "Copi\u00e9", note: "Gestionnaire de paquets Windows", steps: [
-      "Collez-le dans PowerShell ou Windows Terminal.",
-      "<code>winget upgrade</code> garde ensuite Kubo \u00e0 jour avec le reste.",
-      "Pour l'enlever : <code>winget uninstall " + (WINGET_ID || "Gemmie.Kubo") + "</code>." ]}
+      "Lancez <code>./Kubo/bin/Kubo</code>. Pas besoin de root.",
+      "Les réglages sont enregistrés dans <code>~/.kubo</code>." ]},
+    winget: { kind: "winget", title: "Copié", note: "Gestionnaire de paquets Windows", steps: [
+      "Collez la commande dans PowerShell ou Windows Terminal.",
+      "<code>winget upgrade</code> garde Kubo à jour.",
+      "Désinstallation : <code>winget uninstall " + (WINGET_ID || "Gemmie.Kubo") + "</code>." ]}
   };
 
   function open(name){
