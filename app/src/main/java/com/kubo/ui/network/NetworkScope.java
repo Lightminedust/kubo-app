@@ -210,7 +210,7 @@ public final class NetworkScope extends StackPane {
         caption.setText((read.endpoints().size() + " LISTENING PORTS   ·   " + read.vhosts().size()
                 + " NGINX SERVER BLOCKS   ·   " + read.pm2().size() + " PM2 APPS").toUpperCase(Locale.ROOT));
 
-        machine.show(read.identity(), read.rates());
+        machine.show(read.identity(), read.rates(), read.naming());
 
         exposedValue.setText(String.valueOf(exposed));
         exposedValue.setStyle("-fx-text-fill: " + web(exposed > 0 ? OPEN : SAFE) + ";");
@@ -575,7 +575,7 @@ public final class NetworkScope extends StackPane {
      */
     private void showConnections() {
         boolean canBan = !map.jails().isEmpty();
-        showOverlay(new ConnectionsCard(map.connections(),
+        showOverlay(new ConnectionsCard(map.conversations(),
                 address -> banEverywhere(address), canBan, this::hideOverlay));
     }
 

@@ -3,10 +3,12 @@ package com.kubo.ui.network;
 import com.kubo.model.network.Counter;
 import com.kubo.model.network.Identity;
 import com.kubo.model.network.Link;
+import com.kubo.model.network.Naming;
 import com.kubo.model.network.Route;
 import com.kubo.model.server.ListeningPort;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
@@ -30,6 +32,11 @@ final class MachinePanel extends VBox {
     private final VBox routing = new VBox(4);
     private final VBox dns = new VBox(4);
     private final Label reached = label("", "mono");
+    /** The container interfaces stay folded: a server with twenty containers has forty of them. */
+    private boolean showVirtual;
+    private Identity identity = Identity.empty();
+    private Map<String, Counter.Rate> rates = Map.of();
+    private Naming naming = Naming.none();
 
     MachinePanel() {
         VBox column = new VBox(12,
@@ -50,22 +57,45 @@ final class MachinePanel extends VBox {
         getStyleClass().add("redis-inspector");
         setPrefWidth(320);
         setMinWidth(280);
-        show(Identity.empty(), Map.of());
+        show(Identity.empty(), Map.of(), Naming.none());
     }
 
     /**
      * @param rates bytes per second per interface, empty on the first read of a session
      */
-    void show(Identity identity, Map<String, Counter.Rate> rates) {
+    void show(Identity identity, Map<String, Counter.Rate> rates, Naming naming) {
+        this.identity = identity;
+        this.rates = rates;
+        this.naming = naming;
         reached.setText(identity.reachedAt().isBlank() ? "unknown" : identity.reachedAt());
 
         links.getChildren().clear();
-        List<Link> shown = identity.links().isEmpty() ? List.of() : identity.realLinks();
-        if (shown.isEmpty()) {
+        List<Link> real = identity.realLinks().stream().filter(link -> !Naming.virtual(link)).toList();
+        List<Link> virtual = identity.realLinks().stream().filter(Naming::virtual).toList();
+        if (identity.links().isEmpty()) {
             links.getChildren().add(note("No interface could be read. Kubo needs the ip command."));
         }
-        for (Link link : shown) {
+        for (Link link : real) {
             links.getChildren().add(linkBlock(link, rates.get(link.name())));
+        }
+        if (!virtual.isEmpty()) {
+            // Folded by default. On a server running twenty containers these are forty interfaces, and none of
+            // them is the one somebody opened this panel to find.
+            Button fold = new Button(showVirtual
+                    ? "HIDE THE " + virtual.size() + " CONTAINER INTERFACES"
+                    : "SHOW " + virtual.size() + " CONTAINER INTERFACES");
+            fold.getStyleClass().addAll("ghost-button", "compact-button");
+            fold.setFocusTraversable(false);
+            fold.setOnAction(event -> {
+                showVirtual = !showVirtual;
+                show(this.identity, this.rates, this.naming);
+            });
+            links.getChildren().add(fold);
+            if (showVirtual) {
+                for (Link link : virtual) {
+                    links.getChildren().add(linkBlock(link, rates.get(link.name())));
+                }
+            }
         }
 
         routing.getChildren().clear();
@@ -106,6 +136,11 @@ final class MachinePanel extends VBox {
         head.setAlignment(Pos.CENTER_LEFT);
 
         VBox block = new VBox(3, head);
+        // What this interface is for, in words. eth0 means nothing to somebody who did not name it.
+        String role = naming.role(link);
+        if (!role.isEmpty()) {
+            block.getChildren().add(note(role));
+        }
         for (Link.Address address : link.addresses()) {
             // A public address is the one that matters on this screen, so it is the one that is marked.
             boolean open = address.exposure() == ListeningPort.Exposure.PUBLIC;

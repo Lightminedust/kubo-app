@@ -13,10 +13,12 @@ import java.util.Map;
  * @param rates        bytes per second per interface, empty on the first read because a rate needs two
  * @param jails        the fail2ban jails, empty when fail2ban is absent or unreadable
  * @param certificates the TLS certificates Nginx points at
+ * @param naming       turns the addresses and the interfaces into places
  */
 public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> endpoints, List<PmApp> pm2,
                          List<Risk> risks, List<String> notes, Identity identity, List<Connection> connections,
-                         Map<String, Counter.Rate> rates, List<Jail> jails, List<Certificate> certificates) {
+                         Map<String, Counter.Rate> rates, List<Jail> jails, List<Certificate> certificates,
+                         Naming naming) {
 
     public NetworkMap {
         firewall = firewall == null ? Firewall.absent() : firewall;
@@ -30,6 +32,7 @@ public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> e
         rates = Map.copyOf(rates == null ? Map.of() : rates);
         jails = List.copyOf(jails == null ? List.of() : jails);
         certificates = List.copyOf(certificates == null ? List.of() : certificates);
+        naming = naming == null ? Naming.none() : naming;
     }
 
     /**
@@ -38,7 +41,7 @@ public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> e
     public NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> endpoints, List<PmApp> pm2,
                       List<Risk> risks, List<String> notes) {
         this(firewall, vhosts, endpoints, pm2, risks, notes, Identity.empty(), List.of(), Map.of(),
-                List.of(), List.of());
+                List.of(), List.of(), Naming.none());
     }
 
     public static NetworkMap empty() {
@@ -48,6 +51,11 @@ public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> e
     /** Connections that came off the internet, which is the list worth reading first during an incident. */
     public List<Connection> fromTheInternet() {
         return connections.stream().filter(Connection::fromTheInternet).toList();
+    }
+
+    /** The connections grouped by the two ends, which is the only readable form of this list. */
+    public List<Conversation> conversations() {
+        return Conversation.group(connections, naming);
     }
 
     /** Every address banned right now, across every jail. */

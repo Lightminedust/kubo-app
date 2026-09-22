@@ -1,41 +1,32 @@
 package com.kubo.ui.network;
 
-import com.kubo.model.network.Connection;
+import com.kubo.model.network.Conversation;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * Who is connected to this server right now.
+ * Who is talking to this server right now, in sentences rather than in sockets.
  *
- * <p>The map shows the doors. This shows the people standing in them, which is the question asked during an
- * incident and the one the screen could not answer at all.
- *
- * <p>Calls coming in from the internet are listed first and separately from the rest. A connection from the
- * private network or one this server opened itself is ordinary; a stranger on a port is not.
+ * <p>An application holding a pool of connections opens twenty five of them and the raw list printed twenty five
+ * rows that differed only by an ephemeral port number. They are one fact, so they are one row here, with the
+ * count beside it.
  */
 final class ConnectionsCard extends VBox {
 
-    /** What the card can ask the screen to do with an address. */
     interface Hands {
-        /** Bans the address in every jail that will take it. Null when fail2ban is not there. */
         void ban(String address);
     }
 
-    ConnectionsCard(List<Connection> connections, Hands hands, boolean canBan, Runnable onClose) {
+    ConnectionsCard(List<Conversation> conversations, Hands hands, boolean canBan, Runnable onClose) {
         getStyleClass().addAll("float-card", "help-card");
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
         setSpacing(14);
@@ -47,19 +38,19 @@ final class ConnectionsCard extends VBox {
         close.getStyleClass().add("ghost-button");
         close.setFocusTraversable(false);
         close.setOnAction(event -> onClose.run());
-        HBox header = new HBox(12, label("OPEN CONNECTIONS", "card-title"), spacer, close);
+        HBox header = new HBox(12, label("WHO IS TALKING TO THIS SERVER", "card-title"), spacer, close);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        List<Connection> inbound = connections.stream().filter(Connection::fromTheInternet).toList();
-        List<Connection> others = connections.stream().filter(connection -> !connection.fromTheInternet()).toList();
+        List<Conversation> internet = conversations.stream().filter(Conversation::fromTheInternet).toList();
+        List<Conversation> inside = conversations.stream()
+                .filter(conversation -> !conversation.fromTheInternet()).toList();
 
-        VBox body = new VBox(14,
+        VBox body = new VBox(16,
                 label("FROM THE INTERNET", "series"),
-                summary(inbound, hands, canBan),
-                table(inbound, hands, canBan),
-                label("EVERYTHING ELSE", "series"),
-                note("This server calling out, and calls from the private network."),
-                table(others, hands, false));
+                block(internet, hands, canBan, "Nobody from the internet is connected right now."),
+                label("INSIDE THIS SERVER", "series"),
+                note("Its own programs talking to each other, to its containers, or out to something else."),
+                block(inside, hands, false, "Nothing is connected."));
 
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
@@ -71,74 +62,47 @@ final class ConnectionsCard extends VBox {
         getChildren().addAll(header, scroll);
     }
 
-    /**
-     * One line per remote address, with how many connections it holds.
-     *
-     * <p>Twenty connections from one address is a different thing from twenty addresses holding one each, and a
-     * flat list hides which of the two is happening.
-     */
-    private Region summary(List<Connection> inbound, Hands hands, boolean canBan) {
-        if (inbound.isEmpty()) {
-            return note("Nobody from the internet is connected right now.");
+    private Region block(List<Conversation> conversations, Hands hands, boolean canBan, String whenEmpty) {
+        if (conversations.isEmpty()) {
+            return note(whenEmpty);
         }
-        Map<String, Integer> byAddress = new LinkedHashMap<>();
-        for (Connection connection : inbound) {
-            byAddress.merge(connection.remoteAddress(), 1, Integer::sum);
-        }
-        List<Map.Entry<String, Integer>> sorted = new ArrayList<>(byAddress.entrySet());
-        sorted.sort(Comparator.<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue).reversed());
-
-        VBox rows = new VBox(6);
-        for (Map.Entry<String, Integer> entry : sorted) {
-            Label address = label(entry.getKey(), "mono");
-            Label count = label(entry.getValue() == 1 ? "1 connection" : entry.getValue() + " connections",
-                    "mono-muted");
-            Region gap = new Region();
-            HBox.setHgrow(gap, Priority.ALWAYS);
-            HBox row = new HBox(12, address, gap, count);
-            row.setAlignment(Pos.CENTER_LEFT);
-            if (canBan && hands != null) {
-                Button ban = new Button("BAN");
-                ban.getStyleClass().addAll("danger-button", "compact-button");
-                ban.setFocusTraversable(false);
-                ban.setOnAction(event -> hands.ban(entry.getKey()));
-                row.getChildren().add(ban);
-            }
-            rows.getChildren().add(row);
+        VBox rows = new VBox(10);
+        for (Conversation conversation : conversations) {
+            rows.getChildren().add(row(conversation, hands, canBan));
         }
         return rows;
     }
 
-    private Region table(List<Connection> connections, Hands hands, boolean canBan) {
-        if (connections.isEmpty()) {
-            return note("Nothing here.");
-        }
-        GridPane grid = new GridPane();
-        grid.setHgap(18);
-        grid.setVgap(5);
-        grid.add(label("FROM", "metric-label"), 0, 0);
-        grid.add(label("TO", "metric-label"), 1, 0);
-        grid.add(label("SERVICE", "metric-label"), 2, 0);
-        grid.add(label("PROCESS", "metric-label"), 3, 0);
+    /**
+     * One conversation, read as a sentence: who, on what, how many times.
+     */
+    private VBox row(Conversation conversation, Hands hands, boolean canBan) {
+        Label who = label(conversation.remote(), "mono");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Label count = label(conversation.count() == 1 ? "1 connection" : conversation.count() + " connections",
+                "mono-muted");
 
-        int row = 1;
-        for (Connection connection : connections) {
-            String from = connection.inbound()
-                    ? connection.remoteAddress() + ":" + connection.remotePort()
-                    : connection.localAddress() + ":" + connection.localPort();
-            String to = connection.inbound()
-                    ? connection.localAddress() + ":" + connection.localPort()
-                    : connection.remoteAddress() + ":" + connection.remotePort();
-            Label fromLabel = label(from, "mono");
-            fromLabel.setMinWidth(200);
-            grid.add(fromLabel, 0, row);
-            grid.add(label(to, "mono-muted"), 1, row);
-            grid.add(label(connection.protocol() + " " + connection.servicePort(), "mono-muted"), 2, row);
-            grid.add(label(connection.named() ? connection.process() : "not named without root", "mono-muted"),
-                    3, row);
-            row++;
+        HBox head = new HBox(12, who, spacer, count);
+        head.setAlignment(Pos.CENTER_LEFT);
+        if (canBan && hands != null) {
+            Button ban = new Button("BAN");
+            ban.getStyleClass().addAll("danger-button", "compact-button");
+            ban.setFocusTraversable(false);
+            ban.setOnAction(event -> hands.ban(conversation.remoteAddress()));
+            head.getChildren().add(ban);
         }
-        return grid;
+
+        // The sentence under the address: which way the call went, to what, held by what.
+        String direction = conversation.inbound() ? "reached" : "calls";
+        String held = conversation.named()
+                ? " held by " + conversation.process()
+                : " (the program could not be named: turn on ROOT)";
+        Label what = label(direction + " " + conversation.service() + held, "card-note");
+        what.setWrapText(true);
+        what.setMaxWidth(700);
+
+        return new VBox(2, head, what);
     }
 
     private static Label note(String text) {

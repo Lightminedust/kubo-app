@@ -52,7 +52,7 @@ public final class NetworkPreview {
                 render(output, "network-crowded", crowdedServer(), -1);
                 renderHelp(output);
                 renderCard(output, "network-connections",
-                        new ConnectionsCard(sampleConnections(), address -> { }, true, () -> { }));
+                        new ConnectionsCard(exposedServer().conversations(), address -> { }, true, () -> { }));
                 renderCard(output, "network-firewall", new FirewallCard(exposedServer().firewall(),
                         new FirewallCard.Hands() {
                             @Override public void allowFrom(String source, int port,
@@ -185,7 +185,10 @@ public final class NetworkPreview {
         List<Risk> risks = endpoints.stream().map(Risk::of).flatMap(java.util.Optional::stream).toList();
         return new NetworkMap(firewall, vhosts, endpoints, pm2, risks,
                 List.of("Nginx is installed but its configuration could not be read, which needs root."),
-                sampleIdentity(), sampleConnections(), sampleRates(), sampleJails(), sampleCertificates());
+                sampleIdentity(), sampleConnections(), sampleRates(), sampleJails(), sampleCertificates(),
+                com.kubo.model.network.Naming.of(sampleIdentity(), List.of(
+                        new com.kubo.model.docker.DockerNetwork("41317674355ab9", "app-frontend_default",
+                                "bridge", "local", List.of()))));
     }
 
     /**
@@ -200,7 +203,14 @@ public final class NetworkPreview {
         com.kubo.model.network.Link docker0 = new com.kubo.model.network.Link("docker0", "DOWN",
                 "02:42:1b:9c:11:02", 1500,
                 List.of(new com.kubo.model.network.Link.Address("172.17.0.1", 16, false)));
-        return new com.kubo.model.network.Identity(List.of(lo, eth0, docker0),
+        com.kubo.model.network.Link bridge = new com.kubo.model.network.Link("br-41317674355a", "UP",
+                "02:42:aa:bb:cc:dd", 1500,
+                List.of(new com.kubo.model.network.Link.Address("172.19.0.1", 16, false)));
+        com.kubo.model.network.Link veth1 = new com.kubo.model.network.Link("vethfb8a471", "UP",
+                "9a:11:02:aa:bb:01", 1500, List.of());
+        com.kubo.model.network.Link veth2 = new com.kubo.model.network.Link("veth2c91d03", "UP",
+                "9a:11:02:aa:bb:02", 1500, List.of());
+        return new com.kubo.model.network.Identity(List.of(lo, eth0, docker0, bridge, veth1, veth2),
                 List.of(new com.kubo.model.network.Route("default", "203.0.113.1", "eth0", "", 100),
                         new com.kubo.model.network.Route("172.17.0.0/16", "", "docker0", "172.17.0.1", -1)),
                 new com.kubo.model.network.Resolvers(List.of("1.1.1.1", "8.8.8.8"), List.of("example.com"),
@@ -217,7 +227,15 @@ public final class NetworkPreview {
                 new com.kubo.model.network.Connection(Protocol.TCP, "203.0.113.10", 443, "45.135.232.17", 40123,
                         "nginx", 700, true),
                 new com.kubo.model.network.Connection(Protocol.TCP, "127.0.0.1", 44210, "127.0.0.1", 6379,
-                        "node", 1490, false));
+                        "node", 1490, false),
+                new com.kubo.model.network.Connection(Protocol.TCP, "127.0.0.1", 44212, "127.0.0.1", 6379,
+                        "node", 1490, false),
+                new com.kubo.model.network.Connection(Protocol.TCP, "172.19.0.1", 54032, "172.19.0.2", 6379,
+                        "", -1, false),
+                new com.kubo.model.network.Connection(Protocol.TCP, "172.19.0.1", 54064, "172.19.0.2", 6379,
+                        "", -1, false),
+                new com.kubo.model.network.Connection(Protocol.TCP, "172.19.0.1", 54128, "172.19.0.2", 6379,
+                        "", -1, false));
     }
 
     static java.util.Map<String, com.kubo.model.network.Counter.Rate> sampleRates() {

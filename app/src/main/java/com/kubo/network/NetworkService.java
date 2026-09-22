@@ -15,6 +15,7 @@ import com.kubo.model.network.Endpoint;
 import com.kubo.model.network.Identity;
 import com.kubo.model.network.Jail;
 import com.kubo.model.network.Link;
+import com.kubo.model.network.Naming;
 import com.kubo.model.network.Resolvers;
 import com.kubo.model.network.Route;
 import com.kubo.model.network.Firewall;
@@ -113,7 +114,7 @@ public final class NetworkService {
         List<Certificate> certificates = readCertificates(vhosts);
 
         return new NetworkMap(firewall, vhosts, endpoints, pm2, risks, notes, identity, connections, rates,
-                jails, certificates);
+                jails, certificates, Naming.of(identity, dockerNetworks()));
     }
 
     /**
@@ -146,7 +147,11 @@ public final class NetworkService {
         for (ListeningSocket socket : sockets) {
             listening.add(socket.port());
         }
-        return TrafficCommands.parseConnections(run(TrafficCommands.CONNECTIONS).output(), listening);
+        // Through sudo: ss lists every connection to anyone, but it only names the process behind one when it
+        // is allowed to read that process. Without root every row of the table said "not named without root",
+        // including with root mode on, because this one read was never elevated.
+        return TrafficCommands.parseConnections(runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT).output(),
+                listening);
     }
 
     /**
@@ -206,6 +211,23 @@ public final class NetworkService {
         // Private keys are root-only and so, on many installs, is the directory the certificate sits in.
         return GuardCommands.parseCertificates(
                 runAsRoot(GuardCommands.certificates(List.copyOf(files)), TIMEOUT).output());
+    }
+
+    /**
+     * The Docker networks, which give a bridge interface the name Docker knows it by.
+     *
+     * <p>A bridge is called br- followed by the first twelve characters of the network id, so this is the whole
+     * of what it takes to turn br-41317674355a into the name somebody wrote in a compose file.
+     */
+    private List<com.kubo.model.docker.DockerNetwork> dockerNetworks() {
+        if (docker == null) {
+            return List.of();
+        }
+        try {
+            return docker.networks();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     /**
