@@ -1,15 +1,22 @@
 package com.kubo.model.network;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The whole path a request takes into the server, read in one pass and cross-referenced: the firewall at the edge,
  * the Nginx server blocks behind it, the listening ports they forward to, and the processes holding those ports.
  *
- * @param pm2 the PM2 applications, empty when PM2 is not installed
+ * @param pm2          the PM2 applications, empty when PM2 is not installed
+ * @param identity     where the server sits on the network: interfaces, routes, resolvers
+ * @param connections  what is connected right now, in either direction
+ * @param rates        bytes per second per interface, empty on the first read because a rate needs two
+ * @param jails        the fail2ban jails, empty when fail2ban is absent or unreadable
+ * @param certificates the TLS certificates Nginx points at
  */
 public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> endpoints, List<PmApp> pm2,
-                         List<Risk> risks, List<String> notes) {
+                         List<Risk> risks, List<String> notes, Identity identity, List<Connection> connections,
+                         Map<String, Counter.Rate> rates, List<Jail> jails, List<Certificate> certificates) {
 
     public NetworkMap {
         firewall = firewall == null ? Firewall.absent() : firewall;
@@ -18,10 +25,43 @@ public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> e
         pm2 = List.copyOf(pm2 == null ? List.of() : pm2);
         risks = List.copyOf(risks == null ? List.of() : risks);
         notes = List.copyOf(notes == null ? List.of() : notes);
+        identity = identity == null ? Identity.empty() : identity;
+        connections = List.copyOf(connections == null ? List.of() : connections);
+        rates = Map.copyOf(rates == null ? Map.of() : rates);
+        jails = List.copyOf(jails == null ? List.of() : jails);
+        certificates = List.copyOf(certificates == null ? List.of() : certificates);
+    }
+
+    /**
+     * The shape the older half of the screen was written against, before the machine had an identity.
+     */
+    public NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> endpoints, List<PmApp> pm2,
+                      List<Risk> risks, List<String> notes) {
+        this(firewall, vhosts, endpoints, pm2, risks, notes, Identity.empty(), List.of(), Map.of(),
+                List.of(), List.of());
     }
 
     public static NetworkMap empty() {
         return new NetworkMap(Firewall.absent(), List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    /** Connections that came off the internet, which is the list worth reading first during an incident. */
+    public List<Connection> fromTheInternet() {
+        return connections.stream().filter(Connection::fromTheInternet).toList();
+    }
+
+    /** Every address banned right now, across every jail. */
+    public long bannedAddresses() {
+        return jails.stream().flatMap(jail -> jail.banned().stream()).distinct().count();
+    }
+
+    /** Certificates that have expired or are about to, worst first. */
+    public List<Certificate> certificatesToWorryAbout(java.time.Instant now) {
+        return certificates.stream()
+                .filter(certificate -> certificate.expired(now) || certificate.expiringSoon(now)
+                        || !certificate.readable())
+                .sorted(java.util.Comparator.comparingLong(certificate -> certificate.daysLeft(now)))
+                .toList();
     }
 
     public long alerts() {

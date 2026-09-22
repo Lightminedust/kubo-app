@@ -89,6 +89,70 @@ public final class NetworkCommands {
         return "ufw deny " + requirePort(port) + "/" + suffix(protocol);
     }
 
+    /**
+     * Opens a port to one source only.
+     *
+     * <p>The rule the firewall screen could not write. Opening 5432 to the world and opening it to one office
+     * address are the same click today, and they are not the same decision.
+     *
+     * @param source an address or a network in CIDR form
+     */
+    public static String ufwAllowFrom(String source, int port, Protocol protocol) {
+        return "ufw allow from " + ShellQuote.quote(GuardCommands.checkedAddress(source))
+                + " to any port " + requirePort(port) + " proto " + suffix(protocol);
+    }
+
+    /**
+     * Removes a rule by the number UFW printed beside it.
+     *
+     * <p>Numbers shift as soon as one is removed, so the screen re-reads the list after every delete rather than
+     * letting somebody work down a stale list.
+     */
+    public static String ufwDeleteRule(int number) {
+        if (number < 1) {
+            throw new IllegalArgumentException("A rule number starts at 1");
+        }
+        return "ufw --force delete " + number;
+    }
+
+    /** Whether the configuration is valid. Nothing is reloaded, nothing is changed. */
+    public static final String NGINX_TEST = "nginx -t 2>&1";
+
+    /** The sites available and the sites enabled, so the screen can tell one from the other. */
+    public static final String NGINX_SITES =
+            "for D in available enabled; do echo \"=== $D\"; "
+            + "ls -1 /etc/nginx/sites-$D 2>/dev/null; done";
+
+    /** A site file name. Anything else never reaches a path. */
+    private static final Pattern SITE = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+
+    public static String checkedSite(String site) {
+        if (site == null || !SITE.matcher(site.strip()).matches()) {
+            throw new IllegalArgumentException("Not a site name: " + site);
+        }
+        return site.strip();
+    }
+
+    /**
+     * Turns a site on, and refuses to reload if the result would not parse.
+     *
+     * <p>The link is made first and tested after, because nginx can only judge a configuration it can see. If the
+     * test fails the link is removed again, so a bad site never survives the click that enabled it.
+     */
+    public static String enableSite(String site) {
+        String name = checkedSite(site);
+        String available = ShellQuote.quote("/etc/nginx/sites-available/" + name);
+        String enabled = ShellQuote.quote("/etc/nginx/sites-enabled/" + name);
+        return "test -e " + available + " && ln -sfn " + available + " " + enabled
+                + " && { nginx -t 2>&1 && systemctl reload nginx; } || { rm -f " + enabled
+                + "; echo 'The site was not enabled: nginx refused the configuration.'; false; }";
+    }
+
+    public static String disableSite(String site) {
+        String enabled = ShellQuote.quote("/etc/nginx/sites-enabled/" + checkedSite(site));
+        return "rm -f " + enabled + " && nginx -t 2>&1 && systemctl reload nginx";
+    }
+
     public static String pm2Restart(String app) {
         return "pm2 restart " + ShellQuote.quote(requireApp(app));
     }

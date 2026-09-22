@@ -8,7 +8,15 @@ import com.kubo.connection.ssh.SshConnection;
 import com.kubo.docker.DockerService;
 import com.kubo.model.docker.DockerContainer;
 import com.kubo.model.docker.PortMapping;
+import com.kubo.model.network.Certificate;
+import com.kubo.model.network.Connection;
+import com.kubo.model.network.Counter;
 import com.kubo.model.network.Endpoint;
+import com.kubo.model.network.Identity;
+import com.kubo.model.network.Jail;
+import com.kubo.model.network.Link;
+import com.kubo.model.network.Resolvers;
+import com.kubo.model.network.Route;
 import com.kubo.model.network.Firewall;
 import com.kubo.model.network.ListeningSocket;
 import com.kubo.model.network.NetworkMap;
@@ -20,10 +28,12 @@ import com.kubo.model.server.ListeningPort.Protocol;
 import com.kubo.privilege.Privilege;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +54,10 @@ public final class NetworkService {
     private final CommandService commands;
     private final Privilege privilege;
     private final DockerService docker;
+
+    /** The previous byte counters and when they were read. A rate needs two readings; this is the first one. */
+    private Map<String, Counter> previousCounters = Map.of();
+    private Instant countersReadAt;
 
     public NetworkService(SshConnection connection, CommandService commands, Privilege privilege,
                           DockerService docker) {
@@ -91,7 +105,107 @@ public final class NetworkService {
                 .flatMap(java.util.Optional::stream)
                 .sorted(Comparator.comparing(Risk::level).thenComparingInt(Risk::port))
                 .toList();
-        return new NetworkMap(firewall, vhosts, endpoints, pm2, risks, notes);
+
+        Identity identity = readIdentity();
+        List<Connection> connections = readConnections(sockets);
+        Map<String, Counter.Rate> rates = readRates();
+        List<Jail> jails = readJails(notes);
+        List<Certificate> certificates = readCertificates(vhosts);
+
+        return new NetworkMap(firewall, vhosts, endpoints, pm2, risks, notes, identity, connections, rates,
+                jails, certificates);
+    }
+
+    /**
+     * Where the server sits on the network. None of this needs root.
+     *
+     * <p>Each reading is asked for as JSON and read from the plain output when that comes back empty, which is
+     * what an iproute2 older than 2018 gives.
+     */
+    private Identity readIdentity() {
+        List<Link> links = LinkCommands.parseLinksJson(run(LinkCommands.LINKS_JSON).output());
+        if (links.isEmpty()) {
+            links = LinkCommands.parseLinksText(run(LinkCommands.LINKS_TEXT).output());
+        }
+        List<Route> routes = LinkCommands.parseRoutesJson(run(LinkCommands.ROUTES_JSON).output());
+        if (routes.isEmpty()) {
+            routes = LinkCommands.parseRoutesText(run(LinkCommands.ROUTES_TEXT).output());
+        }
+        Resolvers resolvers = LinkCommands.parseResolvers(run(LinkCommands.RESOLVERS).output());
+        // The address the operator typed to get here. It is the one address known to work from outside, and it
+        // costs nothing: no third party is asked, which is the whole point.
+        String reachedAt = connection.target() == null ? "" : connection.target().host();
+        return new Identity(links, routes, resolvers, reachedAt);
+    }
+
+    /**
+     * What is connected right now. The ports this server listens on decide which end called.
+     */
+    private List<Connection> readConnections(List<ListeningSocket> sockets) {
+        java.util.Set<Integer> listening = new LinkedHashSet<>();
+        for (ListeningSocket socket : sockets) {
+            listening.add(socket.port());
+        }
+        return TrafficCommands.parseConnections(run(TrafficCommands.CONNECTIONS).output(), listening);
+    }
+
+    /**
+     * Bytes per second per interface, from this reading and the one before it.
+     *
+     * <p>Empty on the first read of a session, and after any reading where a counter went backwards. Showing
+     * nothing is right there: a made-up first value would be a number the reader has no way to check.
+     */
+    private Map<String, Counter.Rate> readRates() {
+        Instant now = Instant.now();
+        Map<String, Counter> current = new HashMap<>();
+        for (Counter counter : TrafficCommands.parseCounters(run(TrafficCommands.COUNTERS).output())) {
+            current.put(counter.device(), counter);
+        }
+        Map<String, Counter.Rate> rates = new HashMap<>();
+        if (countersReadAt != null) {
+            Duration elapsed = Duration.between(countersReadAt, now);
+            for (Counter counter : current.values()) {
+                Counter.Rate rate = counter.since(previousCounters.get(counter.device()), elapsed);
+                if (rate != Counter.Rate.NONE) {
+                    rates.put(counter.device(), rate);
+                }
+            }
+        }
+        previousCounters = Map.copyOf(current);
+        countersReadAt = now;
+        return rates;
+    }
+
+    /**
+     * The fail2ban jails. Its socket is root-owned on every install Kubo has seen, so this goes through sudo.
+     */
+    private List<Jail> readJails(List<String> notes) {
+        if (!run(GuardCommands.PRESENT).output().strip().equals("YES")) {
+            return List.of();
+        }
+        List<Jail> jails = GuardCommands.parseJails(runAsRoot(GuardCommands.JAILS, TIMEOUT).output());
+        if (jails.isEmpty()) {
+            notes.add("fail2ban is installed but its status could not be read. Reading it needs root.");
+        }
+        return jails;
+    }
+
+    /**
+     * The certificates Nginx points at, read once each however many server blocks share them.
+     */
+    private List<Certificate> readCertificates(List<Vhost> vhosts) {
+        java.util.Set<String> files = new LinkedHashSet<>();
+        for (Vhost vhost : vhosts) {
+            if (!vhost.certificate().isBlank()) {
+                files.add(vhost.certificate());
+            }
+        }
+        if (files.isEmpty()) {
+            return List.of();
+        }
+        // Private keys are root-only and so, on many installs, is the directory the certificate sits in.
+        return GuardCommands.parseCertificates(
+                runAsRoot(GuardCommands.certificates(List.copyOf(files)), TIMEOUT).output());
     }
 
     /**
@@ -245,6 +359,56 @@ public final class NetworkService {
 
     public CommandEntry deny(int port, Protocol protocol) {
         return runAsRoot(NetworkCommands.ufwDeny(port, protocol), ACTION_TIMEOUT);
+    }
+
+    /**
+     * Opens a port to one source address instead of to the world.
+     *
+     * @throws IllegalArgumentException when the source is not an address
+     */
+    public CommandEntry allowFrom(String source, int port, Protocol protocol) {
+        return runAsRoot(NetworkCommands.ufwAllowFrom(source, port, protocol), ACTION_TIMEOUT);
+    }
+
+    /**
+     * Removes a UFW rule by the number printed beside it. The caller re-reads afterwards: the numbers move.
+     */
+    public CommandEntry deleteRule(int number) {
+        return runAsRoot(NetworkCommands.ufwDeleteRule(number), ACTION_TIMEOUT);
+    }
+
+    /**
+     * Bans an address in a jail, or lifts a ban.
+     *
+     * @throws IllegalArgumentException when the address or the jail name is not one
+     */
+    public CommandEntry ban(String jail, String address) {
+        return runAsRoot(GuardCommands.ban(jail, address), ACTION_TIMEOUT);
+    }
+
+    public CommandEntry unban(String jail, String address) {
+        return runAsRoot(GuardCommands.unban(jail, address), ACTION_TIMEOUT);
+    }
+
+    /** Whether the Nginx configuration parses. Changes nothing. */
+    public CommandEntry testNginx() {
+        return runAsRoot(NetworkCommands.NGINX_TEST, ACTION_TIMEOUT);
+    }
+
+    /** The sites available and the sites enabled. */
+    public CommandEntry nginxSites() {
+        return runAsRoot(NetworkCommands.NGINX_SITES, TIMEOUT);
+    }
+
+    /**
+     * Turns a site on, tests the configuration, and undoes the link if Nginx refuses it.
+     */
+    public CommandEntry enableSite(String site) {
+        return runAsRoot(NetworkCommands.enableSite(site), ACTION_TIMEOUT);
+    }
+
+    public CommandEntry disableSite(String site) {
+        return runAsRoot(NetworkCommands.disableSite(site), ACTION_TIMEOUT);
     }
 
     public CommandEntry restartApp(String app) {
