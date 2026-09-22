@@ -49,6 +49,17 @@ public record ListeningPort(
     }
 
     public Exposure exposure() {
+        return exposureOf(bindAddress);
+    }
+
+    /**
+     * How far a bare address can be reached from.
+     *
+     * <p>Public so that anything else reading an address off this server judges it the same way. Two places
+     * applying their own idea of what counts as private is how a screen ends up calling the same address
+     * internal in one panel and exposed in another.
+     */
+    public static Exposure exposureOf(String bindAddress) {
         String address = normalize(bindAddress);
         if (address.equals("*")) {
             return Exposure.PUBLIC;
