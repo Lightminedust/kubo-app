@@ -58,6 +58,11 @@ public record NetworkMap(Firewall firewall, List<Vhost> vhosts, List<Endpoint> e
         return Conversation.group(connections, naming);
     }
 
+    /** The same conversations, gathered under the service each one is on. */
+    public List<Traffic> traffic() {
+        return Traffic.group(conversations());
+    }
+
     /** Every address banned right now, across every jail. */
     public long bannedAddresses() {
         return jails.stream().flatMap(jail -> jail.banned().stream()).distinct().count();

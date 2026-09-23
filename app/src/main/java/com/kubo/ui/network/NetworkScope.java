@@ -58,9 +58,29 @@ public final class NetworkScope extends StackPane {
     private static final Color SAFE = Color.web("#35e0a1");
     private static final Color CYAN = Color.web("#35e8ff");
 
+    /** The name this screen answers to in {@link com.kubo.command.Attention}. */
+    public static final String ATTENTION = "NETWORK";
+
     private final NetworkService network;
+    /** The map or the nginx screen, whichever the operator asked for. */
+    private final javafx.scene.layout.StackPane screens = new javafx.scene.layout.StackPane();
+    private javafx.scene.Node mapView;
+    /**
+     * The wordmark, TOOLS and ROOT. Kept apart from the rest of the masthead because it belongs to the window
+     * and not to the map: reading a log needs root whichever screen is asking.
+     */
+    private HBox identityRow;
+    /** The zoom controls, which move the map and mean nothing on any other screen. */
+    private HBox cameraBar;
+    private NginxScreen nginx;
+    private final VBox masthead = new VBox();
     /** Only for the tools card: what this server already has, and what could install the rest. */
     private final com.kubo.tools.ToolService tools;
+    /**
+     * What the last look found, kept so a card can open on it instead of waiting for a round trip. Tools do
+     * not come and go on their own: the only thing that changes this is an install, from this very screen.
+     */
+    private java.util.Set<com.kubo.model.tools.Tool> knownTools = java.util.Set.of();
     private final RootSession root;
     private final ServerConsole console;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -97,7 +117,15 @@ public final class NetworkScope extends StackPane {
     /** The edge card while it is open, so a ban can report into the card it was clicked in. */
     private GuardCard guard;
     private FirewallCard firewallCard;
-    private SitesCard sitesCard;
+    /**
+     * True between a firewall change and the reading after it, so the card comes back with the new rules rather
+     * than closing. Its numbers are only right for the reading they were printed in.
+     */
+    private boolean reopenFirewall;
+    /** What the change said, carried into the card that comes back. */
+    private String firewallNote = "";
+    /** The port Kubo's own connection came in on, which is what deleting the wrong UFW rule would close. */
+    private final int sshPort;
     private Endpoint selected;
     private StackPane overlay;
     private ContextMenu menu;
@@ -105,9 +133,11 @@ public final class NetworkScope extends StackPane {
     public NetworkScope(NetworkService network, RootSession root, SshConnection connection, CommandService commands) {
         this.network = network;
         this.root = root;
+        this.sshPort = connection == null ? 22 : connection.target().port();
         this.tools = connection == null || root == null ? null
                 : new com.kubo.tools.ToolService(connection, commands, root.privilege());
-        this.console = new ServerConsole(connection, commands, root);
+        this.console = new ServerConsole(connection, commands, root, "NETWORK",
+                CommandService.Origin.NETWORK, java.util.Set.of());
         getStyleClass().add("scope-view");
 
         flow.setOnSelect(this::showEndpoint);
@@ -119,9 +149,15 @@ public final class NetworkScope extends StackPane {
         BorderPane body = new BorderPane(flow);
         body.setLeft(machine);
         body.setRight(buildInspector());
+        mapView = body;
 
-        BorderPane layout = new BorderPane(body);
-        layout.setTop(buildMasthead());
+        // The map and the nginx screen take turns in the same place. Nginx is not a card over the map: it is a
+        // screen of its own, with its own rail, and it needs the whole window to say anything useful.
+        screens.getChildren().add(body);
+
+        masthead.getChildren().setAll(buildMasthead());
+        BorderPane layout = new BorderPane(screens);
+        layout.setTop(masthead);
         layout.setBottom(console);
         getChildren().add(layout);
 
@@ -145,8 +181,62 @@ public final class NetworkScope extends StackPane {
     }
 
     public void start() {
+        network.forget();
+        lookAtTools(found -> { });
         refresh(true);
         poll.play();
+    }
+
+    /**
+     * Which measuring tools this server has, asked once at the start and again after an install.
+     *
+     * <p>A card that needs the answer used to ask for it as it opened, which meant a round trip behind whatever
+     * the poll was already doing before the card could appear. It is asked once instead, and every card reads
+     * what was found.
+     */
+    private void lookAtTools(java.util.function.Consumer<java.util.Set<com.kubo.model.tools.Tool>> then) {
+        if (tools == null) {
+            then.accept(knownTools);
+            return;
+        }
+        worker.execute(() -> {
+            java.util.Set<com.kubo.model.tools.Tool> present;
+            try {
+                present = tools.present();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the tools failed", e);
+                return;
+            }
+            javafx.application.Platform.runLater(() -> {
+                boolean changed = !present.equals(knownTools);
+                knownTools = present;
+                if (changed) {
+                    then.accept(present);
+                }
+            });
+        });
+    }
+
+    /**
+     * Called when this window comes back to the front. Its poll was held back while it was behind, so it reads
+     * once now rather than leaving the operator looking at a stale screen until the next tick.
+     */
+    public void resume() {
+        refresh(false);
+    }
+
+    /**
+     * Reads everything again, including what is normally read once a session: which firewall this server uses,
+     * what nginx serves, whether fail2ban is there. The poll leaves those alone, so this is how a change made
+     * outside Kubo reaches the screen.
+     */
+    private void reread() {
+        reread(false);
+    }
+
+    private void reread(boolean announce) {
+        network.forget();
+        refresh(announce);
     }
 
     public void shutdown() {
@@ -159,7 +249,14 @@ public final class NetworkScope extends StackPane {
     // Reading
 
     private void refresh(boolean announce) {
-        if (network == null) {
+        // A poll from a window nobody is looking at takes the connection from the one they are. A click still
+        // goes through: announce is true when a person asked for it.
+        if (!announce && !com.kubo.command.Attention.holds(ATTENTION)) {
+            return;
+        }
+        if (network == null || onNginx()) {
+            // Nothing on the map is on screen, so re-reading it would only take the connection from the screen
+            // that is.
             return;
         }
         if (announce) {
@@ -208,6 +305,14 @@ public final class NetworkScope extends StackPane {
 
     private void apply(NetworkMap read) {
         this.map = read;
+        if (reopenFirewall) {
+            reopenFirewall = false;
+            showFirewall();
+            if (!firewallNote.isEmpty()) {
+                firewallCard.report(null, firewallNote);
+                firewallNote = "";
+            }
+        }
         flow.setMap(read);
         long exposed = read.openToTheWorld();
         long alerts = read.alerts();
@@ -430,7 +535,7 @@ public final class NetworkScope extends StackPane {
                     if (result.success()) {
                         status.getStyleClass().setAll("label", "card-success");
                         status.setText("CONFIGURATION VALID  ·  NGINX RELOADED");
-                        refresh(false);
+                        reread();
                     } else {
                         status.getStyleClass().setAll("label", "card-problem");
                         status.setText("NOT RELOADED  ·  " + firstLine(text));
@@ -471,7 +576,7 @@ public final class NetworkScope extends StackPane {
                         status.getStyleClass().setAll("label", "card-problem");
                         status.setText(firstLine(result.error().isBlank() ? result.output() : result.error()));
                     }
-                    refresh(false);
+                    reread();
                 });
             });
         });
@@ -482,7 +587,7 @@ public final class NetworkScope extends StackPane {
             hideOverlay();
             status.getStyleClass().setAll("label", "card-success");
             status.setText(success);
-            refresh(false);
+            reread();
         } else {
             done.accept(firstLine(result.error().isBlank() ? result.output() : result.error()));
         }
@@ -533,14 +638,30 @@ public final class NetworkScope extends StackPane {
     // Root
 
     private void runWithRoot(Runnable action) {
+        runWithRoot(action, () -> { });
+    }
+
+    /**
+     * Runs an action that needs root, asking for the password first when it is not known yet.
+     *
+     * <p>The prompt goes over whatever card asked for it rather than in its place. Replacing the card meant a BAN
+     * clicked on the connections card closed the connections card, and the answer then went to a card nobody
+     * could see.
+     *
+     * @param cancelled called when the password is not given, so whoever was waiting stops waiting
+     */
+    private void runWithRoot(Runnable action, Runnable cancelled) {
         if (network != null && network.needsPassword()) {
-            showOverlay(new SudoPrompt(root.privilege(), verification(),
+            showOverlayOnTop(new SudoPrompt(root.privilege(), verification(),
                     () -> {
                         root.refresh();
-                        hideOverlay();
+                        hideTopOverlay();
                         action.run();
                     },
-                    this::hideOverlay));
+                    () -> {
+                        hideTopOverlay();
+                        cancelled.run();
+                    }));
         } else {
             action.run();
         }
@@ -584,8 +705,8 @@ public final class NetworkScope extends StackPane {
         boolean canBan = !map.jails().isEmpty();
         ConnectionsCard.Hands hands = new ConnectionsCard.Hands() {
             @Override
-            public void ban(String address) {
-                banEverywhere(address);
+            public void ban(String address, java.util.function.Consumer<String> done) {
+                banEverywhere(address, done);
             }
 
             @Override
@@ -593,22 +714,11 @@ public final class NetworkScope extends StackPane {
                 runProbe(() -> com.kubo.tools.ProbeCommands.whois(address), done);
             }
         };
-        // whois is asked for once, when the card opens, rather than on every row.
-        if (tools == null) {
-            showOverlay(new ConnectionsCard(map.conversations(), hands, canBan, false, this::hideOverlay));
-            return;
-        }
-        worker.execute(() -> {
-            boolean present;
-            try {
-                present = tools.present().contains(com.kubo.model.tools.Tool.WHOIS);
-            } catch (RuntimeException e) {
-                present = false;
-            }
-            boolean canWhois = present;
-            javafx.application.Platform.runLater(() -> showOverlay(
-                    new ConnectionsCard(map.conversations(), hands, canBan, canWhois, this::hideOverlay)));
-        });
+        // No round trip to open a card. Whether whois is there was answered the last time anything looked.
+        java.util.Set<String> held = new java.util.HashSet<>();
+        map.jails().forEach(jail -> held.addAll(jail.banned()));
+        showOverlay(new ConnectionsCard(map.conversations(), hands, canBan,
+                knownTools.contains(com.kubo.model.tools.Tool.WHOIS), held, this::hideOverlay));
     }
 
     private void showEdge() {
@@ -623,7 +733,13 @@ public final class NetworkScope extends StackPane {
             public void unban(String jail, String address) {
                 sendGuard(() -> network.unban(jail, address), "Ban lifted on " + address);
             }
+
+            @Override
+            public void whois(String address, java.util.function.Consumer<String> done) {
+                runProbe(() -> com.kubo.tools.ProbeCommands.whois(address), done);
+            }
         }, this::hideOverlay);
+        guard.setCanWhois(knownTools.contains(com.kubo.model.tools.Tool.WHOIS));
         showOverlay(guard);
 
         if (network == null) {
@@ -652,19 +768,35 @@ public final class NetworkScope extends StackPane {
      * belongs in. The first one is used, which on nearly every server is sshd, and the edge card is where a
      * specific jail can be chosen.
      */
-    private void banEverywhere(String address) {
+    /**
+     * Bans an address in the first jail, and tells the card that asked, whichever card it is.
+     *
+     * <p>It used to report only into THE EDGE, so a ban from the connections card, with THE EDGE closed, said
+     * nothing to anybody: not that it worked, not that it failed.
+     */
+    private void banEverywhere(String address, java.util.function.Consumer<String> done) {
         if (map.jails().isEmpty() || network == null) {
+            done.accept("fail2ban has no jail to put it in.");
             return;
         }
         String jail = map.jails().get(0).name();
-        sendGuard(() -> network.ban(jail, address), address + " banned in " + jail);
+        sendGuard(() -> network.ban(jail, address), address + " banned in " + jail, done);
     }
 
     /**
      * Runs a ban or an unban and reports into the card it was asked from.
      */
     private void sendGuard(java.util.function.Supplier<CommandEntry> work, String done) {
+        sendGuard(work, done, trouble -> { });
+    }
+
+    /**
+     * @param answered also told how it went, with null for a success, for a card other than THE EDGE
+     */
+    private void sendGuard(java.util.function.Supplier<CommandEntry> work, String done,
+                           java.util.function.Consumer<String> answered) {
         if (network == null) {
+            answered.accept("No connection.");
             return;
         }
         runWithRoot(() -> worker.execute(() -> {
@@ -685,11 +817,12 @@ public final class NetworkScope extends StackPane {
                 if (guard != null) {
                     guard.report(said, done);
                 }
+                answered.accept(said);
                 if (said == null) {
-                    refresh(false);
+                    reread();
                 }
             });
-        }));
+        }), () -> answered.accept("Root was not given, so nothing was sent."));
     }
 
     /**
@@ -699,58 +832,286 @@ public final class NetworkScope extends StackPane {
         firewallCard = new FirewallCard(map.firewall(), new FirewallCard.Hands() {
             @Override
             public void allowFrom(String source, int port, Protocol protocol) {
-                send(result -> firewallCard.report(result, "Port " + port + " opened to " + source),
+                send(result -> changed(result, "Port " + port + " opened to " + source),
                         () -> network.allowFrom(source, port, protocol));
             }
 
             @Override
-            public void delete(FirewallRule rule) {
-                // The numbers move as soon as one rule goes, so the card is rebuilt from the next reading
-                // rather than left showing a list that is one rule out of date.
-                send(result -> {
-                    firewallCard.report(result, "Rule " + rule.index() + " deleted");
-                    if (result == null) {
-                        hideOverlay();
-                    }
-                }, () -> network.deleteRule(rule.index()));
+            public void denyFrom(String source, int port, Protocol protocol) {
+                send(result -> changed(result, "Port " + port + " refused to "
+                                + (source.isBlank() ? "everyone" : source)),
+                        () -> network.denyFrom(source, port, protocol));
             }
-        }, this::hideOverlay);
+
+            @Override
+            public void delete(com.kubo.model.network.Firewall.RuleGroup group) {
+                send(result -> changed(result, "Rule deleted"), () -> network.deleteRules(group.numbers()));
+            }
+        }, sshPort, this::hideOverlay);
         showOverlay(firewallCard);
     }
 
     /**
-     * The Nginx sites. The listing is read when the card opens rather than on every poll: it changes only when
-     * somebody changes it, and the refresh already costs enough.
+     * After a firewall change: says how it went, and on success brings the card back with the rules read again.
+     *
+     * <p>The card used to close after a delete. Left open it would have shown numbers that had just moved, and a
+     * second delete from that list would have removed the wrong rule. Closed, nobody saw the rule go. Reopened
+     * on the next reading, it shows the list as it now is.
      */
-    private void showSites() {
-        // The card opens now and fills when the listing comes back. Waiting for the read first left the screen
-        // showing nothing for as long as the connection was busy, which reads as broken rather than as slow.
-        sitesCard = new SitesCard(new SitesCard.Hands() {
-            @Override
-            public void enable(String site) {
-                send(result -> sitesCard.report(result, site + " switched on and Nginx reloaded"),
-                        () -> network.enableSite(site));
-            }
+    private void changed(String trouble, String done) {
+        firewallCard.report(trouble, done);
+        if (trouble == null) {
+            reopenFirewall = true;
+            firewallNote = done;
+            reread();
+        }
+    }
 
-            @Override
-            public void disable(String site) {
-                send(result -> sitesCard.report(result, site + " switched off and Nginx reloaded"),
-                        () -> network.disableSite(site));
-            }
+    /**
+     * Leaves the map and gives the window to Nginx.
+     *
+     * <p>Not a card over the map. What a domain does is a list of rules, a pool behind it, a certificate with a
+     * date on it and a log, and none of that reads in a box floating over something else.
+     */
+    private void showNginx() {
+        if (nginx == null) {
+            nginx = new NginxScreen(new NginxScreen.Hands() {
+                @Override
+                public void enable(String site, java.util.function.Consumer<String> done) {
+                    send(trouble -> {
+                        done.accept(trouble);
+                        readNginx();
+                    }, () -> network.enableSite(site));
+                }
 
-            @Override
-            public void test() {
-                send(result -> sitesCard.report(result, "The configuration is valid"),
-                        () -> network.testNginx());
-            }
-        }, this::hideOverlay);
-        showOverlay(sitesCard);
+                @Override
+                public void disable(String site, java.util.function.Consumer<String> done) {
+                    send(trouble -> {
+                        done.accept(trouble);
+                        readNginx();
+                    }, () -> network.disableSite(site));
+                }
 
-        if (network == null) {
-            sitesCard.show(NginxSites.none());
+                @Override
+                public void test(java.util.function.Consumer<String> done) {
+                    send(done, () -> network.testNginx());
+                }
+
+                @Override
+                public void reload(java.util.function.Consumer<String> done) {
+                    send(trouble -> {
+                        done.accept(trouble);
+                        readNginx();
+                    }, () -> network.reloadNginx());
+                }
+
+                @Override
+                public void readFile(String path, java.util.function.Consumer<String> done) {
+                    read(path, done, () -> network.nginxFile(path));
+                }
+
+                @Override
+                public void readLog(String path, java.util.function.Consumer<String> done) {
+                    read(path, done, () -> network.nginxLog(path, 300));
+                }
+
+                @Override
+                public void reread() {
+                    network.forget();
+                    readNginx();
+                }
+
+                @Override
+                public void newSite() {
+                    showNewSite();
+                }
+
+                @Override
+                public void showPort(int port) {
+                    showPortOnMap(port);
+                }
+
+                @Override
+                public void browse(String path) {
+                    openPathPicker("What is in this folder", com.kubo.model.files.PathKind.FOLDER, path,
+                            null);
+                }
+
+                @Override
+                public void back() {
+                    showMap();
+                }
+            });
+        }
+        screens.getChildren().setAll(nginx);
+        // The map's own rail goes with the map. What stays is the part that belongs to the window, less the
+        // zoom, which moves a map that is no longer there.
+        masthead.getChildren().setAll(identityRow);
+        cameraBar.setVisible(false);
+        cameraBar.setManaged(false);
+        readNginx();
+    }
+
+    /**
+     * The form that writes a new site.
+     *
+     * <p>The one thing in Kubo that writes a configuration file, so it shows the file before it writes it,
+     * refuses to write over one that is already there, and leaves a refused site switched off rather than
+     * deleting the only thing that says why Nginx refused it.
+     */
+    private void showNewSite() {
+        if (network == null || nginx == null) {
             return;
         }
-        SitesCard opened = sitesCard;
+        showOverlay(new NewSiteCard(new NewSiteCard.Hands() {
+            @Override
+            public void exists(String site, java.util.function.Consumer<Boolean> done) {
+                runWithRoot(() -> worker.execute(() -> {
+                    boolean there;
+                    try {
+                        there = network.siteExists(site);
+                    } catch (RuntimeException e) {
+                        LOG.log(System.Logger.Level.ERROR, "Looking for the site file failed", e);
+                        // Treated as present: refusing to write is the safe way to be wrong here.
+                        there = true;
+                    }
+                    boolean answer = there;
+                    javafx.application.Platform.runLater(() -> done.accept(answer));
+                }));
+            }
+
+            @Override
+            public void create(com.kubo.model.network.SiteDraft draft,
+                               java.util.function.Consumer<String> done) {
+                send(trouble -> {
+                    done.accept(trouble);
+                    if (trouble == null) {
+                        hideOverlay();
+                    }
+                    readNginx();
+                }, () -> network.createSite(draft));
+            }
+
+            @Override
+            public void delete(String site, java.util.function.Consumer<String> done) {
+                send(trouble -> {
+                    done.accept(trouble);
+                    readNginx();
+                }, () -> network.deleteSite(site));
+            }
+
+            @Override
+            public void pick(com.kubo.model.files.PathKind kind, String start,
+                             java.util.function.Consumer<String> chosen) {
+                openPathPicker(switch (kind) {
+                    case FOLDER -> "Pick the site's folder";
+                    case CERTIFICATE -> "Pick the certificate";
+                    case PRIVATE_KEY -> "Pick its private key";
+                    case SOCKET -> "Pick the PHP-FPM socket";
+                }, kind, start, chosen);
+            }
+        }, nginx.pools(), map.endpoints(), this::readNginx, this::hideOverlay));
+    }
+
+    /**
+     * Opens a path picker over whatever is already open, listing through this screen's connection.
+     *
+     * @param chosen called with the path, or null to only look
+     */
+    private void openPathPicker(String title, com.kubo.model.files.PathKind kind, String start,
+                                java.util.function.Consumer<String> chosen) {
+        if (network == null) {
+            return;
+        }
+        com.kubo.ui.PathPicker picker = new com.kubo.ui.PathPicker(title, kind,
+                (path, done) -> worker.execute(() -> {
+                    com.kubo.model.files.DirectoryListing listing;
+                    try {
+                        listing = network.listFolder(path);
+                    } catch (RuntimeException e) {
+                        LOG.log(System.Logger.Level.ERROR, "Listing a folder failed", e);
+                        listing = com.kubo.model.files.DirectoryListing.failed(path,
+                                e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    }
+                    com.kubo.model.files.DirectoryListing read = listing;
+                    javafx.application.Platform.runLater(() -> done.accept(read));
+                }),
+                start,
+                folder -> {
+                    hideTopOverlay();
+                    if (chosen != null) {
+                        chosen.accept(folder);
+                    }
+                },
+                this::hideTopOverlay);
+        if (kind.readsFirstLine()) {
+            picker.setPeeker((path, done) -> worker.execute(() -> {
+                String armour;
+                try {
+                    armour = network.pemArmour(path);
+                } catch (RuntimeException e) {
+                    LOG.log(System.Logger.Level.ERROR, "Reading the first line of a file failed", e);
+                    armour = "";
+                }
+                String line = armour;
+                javafx.application.Platform.runLater(() -> done.accept(line));
+            }));
+        }
+        showOverlayOnTop(picker);
+    }
+
+    /** A second card over the first, closed on its own without closing the one under it. */
+    private StackPane topOverlay;
+
+    private void showOverlayOnTop(Region card) {
+        hideTopOverlay();
+        Region scrim = new Region();
+        scrim.getStyleClass().add("picker-scrim");
+        topOverlay = new StackPane(scrim, card);
+        topOverlay.setMinSize(0, 0);
+        getChildren().add(topOverlay);
+    }
+
+    private void hideTopOverlay() {
+        if (topOverlay != null) {
+            getChildren().remove(topOverlay);
+            topOverlay = null;
+        }
+    }
+
+    /** Leaves the Nginx screen for the map, with this port picked on it. */
+    private void showPortOnMap(int port) {
+        showMap();
+        for (com.kubo.model.network.Endpoint endpoint : map.endpoints()) {
+            if (endpoint.socket().port() == port) {
+                flow.select(endpoint);
+                showEndpoint(endpoint);
+                return;
+            }
+        }
+    }
+
+    /** Puts the map back, with its own masthead. */
+    private void showMap() {
+        screens.getChildren().setAll(mapView);
+        masthead.getChildren().setAll(buildMasthead());
+        refresh(true);
+    }
+
+    /** True while the operator is on the Nginx screen rather than the map. */
+    private boolean onNginx() {
+        return !screens.getChildren().isEmpty() && screens.getChildren().get(0) == nginx;
+    }
+
+    /**
+     * Reads everything the Nginx screen shows, in one go on the worker: the site files, the configuration and
+     * the certificates it points at.
+     */
+    private void readNginx() {
+        if (network == null || nginx == null) {
+            return;
+        }
+        NginxScreen screen = nginx;
         runWithRoot(() -> worker.execute(() -> {
             NginxSites read;
             try {
@@ -759,8 +1120,45 @@ public final class NetworkScope extends StackPane {
                 LOG.log(System.Logger.Level.ERROR, "Reading the Nginx sites failed", e);
                 read = NginxSites.none();
             }
+            java.util.List<com.kubo.model.network.Vhost> blocks = map.vhosts();
+            java.util.List<com.kubo.model.network.Upstream> pools = network.upstreams();
+            java.util.List<com.kubo.model.network.Certificate> certs;
+            try {
+                certs = network.certificates(blocks);
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the certificates failed", e);
+                certs = java.util.List.of();
+            }
             NginxSites sites = read;
-            javafx.application.Platform.runLater(() -> opened.show(sites));
+            java.util.List<com.kubo.model.network.Certificate> found = certs;
+            java.util.List<com.kubo.model.network.Endpoint> listening = map.endpoints();
+            javafx.application.Platform.runLater(() -> screen.show(sites, blocks, pools, found, listening));
+        }));
+    }
+
+    /**
+     * Runs one read and hands back what the server printed, whether the command succeeded or not.
+     */
+    private void read(String what, java.util.function.Consumer<String> done,
+                      java.util.function.Supplier<CommandEntry> work) {
+        if (network == null) {
+            done.accept("No connection.");
+            return;
+        }
+        runWithRoot(() -> worker.execute(() -> {
+            String text;
+            try {
+                CommandEntry result = work.get();
+                text = result.output().isBlank() ? result.error() : result.output();
+            } catch (IllegalArgumentException e) {
+                // Kubo refusing to send it, in its own words.
+                text = e.getMessage();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading " + what + " failed", e);
+                text = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            String answer = text;
+            javafx.application.Platform.runLater(() -> done.accept(answer));
         }));
     }
 
@@ -788,7 +1186,7 @@ public final class NetworkScope extends StackPane {
             javafx.application.Platform.runLater(() -> {
                 done.accept(said);
                 if (said == null) {
-                    refresh(false);
+                    reread();
                 }
             });
         }));
@@ -801,6 +1199,8 @@ public final class NetworkScope extends StackPane {
      * straight away all the same, with everything disabled until the answer comes.
      */
     private void showDiagnostics() {
+        // Opens with what is already known about this server's tools. Waiting for a fresh look first meant the
+        // card did not appear at all while the connection was busy, which reads as a button that does nothing.
         DiagnosticsCard[] card = new DiagnosticsCard[1];
         java.util.function.Consumer<java.util.Set<com.kubo.model.tools.Tool>> open = present -> {
             card[0] = new DiagnosticsCard(map.identity(), present, new DiagnosticsCard.Hands() {
@@ -817,20 +1217,12 @@ public final class NetworkScope extends StackPane {
             }, NetworkScope.this::hideOverlay);
             showOverlay(card[0]);
         };
-        if (tools == null) {
-            open.accept(java.util.Set.of());
-            return;
-        }
-        worker.execute(() -> {
-            java.util.Set<com.kubo.model.tools.Tool> present;
-            try {
-                present = tools.present();
-            } catch (RuntimeException e) {
-                LOG.log(System.Logger.Level.ERROR, "Reading the tools failed", e);
-                present = java.util.Set.of();
+        open.accept(knownTools);
+        // Then look again, in the background, and redraw the card only if the answer changed something.
+        lookAtTools(found -> {
+            if (overlay != null) {
+                open.accept(found);
             }
-            java.util.Set<com.kubo.model.tools.Tool> found = present;
-            javafx.application.Platform.runLater(() -> open.accept(found));
         });
     }
 
@@ -877,7 +1269,20 @@ public final class NetworkScope extends StackPane {
     private void showTools() {
         boolean canInstall = tools != null && tools.canInstall();
         com.kubo.ui.ToolsCard card = new com.kubo.ui.ToolsCard(
-                (tool, done) -> installTool(tool, done), canInstall,
+                new com.kubo.ui.ToolsCard.Hands() {
+                    @Override
+                    public void install(com.kubo.model.tools.Tool tool,
+                                        java.util.function.Consumer<String> done) {
+                        installTool(tool, line -> { }, done);
+                    }
+
+                    @Override
+                    public void install(com.kubo.model.tools.Tool tool,
+                                        java.util.function.Consumer<String> onLine,
+                                        java.util.function.Consumer<String> done) {
+                        installTool(tool, onLine, done);
+                    }
+                }, canInstall,
                 "Installing writes to the system, so it needs root. Turn on ROOT in the header, then open this "
                         + "again.", this::hideOverlay);
         showOverlay(card);
@@ -900,8 +1305,13 @@ public final class NetworkScope extends StackPane {
         });
     }
 
-    /** Installs one tool, then re-reads: a tool that just arrived changes what the next reading can say. */
-    private void installTool(com.kubo.model.tools.Tool tool, java.util.function.Consumer<String> done) {
+    /**
+     * Installs one tool, then re-reads: a tool that just arrived changes what the next reading can say.
+     *
+     * @param onLine every line the package manager prints, as it prints it, on the JavaFX thread
+     */
+    private void installTool(com.kubo.model.tools.Tool tool, java.util.function.Consumer<String> onLine,
+                             java.util.function.Consumer<String> done) {
         if (tools == null) {
             done.accept("No connection.");
             return;
@@ -910,7 +1320,7 @@ public final class NetworkScope extends StackPane {
             String trouble;
             try {
                 com.kubo.tools.ToolService.Reading before = tools.read();
-                CommandEntry result = tools.install(tool, before.manager());
+                CommandEntry result = tools.install(tool, before.manager(), onLine);
                 trouble = result.success() ? null
                         : firstLine(result.error().isBlank() ? result.output() : result.error());
             } catch (IllegalStateException | IllegalArgumentException e) {
@@ -924,7 +1334,9 @@ public final class NetworkScope extends StackPane {
             javafx.application.Platform.runLater(() -> {
                 done.accept(said);
                 if (said == null) {
-                    refresh(false);
+                    // A tool that was not there is there now: every card may offer what it needs from here on.
+                    lookAtTools(found -> { });
+                    reread();
                 }
             });
         }));
@@ -944,12 +1356,15 @@ public final class NetworkScope extends StackPane {
         Button zoomIn = rail("+", event -> flow.zoomIn());
         HBox camera = new HBox(2, zoomOut, fit, zoomIn);
         camera.getStyleClass().add("zoom-bar");
+        cameraBar = camera;
         RootButton rootButton = new RootButton(root,
                 network == null ? RootButton.noVerification() : verification(), this::showOverlay, this::hideOverlay);
         // Beside ROOT, because installing needs root and the two questions are asked in the same breath.
         Button toolbox = rail("TOOLS", event -> showTools());
         HBox identity = new HBox(12, wordmark, mark, kicker, spacer, toolbox, rootButton, camera);
         identity.setAlignment(Pos.CENTER_LEFT);
+        identity.setPadding(new Insets(16, 34, 0, 26));
+        identityRow = identity;
 
         VBox naming = new VBox(2, headline, caption);
         tagRow.setAlignment(Pos.CENTER_LEFT);
@@ -969,7 +1384,7 @@ public final class NetworkScope extends StackPane {
     }
 
     private HBox buildRail() {
-        Button refresh = rail("↻ RE-READ", event -> refresh(true));
+        Button refresh = rail("↻ RE-READ", event -> reread(true));
         isolatedToggle.getStyleClass().add("rail-button");
         isolatedToggle.setFocusTraversable(false);
         isolatedToggle.setOnAction(event -> {
@@ -979,7 +1394,7 @@ public final class NetworkScope extends StackPane {
         Button connections = rail("CONNECTIONS", event -> showConnections());
         Button edge = rail("THE EDGE", event -> showEdge());
         Button rules = rail("FIREWALL RULES", event -> showFirewall());
-        Button sites = rail("NGINX SITES", event -> showSites());
+        Button sites = rail("NGINX", event -> showNginx());
         Button diagnose = rail("DIAGNOSE", event -> showDiagnostics());
         Button shell = rail("SHELL", event -> console.showShell());
         Button help = rail("?", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
@@ -1101,5 +1516,14 @@ public final class NetworkScope extends StackPane {
         if (selectRow >= 0 && selectRow < read.endpoints().size()) {
             showEndpoint(read.endpoints().get(selectRow));
         }
+    }
+
+    /** Only for the previews: puts the Nginx screen in the window, filled, without a server. */
+    void showNginxForPreview(NginxScreen screen) {
+        nginx = screen;
+        screens.getChildren().setAll(screen);
+        masthead.getChildren().setAll(identityRow);
+        cameraBar.setVisible(false);
+        cameraBar.setManaged(false);
     }
 }

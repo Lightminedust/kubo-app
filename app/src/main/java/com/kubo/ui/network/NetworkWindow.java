@@ -91,6 +91,11 @@ public final class NetworkWindow {
     }
 
     public void show() {
+        com.kubo.ui.Attentive.bind(stage, NetworkScope.ATTENTION, () -> {
+            if (scope != null) {
+                scope.resume();
+            }
+        });
         stage.show();
         stage.toFront();
     }

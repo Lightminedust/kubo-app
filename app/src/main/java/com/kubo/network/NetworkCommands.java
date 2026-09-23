@@ -103,6 +103,38 @@ public final class NetworkCommands {
     }
 
     /**
+     * Refuses a port to one source, or to everyone when the source is empty.
+     *
+     * @param source an address or a network in CIDR form, or empty for everyone
+     */
+    public static String ufwDenyFrom(String source, int port, Protocol protocol) {
+        if (source == null || source.isBlank()) {
+            return ufwDeny(port, protocol);
+        }
+        return "ufw deny from " + ShellQuote.quote(GuardCommands.checkedAddress(source))
+                + " to any port " + requirePort(port) + " proto " + suffix(protocol);
+    }
+
+    /**
+     * Removes several rules by number, highest first.
+     *
+     * <p>UFW renumbers everything below a rule the moment it goes. Deleting 5 and then 11 would delete the rule
+     * that used to be 12. Highest first, each number still means what it meant when the list was read.
+     */
+    public static String ufwDeleteRules(java.util.List<Integer> numbers) {
+        if (numbers == null || numbers.isEmpty()) {
+            throw new IllegalArgumentException("Nothing to delete");
+        }
+        java.util.List<Integer> ordered = new java.util.ArrayList<>(new java.util.TreeSet<>(numbers));
+        java.util.Collections.reverse(ordered);
+        java.util.List<String> steps = new java.util.ArrayList<>();
+        for (int number : ordered) {
+            steps.add(ufwDeleteRule(number));
+        }
+        return String.join(" && ", steps);
+    }
+
+    /**
      * Removes a rule by the number UFW printed beside it.
      *
      * <p>Numbers shift as soon as one is removed, so the screen re-reads the list after every delete rather than
@@ -131,6 +163,114 @@ public final class NetworkCommands {
 
     /** A site file name. Anything else never reaches a path. */
     private static final Pattern SITE = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+
+    /**
+     * An absolute path Kubo is willing to read.
+     *
+     * <p>These paths come out of the server's own configuration rather than out of a field, which makes them
+     * likelier to be sane and no more trustworthy for it. They are checked against this and then quoted, so a
+     * path with a space, a quote or a semicolon in it is refused here rather than handled by the shell.
+     */
+    private static final Pattern READABLE_PATH = Pattern.compile("^/[A-Za-z0-9._/@+-]{1,255}$");
+
+    public static String checkedPath(String path) {
+        if (path == null || !READABLE_PATH.matcher(path.strip()).matches()) {
+            throw new IllegalArgumentException("Not a path Kubo will read: " + path);
+        }
+        return path.strip();
+    }
+
+    /**
+     * One configuration file, as it is written on the server.
+     *
+     * <p>{@code nginx -T} already prints every file, but it prints them with everything it included and with the
+     * comments taken out by the reader here. What somebody wants to check before changing a site is the file as
+     * they would open it.
+     */
+    public static String readFile(String path) {
+        return "cat " + ShellQuote.quote(checkedPath(path));
+    }
+
+    /**
+     * The last lines of one log file.
+     *
+     * <p>Bounded on purpose. A log is the one file on a server with no size, and a screen that asked for all of
+     * it would hang on the first busy site it met. {@code tail -f} would answer that, and it would also hold the
+     * connection open for as long as the screen stayed open, which is the one thing every other reading here
+     * has been changed to stop doing.
+     */
+    public static String readLog(String path, int lines) {
+        int count = Math.max(1, Math.min(2000, lines));
+        return "tail -n " + count + " " + ShellQuote.quote(checkedPath(path));
+    }
+
+    /** Where the rate limit zones live. One fixed path, one fixed content, nothing typed in either. */
+    public static final String RATE_LIMIT_FILE = "/etc/nginx/conf.d/kubo-rate-limits.conf";
+
+    /**
+     * Whether a site file is already there, so the screen can ask before writing over somebody's work.
+     */
+    public static String siteExists(String site) {
+        return "test -e " + ShellQuote.quote("/etc/nginx/sites-available/" + checkedSite(site))
+                + " && echo YES || echo NO";
+    }
+
+    /**
+     * Writes one site file from standard input.
+     *
+     * <p>The file's content is not in this command and never will be. It arrives on standard input, so nothing
+     * anybody typed is ever read by a shell. The only thing here that comes from outside is the site name, and
+     * that is matched against {@link #SITE} and then quoted.
+     *
+     * <p>Written beside the real file and moved over it, so a connection that drops halfway leaves the old file
+     * whole rather than half a new one. Mode 0644 because that is what every other file in sites-available is
+     * and because Nginx reads it as root.
+     */
+    public static String writeSite(String site) {
+        String name = checkedSite(site);
+        String target = "/etc/nginx/sites-available/" + name;
+        return writeThrough(target);
+    }
+
+    /**
+     * Writes the rate limit zones, at a path with nothing of anyone's in it.
+     */
+    public static String writeRateLimits() {
+        return "mkdir -p /etc/nginx/conf.d && " + writeThrough(RATE_LIMIT_FILE);
+    }
+
+    /** Write beside, then move over: a dropped connection leaves the old file whole. */
+    private static String writeThrough(String target) {
+        String temp = ShellQuote.quote(target + ".kubo-new");
+        return "cat > " + temp + " && chmod 0644 " + temp + " && mv -f " + temp + " "
+                + ShellQuote.quote(target);
+    }
+
+    /**
+     * Removes a site file and its link, for undoing a site that was just created and refused.
+     */
+    public static String deleteSite(String site) {
+        String name = checkedSite(site);
+        return "rm -f " + ShellQuote.quote("/etc/nginx/sites-enabled/" + name)
+                + " " + ShellQuote.quote("/etc/nginx/sites-available/" + name);
+    }
+
+    /**
+     * The PEM armour of a file: the {@code -----BEGIN CERTIFICATE-----} or {@code -----BEGIN PRIVATE KEY-----}
+     * line, and only that.
+     *
+     * <p>{@code -o} prints the match and not the line around it, and the pattern stops at the closing dashes, so
+     * not one character of what follows the armour can come back, from a certificate or from a key. {@code -a}
+     * reads a binary file as text instead of refusing it, and {@code -m1} stops at the first armour, so a chain of
+     * three certificates is judged by its first.
+     */
+    public static String pemArmour(String path) {
+        return "grep -a -m1 -o -e '-----BEGIN [A-Z ]*-----' -- " + ShellQuote.quote(checkedPath(path));
+    }
+
+    /** Where Nginx writes by default, for a block whose own file says nothing. */
+    public static final String DEFAULT_ACCESS_LOG = "/var/log/nginx/access.log";
+    public static final String DEFAULT_ERROR_LOG = "/var/log/nginx/error.log";
 
     public static String checkedSite(String site) {
         if (site == null || !SITE.matcher(site.strip()).matches()) {
@@ -355,7 +495,7 @@ public final class NetworkCommands {
      * and where each block forwards.
      */
     public static List<Vhost> parseNginx(String output) {
-        String config = stripComments(output);
+        String config = stripComments(keepFileMarkers(output));
         List<Vhost> vhosts = new ArrayList<>();
         int at = 0;
         while (true) {
@@ -368,10 +508,110 @@ public final class NetworkCommands {
             if (close < 0) {
                 break;
             }
-            vhosts.add(readServer(config.substring(open + 1, close)));
+            vhosts.add(readServer(config.substring(open + 1, close), fileBefore(config, start)));
             at = close + 1;
         }
         return vhosts;
+    }
+
+    /**
+     * Every pool of servers the configuration names, so a site forwarding to a name can say what is in it.
+     */
+    public static List<com.kubo.model.network.Upstream> parseUpstreams(String output) {
+        String config = stripComments(keepFileMarkers(output));
+        List<com.kubo.model.network.Upstream> upstreams = new ArrayList<>();
+        int at = 0;
+        while (true) {
+            int start = config.indexOf("upstream", at);
+            if (start < 0) {
+                break;
+            }
+            boolean startsWord = start == 0 || !Character.isLetterOrDigit(config.charAt(start - 1));
+            int open = config.indexOf('{', start);
+            if (!startsWord || open < 0) {
+                at = start + 1;
+                continue;
+            }
+            String name = config.substring(start + "upstream".length(), open).strip();
+            int close = matchingBrace(config, open);
+            if (close < 0) {
+                break;
+            }
+            if (!name.isEmpty() && !name.contains("{") && !name.contains(";")) {
+                upstreams.add(readUpstream(name, config.substring(open + 1, close)));
+            }
+            at = close + 1;
+        }
+        return upstreams;
+    }
+
+    private static com.kubo.model.network.Upstream readUpstream(String name, String block) {
+        List<com.kubo.model.network.Upstream.Member> members = new ArrayList<>();
+        String method = "";
+        for (String statement : block.split(";")) {
+            String[] words = statement.strip().split("\\s+");
+            if (words.length == 0 || words[0].isEmpty()) {
+                continue;
+            }
+            switch (words[0]) {
+                case "server" -> {
+                    if (words.length < 2) {
+                        continue;
+                    }
+                    int weight = 1;
+                    boolean down = false;
+                    boolean backup = false;
+                    for (int i = 2; i < words.length; i++) {
+                        if (words[i].startsWith("weight=")) {
+                            try {
+                                weight = Integer.parseInt(words[i].substring("weight=".length()));
+                            } catch (NumberFormatException keepTheDefault) {
+                                weight = 1;
+                            }
+                        } else if (words[i].equals("down")) {
+                            down = true;
+                        } else if (words[i].equals("backup")) {
+                            backup = true;
+                        }
+                    }
+                    members.add(new com.kubo.model.network.Upstream.Member(words[1], weight, down, backup));
+                }
+                case "least_conn", "ip_hash", "random" -> method = words[0];
+                default -> {
+                    // hash, keepalive and the rest say nothing about which server a request goes to.
+                }
+            }
+        }
+        return new com.kubo.model.network.Upstream(name, method, members);
+    }
+
+    /** What a kept {@code # configuration file …:} line becomes, so the comment stripper leaves it alone. */
+    private static final String FILE_MARKER = "@@kubo_file ";
+
+    private static final Pattern CONFIGURATION_FILE =
+            Pattern.compile("(?m)^[ \\t]*#[ \\t]*configuration file[ \\t]+(\\S+?):[ \\t]*$");
+
+    /**
+     * Turns {@code nginx -T}'s file headings into something that survives having the comments taken out.
+     *
+     * <p>{@code nginx -T} prints every file it read, one after another, each under a line naming it. That line
+     * is the only thing in the whole answer that says which file a server block lives in, and it is the first
+     * thing somebody wants when a site misbehaves. It is also a comment, so stripping comments threw it away.
+     *
+     * <p>It becomes a directive nothing here reads, sitting between blocks where no block will see it.
+     */
+    private static String keepFileMarkers(String output) {
+        return CONFIGURATION_FILE.matcher(output).replaceAll(FILE_MARKER + "$1;");
+    }
+
+    /** The file the block at this offset came out of: the last marker before it. */
+    private static String fileBefore(String config, int at) {
+        int marker = config.lastIndexOf(FILE_MARKER, at);
+        if (marker < 0) {
+            return "";
+        }
+        int end = config.indexOf(';', marker);
+        return end < 0 ? "" : config.substring(marker + FILE_MARKER.length(), end).strip();
     }
 
     /**
@@ -417,13 +657,16 @@ public final class NetworkCommands {
         return -1;
     }
 
-    private static Vhost readServer(String block) {
+    private static Vhost readServer(String block, String file) {
         List<String> names = new ArrayList<>();
         List<Integer> ports = new ArrayList<>();
         List<Vhost.ProxyTarget> targets = new ArrayList<>();
         boolean ssl = false;
         String certificate = "";
         String root = "";
+        String accessLog = "";
+        String errorLog = "";
+        List<com.kubo.model.network.Rule> rules = readRules(block);
         for (String statement : block.split(";")) {
             String line = statement.strip();
             if (line.isEmpty()) {
@@ -459,12 +702,154 @@ public final class NetworkCommands {
                 }
                 case "proxy_pass" -> targets.add(target(words[1]));
                 case "root" -> root = words[1];
+                case "access_log" -> accessLog = words[1].startsWith("/") ? words[1] : accessLog;
+                case "error_log" -> errorLog = words[1].startsWith("/") ? words[1] : errorLog;
                 default -> {
                     // Every other directive is of no interest to the map.
                 }
             }
         }
-        return new Vhost(names, ports, ssl, targets, certificate, root);
+        // A block whose only job is to send visitors to the secure address. Worth saying in one line, because
+        // it is why a domain appears twice and why one of the two has no rules in it at all.
+        boolean forcesHttps = rules.isEmpty() && targets.isEmpty() && root.isEmpty()
+                && redirectsToHttps(block);
+        // A location that names no destination of its own is not a location that goes nowhere: Nginx serves
+        // it from the server's root. Root at the server level is the most common way these files are written,
+        // and reading it any other way showed "no destination" on sites that were serving files perfectly well.
+        // Only a root written at the server's own level is inherited. The loop above also sees the ones inside
+        // locations, and one location's root is nothing to do with its neighbours.
+        String serverRoot = directiveAtTopLevel(block, "root");
+        if (!serverRoot.isEmpty()) {
+            List<com.kubo.model.network.Rule> inherited = new ArrayList<>();
+            for (com.kubo.model.network.Rule rule : rules) {
+                inherited.add(rule.kind() == com.kubo.model.network.Rule.Kind.UNSET
+                        ? new com.kubo.model.network.Rule(rule.path(), com.kubo.model.network.Rule.Kind.FILES,
+                                serverRoot, rule.websocket())
+                        : rule);
+            }
+            rules = inherited;
+        }
+        return new Vhost(names, ports, ssl, targets, certificate, root, rules, file, forcesHttps,
+                accessLog, errorLog);
+    }
+
+    /**
+     * The value of a directive written directly in this block, not inside any block nested in it. Empty when
+     * there is none.
+     */
+    static String directiveAtTopLevel(String block, String name) {
+        StringBuilder top = new StringBuilder(block.length());
+        int depth = 0;
+        for (int i = 0; i < block.length(); i++) {
+            char character = block.charAt(i);
+            if (character == '{') {
+                depth++;
+                // A nested block ends the statement before it, or its opening words would run into the next.
+                top.append(';');
+            } else if (character == '}') {
+                depth = Math.max(0, depth - 1);
+            } else if (depth == 0) {
+                top.append(character);
+            }
+        }
+        for (String statement : top.toString().split(";")) {
+            String[] words = statement.strip().split("\s+");
+            if (words.length >= 2 && words[0].equals(name)) {
+                return words[1];
+            }
+        }
+        return "";
+    }
+
+    private static boolean redirectsToHttps(String block) {
+        String lower = block.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("https://") && (lower.contains("return 301") || lower.contains("return 302")
+                || lower.contains("rewrite "));
+    }
+
+    /**
+     * The {@code location} rules inside a server block, in the order the file writes them.
+     *
+     * <p>Nginx does not answer a request with the first rule that matches, it answers with the most specific
+     * one, so this order is the file's and not the server's. It is still the order to show: it is the one the
+     * reader will find when they open the file.
+     */
+    static List<com.kubo.model.network.Rule> readRules(String block) {
+        List<com.kubo.model.network.Rule> rules = new ArrayList<>();
+        int at = 0;
+        while (true) {
+            int found = block.indexOf("location", at);
+            if (found < 0) {
+                return rules;
+            }
+            boolean startsWord = found == 0 || !Character.isLetterOrDigit(block.charAt(found - 1));
+            int open = block.indexOf('{', found);
+            if (!startsWord || open < 0) {
+                at = found + 1;
+                continue;
+            }
+            String path = block.substring(found + "location".length(), open).strip();
+            int close = matchingBrace(block, open);
+            if (close < 0) {
+                return rules;
+            }
+            String inside = block.substring(open + 1, close);
+            if (!path.isEmpty() && !path.contains(";")) {
+                rules.add(readRule(path, inside));
+            }
+            at = close + 1;
+        }
+    }
+
+    private static com.kubo.model.network.Rule readRule(String path, String inside) {
+        com.kubo.model.network.Rule.Kind kind = com.kubo.model.network.Rule.Kind.UNSET;
+        String target = "";
+        boolean upgrade = false;
+        boolean connection = false;
+        for (String statement : inside.split(";")) {
+            String line = statement.strip();
+            int brace = Math.max(line.lastIndexOf('{'), line.lastIndexOf('}'));
+            if (brace >= 0) {
+                line = line.substring(brace + 1).strip();
+            }
+            String[] words = line.split("\\s+");
+            if (words.length < 2) {
+                continue;
+            }
+            switch (words[0]) {
+                case "proxy_pass" -> {
+                    kind = com.kubo.model.network.Rule.Kind.PROXY;
+                    target = words[1];
+                }
+                case "root", "alias" -> {
+                    if (kind != com.kubo.model.network.Rule.Kind.PROXY) {
+                        kind = com.kubo.model.network.Rule.Kind.FILES;
+                        target = words[1];
+                    }
+                }
+                case "return" -> {
+                    if (kind == com.kubo.model.network.Rule.Kind.UNSET) {
+                        boolean moved = words.length > 2 && words[1].startsWith("3");
+                        kind = moved
+                                ? com.kubo.model.network.Rule.Kind.REDIRECT
+                                : com.kubo.model.network.Rule.Kind.ANSWER;
+                        target = words.length > 2 ? words[2] : words[1];
+                    }
+                }
+                case "proxy_set_header" -> {
+                    if (words.length > 1 && words[1].equalsIgnoreCase("Upgrade")) {
+                        upgrade = true;
+                    }
+                    if (words.length > 1 && words[1].equalsIgnoreCase("Connection")) {
+                        connection = true;
+                    }
+                }
+                default -> {
+                    // Everything else changes how the answer is made, not who makes it.
+                }
+            }
+        }
+        return new com.kubo.model.network.Rule(path, kind, target, upgrade && connection);
     }
 
     /**

@@ -54,6 +54,9 @@ import java.util.Map;
  */
 public final class RedisScope extends StackPane {
 
+    /** The name this screen answers to in {@link com.kubo.command.Attention}. */
+    public static final String ATTENTION = "REDIS";
+
     private static final Color MAGENTA = Color.web("#ff3fd8");
     private static final Color CYAN = Color.web("#35e8ff");
     private static final Color GREEN = Color.web("#35e0a1");
@@ -73,7 +76,12 @@ public final class RedisScope extends StackPane {
 
     private final RedisStack stack = new RedisStack();
     private final RedisKeyList keyList = new RedisKeyList();
-    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(3), event -> loadInfo()));
+    // Held back while another window is in front: one connection, one command at a time.
+    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(3), event -> {
+        if (com.kubo.command.Attention.holds(ATTENTION)) {
+            loadInfo();
+        }
+    }));
 
     // Masthead
     private final HBox serviceChips = new HBox(6);
@@ -210,12 +218,21 @@ public final class RedisScope extends StackPane {
         poll.play();
     }
 
+
+    /**
+     * Called when this window comes back to the front. Its poll was held back while it was behind, so it reads
+     * once now rather than leaving the operator looking at a stale screen until the next tick.
+     */
+    public void resume() {
+        loadInfo();
+    }
+
     public void shutdown() {
         poll.stop();
         stack.stop();
         console.shutdown();
         // A Redis password lives no longer than the screen that asked for it.
-        instances.forEach(item -> item.service().forgetPassword());
+        instances.stream().filter(item -> item.service() != null).forEach(item -> item.service().forgetPassword());
         if (privilege != null) {
             privilege.wipe();
         }

@@ -35,6 +35,16 @@ public final class TrafficCommands {
      * <p>A line looks like this, with the columns separated by runs of spaces:
      * <pre>tcp  ESTAB 0 0  10.0.0.5:22  86.15.2.9:51234  users:(("sshd",pid=8213,fd=5))</pre>
      *
+     * <p>The State column is not always there. Asking for one state with {@code state established} makes some
+     * versions of ss drop it, since every row would say the same word. So the two addresses are found by their
+     * shape rather than counted to: they are the first two fields in a row that read as an address and a port.
+     * Netid is a word, Recv-Q and Send-Q are plain numbers, a state is a word, and the process field comes after
+     * both addresses, so the first pair is always the right pair.
+     *
+     * <p>This is why, on a server where the connected user saw every connection, root saw none. With root the
+     * process field is filled in, which made the line one field longer, which moved the column this used to
+     * count to, and every row was thrown away as unreadable. Counting columns was the bug.
+     *
      * @param listening the ports this server listens on, which is what decides the direction of each connection
      */
     public static List<Connection> parseConnections(String output, java.util.Set<Integer> listening) {
@@ -50,13 +60,12 @@ public final class TrafficCommands {
             }
             ListeningPort.Protocol protocol = parts[0].startsWith("udp")
                     ? ListeningPort.Protocol.UDP : ListeningPort.Protocol.TCP;
-            // ss prints "Netid State Recv-Q Send-Q Local Peer" for tcp, and drops State for udp on some versions.
-            int local = parts.length >= 6 ? 4 : 3;
-            String[] here = splitAddress(parts[local]);
-            String[] there = splitAddress(parts[local + 1]);
-            if (here == null || there == null) {
+            int local = addressPair(parts);
+            if (local < 0) {
                 continue;
             }
+            String[] here = splitAddress(parts[local]);
+            String[] there = splitAddress(parts[local + 1]);
             int localPort;
             int remotePort;
             try {
@@ -77,6 +86,21 @@ public final class TrafficCommands {
             }
         }
         return connections;
+    }
+
+    /**
+     * Where the local address sits in a row: the first of two fields in a row that both read as an address
+     * and a port.
+     *
+     * @return the index of the local address, or -1 when no such pair is in this line
+     */
+    private static int addressPair(String[] parts) {
+        for (int i = 1; i + 1 < parts.length; i++) {
+            if (splitAddress(parts[i]) != null && splitAddress(parts[i + 1]) != null) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**

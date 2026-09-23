@@ -38,6 +38,9 @@ public final class LocalShellWindow {
     }
 
     public void show() {
+        // While the operator is in this window, the screens behind it stop polling: one connection, one command
+        // at a time.
+        com.kubo.ui.Attentive.bind(stage, "SHELL");
         stage.show();
         stage.toFront();
     }

@@ -85,11 +85,31 @@ public final class ToolService {
      * @throws IllegalArgumentException when Kubo knows no package for this tool on this system
      */
     public CommandEntry install(Tool tool, PackageManager manager) {
+        return install(tool, manager, line -> { });
+    }
+
+    /**
+     * Installs one tool, handing over every line the package manager prints as it prints it.
+     *
+     * <p>An install fetches over the network and unpacks, and on a slow mirror that is a minute of a screen
+     * saying nothing. The manager says plenty in that minute; {@code onLine} is how the screen gets it.
+     *
+     * @param onLine called on a reader thread, not the UI thread
+     * @throws IllegalStateException    when root is not available, which is required whoever is connected
+     * @throws IllegalArgumentException when Kubo knows no package for this tool on this system
+     */
+    public CommandEntry install(Tool tool, PackageManager manager, java.util.function.Consumer<String> onLine) {
         if (!canInstall()) {
             throw new IllegalStateException("Installing writes to the system, so it needs root. Turn on ROOT in "
                     + "the header first.");
         }
-        return runAsRoot(ToolCommands.install(tool, manager));
+        String command = ToolCommands.install(tool, manager);
+        Privilege.Command wrapped = privilege.asRoot(AdminPath.with(command));
+        CommandEntry raw = connection.execWatching(wrapped.command(), wrapped.input(), onLine, INSTALL_TIMEOUT);
+        CommandEntry entry = new CommandEntry(raw.executedAt(), command, true, raw.exitCode(), raw.output(),
+                raw.error(), raw.duration());
+        commands.add(entry, Origin.NETWORK);
+        return entry;
     }
 
     private CommandEntry run(String command) {
@@ -100,12 +120,4 @@ public final class ToolService {
         return entry;
     }
 
-    private CommandEntry runAsRoot(String command) {
-        Privilege.Command wrapped = privilege.asRoot(AdminPath.with(command));
-        CommandEntry raw = connection.exec(wrapped.command(), wrapped.input(), INSTALL_TIMEOUT);
-        CommandEntry entry = new CommandEntry(raw.executedAt(), command, true, raw.exitCode(), raw.output(),
-                raw.error(), raw.duration());
-        commands.add(entry, Origin.NETWORK);
-        return entry;
-    }
 }

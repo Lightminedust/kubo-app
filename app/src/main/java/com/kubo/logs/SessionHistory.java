@@ -26,7 +26,7 @@ public final class SessionHistory {
      * One command as the log keeps it: no output, only its size.
      */
     public record Command(Instant at, String origin, String command, int exitCode, long durationMs, long outputBytes,
-                          String error) {
+                          String error, boolean asRoot, boolean typed) {
 
         public Command {
             Objects.requireNonNull(at, "at");
@@ -35,10 +35,27 @@ public final class SessionHistory {
             Objects.requireNonNull(error, "error");
         }
 
+        /** A command sent by Kubo, not as root: the shape of every log written before either was recorded. */
+        public Command(Instant at, String origin, String command, int exitCode, long durationMs, long outputBytes,
+                       String error) {
+            this(at, origin, command, exitCode, durationMs, outputBytes, error, false, false);
+        }
+
         public static Command of(CommandEntry entry, Origin origin) {
+            return of(entry, origin, false);
+        }
+
+        public static Command of(CommandEntry entry, Origin origin, boolean typed) {
             return new Command(entry.executedAt(), origin.name(), entry.command(), entry.exitCode(),
                     entry.duration().toMillis(), entry.output().getBytes(StandardCharsets.UTF_8).length,
-                    entry.error().strip());
+                    entry.error().strip(), entry.asRoot(), typed);
+        }
+
+        /**
+         * Typed by a person: the flag, or the USER origin every log before the flag used for it.
+         */
+        public boolean byHand() {
+            return typed || origin.equals("USER");
         }
 
         public boolean success() {
@@ -89,7 +106,8 @@ public final class SessionHistory {
             }
             commands.add(new Command(at, node.path("origin").asText("?"), node.path("command").asText(""),
                     node.path("exitCode").asInt(CommandEntry.NOT_RUN), node.path("durationMs").asLong(0),
-                    node.path("outputBytes").asLong(0), node.path("error").asText("")));
+                    node.path("outputBytes").asLong(0), node.path("error").asText(""),
+                    node.path("asRoot").asBoolean(false), node.path("typed").asBoolean(false)));
         }
         Instant started = instant(root.path("startedAt").asText(""));
         return new Session(path, root.path("target").asText("?"), started == null ? Instant.EPOCH : started, commands);

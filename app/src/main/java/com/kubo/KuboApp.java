@@ -45,6 +45,11 @@ public final class KuboApp extends Application {
         stage.setScene(scene);
         stage.setMaximized(true);
         stage.setOnHidden(event -> closeCurrentView.run());
+        com.kubo.ui.Attentive.bind(stage, ScopeView.ATTENTION, () -> {
+            if (scope != null) {
+                scope.resume();
+            }
+        });
         showConnection();
         stage.show();
     }

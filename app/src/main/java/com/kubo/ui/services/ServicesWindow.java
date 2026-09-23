@@ -46,6 +46,7 @@ public final class ServicesWindow {
     }
 
     public void show() {
+        com.kubo.ui.Attentive.bind(stage, ServicesScope.ATTENTION, scope::resume);
         stage.show();
         stage.toFront();
     }

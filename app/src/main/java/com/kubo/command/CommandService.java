@@ -39,10 +39,32 @@ public class CommandService {
      */
     public static final int MAX_HISTORY = 1_000;
 
+    /**
+     * One command as the session keeps it: what ran, which screen sent it, and whether a person typed it.
+     *
+     * @param typed true when somebody typed it into a console, false when Kubo sent it on its own
+     */
+    public record Logged(CommandEntry entry, Origin origin, boolean typed) {
+
+        public Logged {
+            Objects.requireNonNull(entry, "entry");
+            Objects.requireNonNull(origin, "origin");
+        }
+    }
+
     private final Deque<CommandEntry> history = new ArrayDeque<>();
     private final List<BiConsumer<CommandEntry, Origin>> listeners = new CopyOnWriteArrayList<>();
+    private final List<java.util.function.Consumer<Logged>> loggedListeners = new CopyOnWriteArrayList<>();
 
+    /** A command Kubo sent on its own. */
     public void add(CommandEntry entry, Origin origin) {
+        add(entry, origin, false);
+    }
+
+    /**
+     * @param typed true when somebody typed it into a console of this screen
+     */
+    public void add(CommandEntry entry, Origin origin, boolean typed) {
         Objects.requireNonNull(entry, "entry cannot be null");
         Objects.requireNonNull(origin, "origin cannot be null");
         synchronized (this) {
@@ -54,6 +76,21 @@ public class CommandService {
         for (BiConsumer<CommandEntry, Origin> listener : listeners) {
             listener.accept(entry, origin);
         }
+        Logged logged = new Logged(entry, origin, typed);
+        for (java.util.function.Consumer<Logged> listener : loggedListeners) {
+            listener.accept(logged);
+        }
+    }
+
+    /**
+     * Receives every new entry with whether it was typed, on the thread that added it.
+     *
+     * @return removes the listener
+     */
+    public Runnable addLoggedListener(java.util.function.Consumer<Logged> listener) {
+        Objects.requireNonNull(listener, "listener");
+        loggedListeners.add(listener);
+        return () -> loggedListeners.remove(listener);
     }
 
     public synchronized List<CommandEntry> getHistory() {

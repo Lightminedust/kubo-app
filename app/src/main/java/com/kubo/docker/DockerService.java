@@ -155,8 +155,10 @@ public final class DockerService {
     /**
      * Runs one command inside a container, as typed by the user.
      */
+    /** A command somebody typed to run inside a container: logged as typed. */
     public CommandEntry exec(String id, String command) {
-        return docker(DockerCommands.exec(id, command), ACTION_TIMEOUT);
+        String line = DockerCommands.exec(id, command);
+        return needsRoot ? runAsRoot(line, ACTION_TIMEOUT, true) : run(line, ACTION_TIMEOUT, true);
     }
 
     /**
@@ -205,8 +207,12 @@ public final class DockerService {
     }
 
     private CommandEntry run(String command, Duration timeout) {
+        return run(command, timeout, false);
+    }
+
+    private CommandEntry run(String command, Duration timeout, boolean typed) {
         CommandEntry entry = timeout == null ? connection.exec(command) : connection.exec(command, null, timeout);
-        commands.add(entry, Origin.DOCKER);
+        commands.add(entry, Origin.DOCKER, typed);
         return entry;
     }
 
@@ -215,11 +221,15 @@ public final class DockerService {
     }
 
     private CommandEntry runAsRoot(String command, Duration timeout) {
+        return runAsRoot(command, timeout, false);
+    }
+
+    private CommandEntry runAsRoot(String command, Duration timeout, boolean typed) {
         // Root may be possible without being on yet. Running as the connected user then fails with docker's own
         // permission message, which is something the screen can show; asking Privilege for a wrapper it cannot
         // build would throw and kill the read.
         if (privilege == null || !privilege.available() || privilege.needsPassword()) {
-            return run(command, timeout);
+            return run(command, timeout, typed);
         }
         Privilege.Command rooted = privilege.asRoot(command);
         Duration limit = timeout == null ? Duration.ofSeconds(15) : timeout;
@@ -227,7 +237,7 @@ public final class DockerService {
         // The history shows the plain docker command and that it ran as root, never the sudo wrapper or password.
         CommandEntry entry = new CommandEntry(raw.executedAt(), command, true, raw.exitCode(), raw.output(),
                 raw.error(), raw.duration());
-        commands.add(entry, Origin.DOCKER);
+        commands.add(entry, Origin.DOCKER, typed);
         return entry;
     }
 }

@@ -67,6 +67,9 @@ import java.util.concurrent.Executors;
  */
 public final class ServicesScope extends StackPane {
 
+    /** The name this screen answers to in {@link com.kubo.command.Attention}. */
+    public static final String ATTENTION = "SERVICES";
+
     private static final Color ALERT = Color.web("#ff2d55");
     private static final Color AMBER = Color.web("#ffb347");
     private static final Color SAFE = Color.web("#35e0a1");
@@ -95,7 +98,12 @@ public final class ServicesScope extends StackPane {
     /** The last reading, kept so a move can show itself before the next one comes back. */
     private ServicesReport reading = ServicesReport.EMPTY;
     /** The state of the machine drifts slowly; a re-read every half minute is plenty and costs one round trip. */
-    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(30), event -> refresh()));
+    // Held back while another window is in front: one connection, one command at a time.
+    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(30), event -> {
+        if (com.kubo.command.Attention.holds(ATTENTION)) {
+            refresh();
+        }
+    }));
 
     private final Label headline = label("READING…", "sheet-title");
     private final Label caption = label("", "sheet-caption");
@@ -126,7 +134,8 @@ public final class ServicesScope extends StackPane {
             // here exactly as it does on the file screen rather than failing for no visible reason.
             this.browser.setRootSession(root);
         }
-        this.console = new ServerConsole(connection, commands, root);
+        this.console = new ServerConsole(connection, commands, root, "SERVICES",
+                CommandService.Origin.SERVICES, java.util.Set.of());
         // Folded to its bar on this screen: the tree is what the window is for, and the log is there to be
         // opened when something is being checked, not to take a third of it by default.
         this.console.setCollapsed(true);
@@ -162,6 +171,15 @@ public final class ServicesScope extends StackPane {
     public void start() {
         refresh();
         poll.play();
+    }
+
+
+    /**
+     * Called when this window comes back to the front. Its poll was held back while it was behind, so it reads
+     * once now rather than leaving the operator looking at a stale screen until the next tick.
+     */
+    public void resume() {
+        refresh();
     }
 
     public void shutdown() {

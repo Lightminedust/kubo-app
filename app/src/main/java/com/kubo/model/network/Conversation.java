@@ -15,12 +15,14 @@ import java.util.Map;
  *
  * @param count how many sockets are open between these two ends right now
  */
-public record Conversation(String remoteAddress, String remotePlace, int servicePort, String serviceName,
-                           String process, boolean inbound, boolean fromTheInternet, int count) {
+public record Conversation(String remoteAddress, String remotePlace, Naming.Place where, int servicePort,
+                           String serviceName, String process, boolean inbound, boolean fromTheInternet,
+                           int count) {
 
     public Conversation {
         remoteAddress = remoteAddress == null ? "" : remoteAddress;
         remotePlace = remotePlace == null ? "" : remotePlace;
+        where = where == null ? Naming.Place.INTERNET : where;
         serviceName = serviceName == null ? "" : serviceName;
         process = process == null ? "" : process;
     }
@@ -39,13 +41,13 @@ public record Conversation(String remoteAddress, String remotePlace, int service
             String key = remote + "|" + service + "|" + connection.process() + "|" + connection.inbound();
             Conversation existing = byPair.get(key);
             if (existing == null) {
-                byPair.put(key, new Conversation(remote, naming.place(remote), service,
+                byPair.put(key, new Conversation(remote, naming.place(remote), naming.kindOf(remote), service,
                         PortNames.of(service), connection.process(), connection.inbound(),
                         connection.fromTheInternet(), 1));
             } else {
                 byPair.put(key, new Conversation(existing.remoteAddress(), existing.remotePlace(),
-                        existing.servicePort(), existing.serviceName(), existing.process(), existing.inbound(),
-                        existing.fromTheInternet(), existing.count() + 1));
+                        existing.where(), existing.servicePort(), existing.serviceName(), existing.process(),
+                        existing.inbound(), existing.fromTheInternet(), existing.count() + 1));
             }
         }
         List<Conversation> conversations = new ArrayList<>(byPair.values());
@@ -67,5 +69,25 @@ public record Conversation(String remoteAddress, String remotePlace, int service
 
     public boolean named() {
         return !process.isBlank();
+    }
+
+    /** The other end in one word, for a mark beside the row: INTERNET, DOCKER, THIS SERVER, PRIVATE. */
+    public String mark() {
+        return switch (where) {
+            case INTERNET -> "INTERNET";
+            case DOCKER -> "DOCKER";
+            case LOOPBACK, THIS_SERVER -> "THIS SERVER";
+            case PRIVATE -> "PRIVATE";
+        };
+    }
+
+    /** True when any of this conversation's words contain the text, for the filter field. */
+    public boolean matches(String text) {
+        String wanted = text.strip().toLowerCase(java.util.Locale.ROOT);
+        if (wanted.isEmpty()) {
+            return true;
+        }
+        return (remoteAddress + " " + remotePlace + " " + serviceName + " " + process + " " + servicePort)
+                .toLowerCase(java.util.Locale.ROOT).contains(wanted);
     }
 }

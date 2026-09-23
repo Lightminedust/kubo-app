@@ -105,6 +105,10 @@ final class MachinePanel extends VBox {
             fold.setFocusTraversable(false);
             fold.setOnAction(event -> {
                 showVirtual = !showVirtual;
+                // The signature is what the reading says, and the reading did not change: only the question
+                // did. Without this the panel compared, found nothing new and returned, and the button that
+                // had just been clicked did nothing at all.
+                drawnFrom = "";
                 show(this.identity, this.rates, this.naming);
             });
             links.getChildren().add(fold);

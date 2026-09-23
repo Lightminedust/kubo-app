@@ -7,6 +7,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -19,10 +20,13 @@ import java.util.Set;
 /**
  * The tools Kubo can use if the server has them, and the offer to install one.
  *
- * <p>This is the only place in Kubo that adds anything to a server. So it says, for each one, what it unlocks
- * and what it still will not do, shows the exact command before running it, and installs one tool at a time on
- * one click. Nothing here happens on its own, and nothing is installed to make Kubo work: without any of them
- * every screen does what it did before, with the feature these feed greyed out and the reason beside it.
+ * <p>This is the only place in Kubo that adds anything to a server, so every row says the same three things in
+ * the same three places: the name, what it unlocks, and whether it is there. The command that would run is not
+ * printed under every row any more, cut off at the width of the card; it is behind the row, one click away, in
+ * full, because nobody should have to trust a button that writes to /usr without reading it first.
+ *
+ * <p>An install replaces its own row with a readout: the phase, the bytes, the packages and the server's own
+ * lines as they come. Nothing else on the card moves while it runs.
  */
 public final class ToolsCard extends VBox {
 
@@ -30,15 +34,40 @@ public final class ToolsCard extends VBox {
     public interface Hands {
         /** Installs one tool and reports with null when it worked, or the reason it did not. */
         void install(Tool tool, java.util.function.Consumer<String> done);
+
+        /**
+         * Installs one tool, handing every line the package manager prints to {@code onLine} as it arrives.
+         *
+         * <p>The default sends nothing and falls back to {@link #install}, so a screen that has no way to watch
+         * still works: it shows the phase and the clock, and the lines arrive at the end.
+         */
+        default void install(Tool tool, java.util.function.Consumer<String> onLine,
+                             java.util.function.Consumer<String> done) {
+            install(tool, done);
+        }
     }
 
-    private final VBox body = new VBox(18);
+    private final VBox body = new VBox(22);
     private final Pulse pulse = new Pulse();
     private final Label status = new Label();
-    private final Map<Tool, Button> buttons = new EnumMap<>(Tool.class);
     private final Hands hands;
     private final boolean canInstall;
     private final String cannotInstallBecause;
+    /** The rows whose command the reader asked to see. */
+    private final Set<Tool> showingCommand = java.util.EnumSet.noneOf(Tool.class);
+    /**
+     * The readouts of installs run on this card, kept so the row can be rebuilt without losing them.
+     *
+     * <p>The row has to be rebuilt: an install that worked turns INSTALL into INSTALLED and the row's edge
+     * green, and saying "it is installed" in a sentence under a row still offering to install it was the
+     * change the operator was looking for and did not get.
+     */
+    private final Map<Tool, InstallReadout> readouts = new EnumMap<>(Tool.class);
+    private Set<Tool> present = Set.of();
+    private PackageManager manager = PackageManager.NONE;
+    private boolean filled;
+    /** The tool being installed right now, while one is: no second install starts underneath it. */
+    private Tool installing;
 
     /**
      * @param canInstall           false when root is off, which is what installing needs whoever is connected
@@ -50,7 +79,7 @@ public final class ToolsCard extends VBox {
         this.cannotInstallBecause = cannotInstallBecause;
         getStyleClass().addAll("float-card", "help-card");
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
-        setSpacing(14);
+        setSpacing(16);
         setPadding(new Insets(24, 30, 24, 28));
 
         Region spacer = new Region();
@@ -68,101 +97,229 @@ public final class ToolsCard extends VBox {
         status.setVisible(false);
         status.setManaged(false);
 
-        body.getChildren().add(label("LOOKING AT WHAT THIS SERVER ALREADY HAS", "card-note"));
+        body.getChildren().add(note("Looking at what this server already has."));
         pulse.setRunning(true);
 
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
         scroll.getStyleClass().add("plain-scroll");
-        scroll.setPrefViewportHeight(520);
-        scroll.setMaxWidth(740);
+        scroll.setPrefViewportHeight(500);
+        scroll.setPrefViewportWidth(700);
+        scroll.setMaxWidth(710);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        getChildren().addAll(header, pulse, scroll);
+        getChildren().addAll(header, pulse, scroll, status);
     }
 
     /**
      * Fills the card once the server has answered.
      */
     public void show(Set<Tool> present, PackageManager manager) {
+        this.present = Set.copyOf(present);
+        this.manager = manager;
+        this.filled = true;
         pulse.setRunning(false);
-        body.getChildren().clear();
-        buttons.clear();
+        draw();
+    }
 
-        body.getChildren().add(note("Kubo needs none of these to run. Each one turns a feature that is greyed "
-                + "out into one that works, and nothing else on your server changes."));
+    /** Only for the previews: opens one row's command, the way clicking COMMAND does. */
+    public void showCommandForPreview(Tool tool) {
+        showingCommand.add(tool);
+        draw();
+    }
 
-        if (!manager.known()) {
-            body.getChildren().add(problem("No package manager Kubo knows how to drive was found on this "
-                    + "server, so it can only tell you what is missing. Install by hand what you want."));
+    /**
+     * Only for the previews: puts an install readout in one row, filled with lines a server printed, without
+     * a server.
+     */
+    public void showInstallingForPreview(Tool tool, java.util.List<String> printed) {
+        showInstallingForPreview(tool, printed, false);
+    }
+
+    /**
+     * @param finished true to show it as it looks once the install worked, with the row turned over
+     */
+    public void showInstallingForPreview(Tool tool, java.util.List<String> printed, boolean finished) {
+        InstallReadout readout = new InstallReadout(tool.binary(), manager.binary());
+        readouts.put(tool, readout);
+        if (finished) {
+            present = java.util.stream.Stream.concat(present.stream(), java.util.stream.Stream.of(tool))
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            report(null, tool.binary() + " is installed. The features it feeds work from the next reading.");
         } else {
-            body.getChildren().add(note("This server uses " + manager.binary() + "  ·  " + manager.family()));
+            installing = tool;
         }
-        if (!canInstall && manager.known()) {
-            body.getChildren().add(problem(cannotInstallBecause));
-        }
-
-        for (Tool.Group group : Tool.Group.values()) {
-            body.getChildren().add(label(group.title(), "series"));
-            body.getChildren().add(note(group.why()));
-            for (Tool tool : Tool.of(group)) {
-                body.getChildren().add(row(tool, present.contains(tool), manager));
-            }
-        }
-        body.getChildren().add(status);
+        draw();
+        readout.showForPreview(printed, finished, finished);
     }
 
     /** Says the read failed, rather than showing an empty list that reads as "this server has nothing". */
     public void showProblem(String reason) {
         pulse.setRunning(false);
+        filled = false;
         body.getChildren().setAll(problem("Kubo could not read which tools this server has: " + reason));
     }
 
-    private VBox row(Tool tool, boolean here, PackageManager manager) {
-        Label name = label(tool.binary(), "mono");
-        name.setMinWidth(120);
+    private void draw() {
+        if (!filled) {
+            return;
+        }
+        body.getChildren().clear();
+
+        body.getChildren().add(note("Kubo needs none of these to run. Each one turns a feature that is greyed "
+                + "out into one that works, and nothing else on your server changes."));
+        body.getChildren().add(summary());
+        if (!manager.known()) {
+            body.getChildren().add(problem("No package manager Kubo knows how to drive was found on this "
+                    + "server, so it can only tell you what is missing. Install by hand what you want."));
+        } else if (!canInstall) {
+            body.getChildren().add(problem(cannotInstallBecause));
+        }
+
+        for (Tool.Group group : Tool.Group.values()) {
+            VBox rows = new VBox(1);
+            for (Tool tool : Tool.of(group)) {
+                rows.getChildren().add(row(tool));
+            }
+            VBox section = new VBox(8, label(group.title(), "series"), note(group.why()), rows);
+            body.getChildren().add(section);
+        }
+    }
+
+    /**
+     * One line saying where this server stands, so the list below it is read as an answer rather than a menu.
+     */
+    private HBox summary() {
+        int here = (int) java.util.Arrays.stream(Tool.values()).filter(present::contains).count();
+        Label count = label(here + " OF " + Tool.values().length + " ALREADY HERE", "mono");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
+        Label driver = label(manager.known() ? manager.binary() + "  ·  " + manager.family() : "NO PACKAGE MANAGER",
+                "mono-muted");
+        HBox line = new HBox(12, count, spacer, driver);
+        line.setAlignment(Pos.CENTER_LEFT);
+        line.getStyleClass().add("tools-summary");
+        line.setPadding(new Insets(8, 12, 9, 12));
+        return line;
+    }
 
-        HBox head = new HBox(12, name, spacer);
-        head.setAlignment(Pos.CENTER_LEFT);
-        if (here) {
-            head.getChildren().add(label("INSTALLED", "card-success"));
-        } else if (manager.known()) {
-            Button install = new Button("INSTALL");
-            install.getStyleClass().addAll("rail-button", "compact-button");
-            install.setFocusTraversable(false);
-            install.setDisable(!canInstall);
-            install.setTooltip(new javafx.scene.control.Tooltip(
-                    manager.install(tool.packageFor(manager))));
-            install.setOnAction(event -> run(tool, install));
-            buttons.put(tool, install);
-            head.getChildren().add(install);
-        } else {
-            head.getChildren().add(label("MISSING", "card-problem"));
-        }
+    /**
+     * One tool: name on the left, state on the right, the sentence underneath, and the command behind a click.
+     */
+    private VBox row(Tool tool) {
+        boolean here = present.contains(tool);
 
-        VBox block = new VBox(2, head, note(tool.unlocks()));
+        Label name = label(tool.binary(), "mono");
+        name.setMinWidth(112);
+        name.setPrefWidth(112);
+
+        Label what = label(tool.unlocks(), "card-note");
+        what.setWrapText(true);
+        what.setMaxWidth(320);
+        what.setMinHeight(Region.USE_PREF_SIZE);
+        HBox.setHgrow(what, Priority.ALWAYS);
+
+        HBox head = new HBox(14, name, what, state(tool, here));
+        head.setAlignment(Pos.TOP_LEFT);
+
+        VBox block = new VBox(6, head);
+        block.getStyleClass().add(here ? "tool-row-here" : "tool-row");
+        block.setPadding(new Insets(10, 12, 11, 12));
+
         if (!tool.caveat().isBlank()) {
-            block.getChildren().add(label(tool.caveat(), "mono-muted"));
+            Label caveat = label(tool.caveat(), "tool-caveat");
+            caveat.setWrapText(true);
+            caveat.setMaxWidth(430);
+            caveat.setMinHeight(Region.USE_PREF_SIZE);
+            VBox.setMargin(caveat, new Insets(0, 0, 0, 126));
+            block.getChildren().add(caveat);
         }
-        if (!here && manager.known()) {
-            // The exact sentence, before it runs. Nobody should have to trust a button that writes to /usr.
-            block.getChildren().add(label(manager.install(tool.packageFor(manager)), "mono-muted"));
+        InstallReadout readout = readouts.get(tool);
+        if (readout != null) {
+            block.getChildren().add(readout);
+        }
+        if (showingCommand.contains(tool) && manager.known()) {
+            TextArea command = new TextArea(manager.install(tool.packageFor(manager)));
+            command.setEditable(false);
+            command.setWrapText(true);
+            // Three lines with the box's own padding on top of them. Counted in pixels rather than in rows
+            // because a row count leaves the third line clipped, which is the thing this was meant to stop.
+            command.setPrefHeight(68);
+            command.setMinHeight(68);
+            command.getStyleClass().add("redis-diagnostic-output");
+            VBox.setMargin(command, new Insets(2, 0, 0, 126));
+            block.getChildren().add(command);
         }
         return block;
     }
 
-    private void run(Tool tool, Button install) {
-        install.setDisable(true);
-        install.setText("INSTALLING…");
-        pulse.setRunning(true);
-        hands.install(tool, trouble -> {
-            pulse.setRunning(false);
-            install.setText(trouble == null ? "INSTALLED" : "INSTALL");
-            install.setDisable(trouble == null);
-            report(trouble, tool.binary() + " is installed. The features it feeds work from the next reading.");
+    /**
+     * The right hand column: one thing, always in the same place.
+     */
+    private HBox state(Tool tool, boolean here) {
+        HBox box = new HBox(8);
+        box.setAlignment(Pos.CENTER_RIGHT);
+        // Wide enough for both buttons at their full width: a label cut to "IN..." is worse than no label.
+        box.setMinWidth(196);
+        box.setPrefWidth(196);
+
+        if (here) {
+            box.getChildren().add(label("INSTALLED", "card-success"));
+            return box;
+        }
+        if (!manager.known()) {
+            box.getChildren().add(label("MISSING", "card-problem"));
+            return box;
+        }
+
+        Button show = new Button(showingCommand.contains(tool) ? "HIDE" : "COMMAND");
+        show.getStyleClass().addAll("ghost-button", "tight-button");
+        show.setFocusTraversable(false);
+        show.setOnAction(event -> {
+            if (!showingCommand.remove(tool)) {
+                showingCommand.add(tool);
+            }
+            draw();
         });
+
+        Button install = new Button("INSTALL");
+        install.getStyleClass().addAll("rail-button", "tight-button");
+        install.setFocusTraversable(false);
+        install.setDisable(!canInstall || installing != null);
+        install.setOnAction(event -> run(tool));
+
+        box.getChildren().addAll(show, install);
+        return box;
+    }
+
+    /**
+     * Starts an install and turns its row into a readout for as long as it runs.
+     */
+    private void run(Tool tool) {
+        InstallReadout readout = new InstallReadout(tool.binary(), manager.binary());
+        readouts.put(tool, readout);
+        installing = tool;
+        status.setVisible(false);
+        status.setManaged(false);
+        draw();
+        readout.start();
+
+        hands.install(tool,
+                line -> javafx.application.Platform.runLater(() -> readout.accept(line)),
+                trouble -> {
+                    readout.finish(trouble == null);
+                    installing = null;
+                    if (trouble == null) {
+                        present = java.util.stream.Stream.concat(present.stream(), java.util.stream.Stream.of(tool))
+                                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                    }
+                    report(trouble, tool.binary() + " is installed. The features it feeds work from the next "
+                            + "reading.");
+                    // Redrawn now, which is what turns the row green and its button into INSTALLED. The readout
+                    // is kept and put back, so the lines the server printed do not go with the old row.
+                    draw();
+                });
     }
 
     private void report(String trouble, String done) {

@@ -769,6 +769,14 @@
     -fx-font-size: 11px;
 }
 
+/* Narrower than compact, for two buttons side by side in one column. */
+
+.tight-button,
+.tight-button:focused {
+    -fx-padding: 6 11 6 11;
+    -fx-font-size: 10.5px;
+}
+
 .danger-button,
 .danger-button:focused {
     -fx-background-color: transparent;
@@ -790,6 +798,29 @@
 
 .danger-button:disabled {
     -fx-opacity: 0.3;
+}
+
+/* A ban in a list of ten. The word is red, the frame is not: ten red frames read as ten alarms when the only
+   alarm is the row. */
+
+.danger-quiet,
+.danger-quiet:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+    -fx-text-fill: #ff5a6e;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.danger-quiet:hover {
+    -fx-border-color: #ff2d55;
+    -fx-text-fill: #ffffff;
+    -fx-background-color: #ff2d55;
 }
 
 .files-notice {
@@ -1222,6 +1253,14 @@
     -fx-max-width: 640px;
 }
 
+/* A card with two columns: a form on the left and what it will write on the right. 640 is the width of one
+   column of prose, and this is not that. */
+
+.wide-card {
+    -fx-border-color: #24242d #24242d #24242d #35e8ff;
+    -fx-max-width: 1060px;
+}
+
 .mode-toggle-active {
     -fx-text-fill: #35e8ff;
     -fx-border-color: transparent transparent #35e8ff transparent;
@@ -1280,6 +1319,274 @@
     -fx-border-color: #33333e;
     -fx-border-width: 1;
     -fx-padding: 2 8 2 8;
+}
+
+/* Where the other end of a connection is. Red is reserved for the internet: on this card it is the only
+   thing that asks for a decision. */
+
+/* The same chip as a button: no raised grey face, a frame that lights on hover. */
+
+.button.net-chip,
+.button.net-chip:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-cursor: hand;
+}
+
+.button.net-chip:hover {
+    -fx-background-color: rgba(53, 232, 255, 0.10);
+}
+
+.net-chip-internet {
+    -fx-text-fill: #ff2d55;
+    -fx-border-color: rgba(255, 45, 85, 0.45);
+}
+
+.net-chip-docker {
+    -fx-text-fill: #35e8ff;
+    -fx-border-color: rgba(53, 232, 255, 0.4);
+}
+
+.net-chip-quiet {
+    -fx-text-fill: #75758a;
+    -fx-border-color: #2b2b36;
+}
+
+/* The tools card: one row per tool, and an install that writes what it is doing. */
+
+.tools-summary {
+    -fx-background-color: rgba(20, 20, 27, 0.75);
+    -fx-border-color: transparent transparent transparent #35e8ff;
+    -fx-border-width: 0 0 0 2;
+}
+
+.tool-row {
+    -fx-background-color: rgba(18, 18, 24, 0.5);
+    -fx-border-color: transparent transparent transparent #2b2b36;
+    -fx-border-width: 0 0 0 2;
+}
+
+.tool-row-here {
+    -fx-background-color: rgba(16, 24, 21, 0.5);
+    -fx-border-color: transparent transparent transparent #35e0a1;
+    -fx-border-width: 0 0 0 2;
+}
+
+.tool-caveat {
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #8a8a9c;
+}
+
+.install-readout {
+    -fx-background-color: #08090e;
+    -fx-border-color: #23232e;
+    -fx-border-width: 1;
+}
+
+/* The same cyan as the dots below it: the phase and the bar are one reading. */
+
+.install-phase {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #35e8ff;
+}
+
+.install-lines {
+    -fx-padding: 2 0 0 0;
+}
+
+.install-line {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #9fb6c4;
+}
+
+/* The nginx screen: a site picked out of the list, and the colours of a log line. */
+
+.site-row-open {
+    -fx-background-color: rgba(30, 20, 34, 0.75);
+    -fx-border-color: transparent transparent transparent #ff3fd8;
+    -fx-border-width: 0 0 0 2;
+}
+
+.access-ok {
+    -fx-text-fill: #6ee0c8;
+}
+
+.access-moved {
+    -fx-text-fill: #35e8ff;
+}
+
+.access-refused {
+    -fx-text-fill: #e8c35a;
+}
+
+.access-broken {
+    -fx-text-fill: #ff5a6e;
+}
+
+.access-unread {
+    -fx-text-fill: #75758a;
+}
+
+/* The small shared pieces: a spine list, its crumbs and shortcuts, and a chain of links. The server is
+   violet everywhere in Kubo, this computer is cyan; these are the server's. */
+
+.server-card {
+    -fx-border-color: #24242d #24242d #24242d #9d4dff;
+}
+
+.spine-kicker {
+    -fx-font-size: 11px;
+    -fx-text-fill: #9d4dff;
+}
+
+.spine-place,
+.spine-place:focused,
+.spine-crumb,
+.spine-crumb:focused,
+.spine-crumb-current,
+.spine-crumb-current:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-padding: 2 0 3 0;
+    -fx-cursor: hand;
+}
+
+.spine-place {
+    -fx-font-size: 10px;
+    -fx-text-fill: #b58cff;
+    -fx-border-color: transparent transparent rgba(157, 77, 255, 0.45) transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.spine-place:hover {
+    -fx-text-fill: #f4f4f7;
+}
+
+.spine-crumb {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #6e6e7d;
+}
+
+.spine-crumb:hover {
+    -fx-text-fill: #b58cff;
+}
+
+.spine-crumb-current {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10.5px;
+    -fx-text-fill: #e6e6ec;
+    -fx-cursor: default;
+}
+
+/* The one confirmation that asks for a number typed back: deleting what lets SSH in. */
+
+/* Late, not yet broken: a certificate three weeks from its date. */
+
+.card-warning {
+    -fx-font-size: 10px;
+    -fx-text-fill: #e8c35a;
+    -fx-line-spacing: 2px;
+}
+
+/* A banned address: the address asks who owns it, the cross lets it back in. */
+
+.banned-pill {
+    -fx-border-color: #33333e;
+    -fx-border-width: 1;
+}
+
+.banned-address,
+.banned-address:focused,
+.banned-lift,
+.banned-lift:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+}
+
+.banned-address {
+    -fx-text-fill: #e6e6ec;
+    -fx-padding: 5 10 5 10;
+}
+
+.banned-address:hover {
+    -fx-text-fill: #35e8ff;
+}
+
+.banned-address:disabled {
+    -fx-opacity: 1;
+    -fx-cursor: default;
+}
+
+.banned-lift {
+    -fx-text-fill: #6e6e7d;
+    -fx-padding: 5 9 5 9;
+    -fx-border-color: transparent transparent transparent #33333e;
+    -fx-border-width: 0 0 0 1;
+}
+
+.banned-lift:hover {
+    -fx-text-fill: #ffffff;
+    -fx-background-color: #ff2d55;
+}
+
+.lockout-box {
+    -fx-background-color: rgba(40, 10, 18, 0.7);
+    -fx-border-color: transparent transparent transparent #ff2d55;
+    -fx-border-width: 0 0 0 2;
+}
+
+.chain-row-open:hover {
+    -fx-background-color: rgba(157, 77, 255, 0.07);
+}
+
+.chain-value-broken {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #ff5a6e;
+}
+
+/* A small button beside a field, for choosing instead of typing. */
+
+.field-button,
+.field-button:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: rgba(157, 77, 255, 0.55);
+    -fx-border-width: 1;
+    -fx-text-fill: #b58cff;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 10px;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.field-button:hover {
+    -fx-background-color: rgba(157, 77, 255, 0.15);
+    -fx-text-fill: #f4f4f7;
+}
+
+/* One service and the addresses folded under it. */
+
+.traffic-block {
+    -fx-background-color: rgba(20, 20, 27, 0.55);
+    -fx-border-color: transparent transparent transparent #2b2b36;
+    -fx-border-width: 0 0 0 2;
+}
+
+.traffic-open {
+    -fx-background-color: rgba(28, 16, 22, 0.55);
+    -fx-border-color: transparent transparent transparent #ff2d55;
+    -fx-border-width: 0 0 0 2;
 }
 
 /* Redis screen */
@@ -1806,4 +2113,65 @@
     -fx-font-family: "Consolas";
     -fx-font-size: 11px;
     -fx-padding: 8 10 8 10;
+}
+
+/* Console lines that can be selected and copied: no box around them, a violet wash on the ones picked. */
+
+.log-lines,
+.log-lines:focused {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}
+
+.log-lines .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 1 4 1 4;
+}
+
+.log-lines .list-cell:filled:hover {
+    -fx-background-color: #0e0e14;
+}
+
+.log-lines .list-cell:filled:selected {
+    -fx-background-color: rgba(157, 77, 255, 0.2);
+}
+
+.log-lines .scroll-bar:horizontal {
+    -fx-pref-height: 0;
+    -fx-opacity: 0;
+}
+
+/* The screens that send commands, as the journal marks them, and how a command was sent. */
+
+.log-origin-network {
+    -fx-text-fill: #e8c35a;
+    -fx-border-color: rgba(232, 195, 90, 0.5);
+}
+
+.log-origin-packages {
+    -fx-text-fill: #6ee0c8;
+    -fx-border-color: rgba(110, 224, 200, 0.5);
+}
+
+.log-origin-services {
+    -fx-text-fill: #7aa2ff;
+    -fx-border-color: rgba(122, 162, 255, 0.5);
+}
+
+.log-mark-root {
+    -fx-font-size: 9px;
+    -fx-text-fill: #ff2d55;
+}
+
+.log-mark-typed {
+    -fx-font-size: 9px;
+    -fx-text-fill: #ff3fd8;
+}
+
+.log-count {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #f4f4f7;
 }

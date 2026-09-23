@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -59,6 +60,7 @@ public final class ServerMonitor implements AutoCloseable {
     private volatile boolean degraded;
     private volatile Consumer<String> onProblem = message -> {
     };
+    private volatile BooleanSupplier awake = () -> true;
 
     private static final System.Logger LOG = System.getLogger(ServerMonitor.class.getName());
 
@@ -172,7 +174,7 @@ public final class ServerMonitor implements AutoCloseable {
 
     private Runnable guarded(Runnable refresh) {
         return () -> {
-            if (stopped.get()) {
+            if (stopped.get() || !awake.getAsBoolean()) {
                 return;
             }
             try {
@@ -191,6 +193,31 @@ public final class ServerMonitor implements AutoCloseable {
                 onProblem.accept(describe(e));
             }
         };
+    }
+
+    /**
+     * Says whether anybody is looking at this screen. While it answers false the polls do nothing: the connection
+     * runs one command at a time, and a screen behind another one would take it from the screen in front.
+     *
+     * <p>Read on the monitor's thread, so it must be safe to call from there.
+     */
+    public void setAwake(BooleanSupplier awake) {
+        this.awake = Objects.requireNonNull(awake, "awake");
+    }
+
+    /**
+     * Reads the metrics once now, off the usual rhythm. For a screen coming back to the front with figures that
+     * stopped moving while it was behind.
+     */
+    public void readNow() {
+        if (stopped.get() || !started.get()) {
+            return;
+        }
+        try {
+            scheduler.execute(guarded(this::refreshMetrics));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // Closed between the check above and here. There is nothing to read for a screen that is going away.
+        }
     }
 
     /**

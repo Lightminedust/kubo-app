@@ -24,6 +24,7 @@ import com.kubo.model.network.NetworkMap;
 import com.kubo.model.network.PmApp;
 import com.kubo.model.network.Risk;
 import com.kubo.model.network.ServiceOwner;
+import com.kubo.model.network.SiteDraft;
 import com.kubo.model.network.Vhost;
 import com.kubo.model.server.ListeningPort.Protocol;
 import com.kubo.privilege.Privilege;
@@ -60,12 +61,45 @@ public final class NetworkService {
     private Map<String, Counter> previousCounters = Map.of();
     private Instant countersReadAt;
 
+    // What this server has, as opposed to what it is doing. Which firewall tool is installed, whether nginx is
+    // there and what it serves, whether fail2ban is there: none of that changes in twelve seconds, and asking
+    // every twelve seconds cost several sudo calls a cycle. Worse, when one of those was refused, the same
+    // refusal came back in the log every twelve seconds and never a different answer.
+    // These are null until the first look, and forget() puts them back to null. A refusal is kept too: it is an
+    // answer, and repeating the question does not change it.
+    private List<Firewall.Kind> firewallTools;
+    private Firewall firewallRefusal;
+    private List<Vhost> nginxSites;
+    private List<com.kubo.model.network.Upstream> nginxUpstreams;
+    private String nginxProblem = "";
+    private Boolean fail2banInstalled;
+    private List<com.kubo.model.docker.DockerNetwork> dockerNets;
+    /** Whether the last read went through sudo, so a change of root state can throw the rest away by itself. */
+    private Boolean rootLastRead;
+
     public NetworkService(SshConnection connection, CommandService commands, Privilege privilege,
                           DockerService docker) {
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = Objects.requireNonNull(commands, "commands");
         this.privilege = privilege;
         this.docker = docker;
+    }
+
+    /**
+     * Throws away everything read once and kept, so the next read asks the server again.
+     *
+     * <p>Called on a re-read and after anything Kubo changes on the server. It is also done here, without being
+     * asked, when root is turned on or off: that is the one thing that turns "only root may read this" into an
+     * answer.
+     */
+    public void forget() {
+        firewallTools = null;
+        firewallRefusal = null;
+        nginxSites = null;
+        nginxUpstreams = null;
+        nginxProblem = "";
+        fail2banInstalled = null;
+        dockerNets = null;
     }
 
     /**
@@ -87,6 +121,11 @@ public final class NetworkService {
      * than failing the whole read.
      */
     public NetworkMap read() {
+        boolean root = usesSudo();
+        if (rootLastRead != null && rootLastRead != root) {
+            forget();
+        }
+        rootLastRead = root;
         List<String> notes = new ArrayList<>();
         // One command for everything the machine reports. The connection runs commands one at a time, so six
         // reads meant six waits and anything asked for meanwhile queued behind them. Through sudo, because
@@ -159,27 +198,21 @@ public final class NetworkService {
         for (ListeningSocket socket : sockets) {
             listening.add(socket.port());
         }
-        // Root first, because only root can name the process holding a connection.
+        // Root, because only root can name the process holding a connection.
+        //
+        // This used to read as root, find nothing, and read again as the connected user, because on a real
+        // server root came back empty while the ordinary user saw everything. That was never a sudo problem:
+        // the parser counted columns, and root filling in the process field moved the column it counted to.
+        // With that fixed, an empty answer here means an idle server, and asking a second time would be one
+        // more command every twelve seconds for a question already answered.
         CommandEntry elevated = runAsRoot(TrafficCommands.CONNECTIONS, TIMEOUT);
         List<Connection> connections = TrafficCommands.parseConnections(elevated.output(), listening);
-        if (!connections.isEmpty() || !usesSudo()) {
-            return connections;
+        if (connections.isEmpty() && !elevated.success()) {
+            String said = elevated.error().isBlank() ? elevated.output() : elevated.error();
+            notes.add("The open connections could not be read."
+                    + (said.isBlank() ? "" : " The server said: " + firstLine(said)));
         }
-
-        // On at least one real server this same command lists every connection as the ordinary user and
-        // nothing at all through sudo. Why is not understood yet. What is certain is which of the two answers
-        // is worth showing: the one with rows in it. The reason sudo gave is carried to the screen so the next
-        // person to look at this has something better than a guess.
-        CommandEntry plain = run(TrafficCommands.CONNECTIONS, TIMEOUT);
-        List<Connection> withoutRoot = TrafficCommands.parseConnections(plain.output(), listening);
-        if (withoutRoot.isEmpty()) {
-            return connections;
-        }
-        String said = elevated.error().isBlank() ? elevated.output() : elevated.error();
-        notes.add("Reading the open connections as root came back empty, so they are listed as the connected "
-                + "user instead and the programs holding them cannot be named."
-                + (said.isBlank() ? "" : " sudo said: " + firstLine(said)));
-        return withoutRoot;
+        return connections;
     }
 
     /** True when acting as root means going through sudo rather than already being root. */
@@ -222,8 +255,14 @@ public final class NetworkService {
      * The fail2ban jails. Its socket is root-owned on every install Kubo has seen, so this goes through sudo.
      */
     private List<Jail> readJails(List<String> notes) {
+        // A server without fail2ban is asked once, not every cycle: what is banned changes, what is installed
+        // does not.
+        if (Boolean.FALSE.equals(fail2banInstalled)) {
+            return List.of();
+        }
         String output = runAsRoot(GuardCommands.WATCH, TIMEOUT).output();
-        if (!GuardCommands.installed(output)) {
+        fail2banInstalled = GuardCommands.installed(output);
+        if (!fail2banInstalled) {
             return List.of();
         }
         List<Jail> jails = GuardCommands.parseJails(output);
@@ -256,16 +295,22 @@ public final class NetworkService {
      *
      * <p>A bridge is called br- followed by the first twelve characters of the network id, so this is the whole
      * of what it takes to turn br-41317674355a into the name somebody wrote in a compose file.
+     *
+     * <p>Read once a session: a network's subnet is fixed when the network is created and does not move after.
      */
     private List<com.kubo.model.docker.DockerNetwork> dockerNetworks() {
+        if (dockerNets != null) {
+            return dockerNets;
+        }
         if (docker == null) {
             return List.of();
         }
         try {
-            return docker.networks();
+            dockerNets = docker.networks();
         } catch (RuntimeException e) {
-            return List.of();
+            dockerNets = List.of();
         }
+        return dockerNets;
     }
 
     /**
@@ -289,13 +334,25 @@ public final class NetworkService {
         // Asked as root. On plenty of servers /usr/sbin/nft and /usr/sbin/iptables are executable by root
         // only, and command -v answers nothing for anybody else. Looking as the connected user and concluding
         // "no firewall" from that is how this screen came to tell a protected server it was wide open.
-        CommandEntry found = runAsRoot(FirewallCommands.DETECT, TIMEOUT);
-        if (!found.success()) {
-            // The look itself failed. That is not the same as finding nothing, and it must not read as it.
-            notes.add(Firewall.unchecked().problem());
-            return Firewall.unchecked();
+        // Root said no last time. Asking again on every cycle put the same refusal in the log every twelve
+        // seconds and never produced a different answer; turning root on throws this away by itself.
+        if (firewallRefusal != null) {
+            notes.add(firewallRefusal.problem());
+            return firewallRefusal;
         }
-        List<Firewall.Kind> tools = FirewallCommands.parseTools(found.output());
+        if (firewallTools == null) {
+            CommandEntry found = runAsRoot(FirewallCommands.DETECT, TIMEOUT);
+            if (!found.success()) {
+                // The look itself failed. That is not the same as finding nothing, and it must not read as it.
+                // Not kept: unlike a refusal, this one is worth asking again.
+                notes.add(Firewall.unchecked().problem());
+                return Firewall.unchecked();
+            }
+            firewallTools = FirewallCommands.parseTools(found.output());
+        }
+        // Which tool is installed was found once. What it is enforcing is read on every cycle: those are rules
+        // somebody can change, including from this screen.
+        List<Firewall.Kind> tools = firewallTools;
         if (tools.isEmpty()) {
             notes.add(Firewall.absent().problem());
             return Firewall.absent();
@@ -321,6 +378,9 @@ public final class NetworkService {
         if (firewall.state() == Firewall.State.UNREADABLE) {
             firewall = withoutRoot(firewall);
         }
+        if (firewall.state() == Firewall.State.UNREADABLE || firewall.state() == Firewall.State.UNRECOGNISED) {
+            firewallRefusal = firewall;
+        }
         String problem = firewall.problem();
         if (!problem.isEmpty()) {
             notes.add(problem);
@@ -343,23 +403,47 @@ public final class NetworkService {
         };
     }
 
+    /**
+     * The domains this server serves, read once and kept.
+     *
+     * <p>{@code nginx -T} prints every configuration file on the server and needs root to do it, so it is the
+     * longest read on this screen. It is also a configuration: it changes when somebody edits it, not on its own.
+     * Kubo asks once, keeps the answer, and asks again when the operator re-reads or changes something, which is
+     * what {@link #forget()} is for.
+     */
     private List<Vhost> readNginx(List<String> notes) {
+        if (nginxSites == null) {
+            lookForNginx();
+        }
+        if (!nginxProblem.isEmpty()) {
+            notes.add(nginxProblem);
+        }
+        return nginxSites;
+    }
+
+    private void lookForNginx() {
+        nginxProblem = "";
+        nginxUpstreams = List.of();
         if (run(NetworkCommands.NGINX_PRESENT).output().strip().equals("NO")) {
-            return List.of();
+            nginxSites = List.of();
+            return;
         }
         CommandEntry entry = runAsRoot(NetworkCommands.NGINX, TIMEOUT);
+        nginxUpstreams = NetworkCommands.parseUpstreams(entry.output());
         List<Vhost> vhosts = NetworkCommands.parseNginx(entry.output());
         if (vhosts.isEmpty()) {
             // `nginx -T` needs root, but the configuration files themselves are usually world-readable, so the
             // server blocks can often be had anyway. This is only a fallback: it misses whatever an include pulls
             // in from somewhere unusual, which is exactly what -T exists to resolve.
-            vhosts = NetworkCommands.parseNginx(run(NetworkCommands.NGINX_FILES, TIMEOUT).output());
+            String files = run(NetworkCommands.NGINX_FILES, TIMEOUT).output();
+            vhosts = NetworkCommands.parseNginx(files);
+            nginxUpstreams = NetworkCommands.parseUpstreams(files);
         }
         if (vhosts.isEmpty()) {
-            notes.add("Nginx is installed but only root may read its configuration. Turn on ROOT in the header "
-                    + "and refresh to see which domains it serves and where it sends them.");
+            nginxProblem = "Nginx is installed but only root may read its configuration. Turn on ROOT in the header "
+                    + "and refresh to see which domains it serves and where it sends them.";
         }
-        return vhosts;
+        nginxSites = vhosts;
     }
 
     /**
@@ -439,6 +523,16 @@ public final class NetworkService {
         return runAsRoot(NetworkCommands.ufwAllowFrom(source, port, protocol), ACTION_TIMEOUT);
     }
 
+    /** Refuses a port to one source, or to everyone when the source is empty. */
+    public CommandEntry denyFrom(String source, int port, Protocol protocol) {
+        return runAsRoot(NetworkCommands.ufwDenyFrom(source, port, protocol), ACTION_TIMEOUT);
+    }
+
+    /** Removes several UFW rules, highest number first. The caller re-reads afterwards: the numbers move. */
+    public CommandEntry deleteRules(java.util.List<Integer> numbers) {
+        return runAsRoot(NetworkCommands.ufwDeleteRules(numbers), ACTION_TIMEOUT);
+    }
+
     /**
      * Removes a UFW rule by the number printed beside it. The caller re-reads afterwards: the numbers move.
      */
@@ -478,6 +572,122 @@ public final class NetworkService {
 
     public CommandEntry disableSite(String site) {
         return runAsRoot(NetworkCommands.disableSite(site), ACTION_TIMEOUT);
+    }
+
+    /**
+     * One configuration file as it is written on disk, read as root because most of /etc/nginx is.
+     */
+    public CommandEntry nginxFile(String path) {
+        return runAsRoot(NetworkCommands.readFile(path), TIMEOUT);
+    }
+
+    /**
+     * The last lines of one log file, as root: Nginx writes its logs owned by root on every install Kubo has
+     * seen.
+     */
+    public CommandEntry nginxLog(String path, int lines) {
+        return runAsRoot(NetworkCommands.readLog(path, lines), TIMEOUT);
+    }
+
+    /** Every pool of servers the configuration names, from the reading already kept. */
+    public List<com.kubo.model.network.Upstream> upstreams() {
+        return nginxUpstreams == null ? List.of() : nginxUpstreams;
+    }
+
+    /**
+     * One folder on the server, for choosing a site's directory by walking to it.
+     *
+     * <p>The same reading FILES.SCOPE does, so a folder reads the same wherever it is opened from. As root when
+     * root is on, because the folders a web server serves from are often not the connected user's to open.
+     */
+    public com.kubo.model.files.DirectoryListing listFolder(String path) {
+        CommandEntry entry = runAsRoot(com.kubo.files.ListingParser.command(path), TIMEOUT);
+        if (!entry.ran()) {
+            return com.kubo.model.files.DirectoryListing.failed(path, entry.error());
+        }
+        return com.kubo.files.ListingParser.parse(path, entry.output(), entry.error());
+    }
+
+    /**
+     * The armour line of a certificate or key file, or empty when it has none. As root, because the files under
+     * /etc/letsencrypt are root's.
+     */
+    public String pemArmour(String path) {
+        return runAsRoot(NetworkCommands.pemArmour(path), TIMEOUT).output().strip();
+    }
+
+    /** Whether a site file of this name is already on the server. */
+    public boolean siteExists(String site) {
+        return runAsRoot(NetworkCommands.siteExists(site), TIMEOUT).output().strip().equals("YES");
+    }
+
+    /**
+     * Creates a site: writes its file, writes the rate limit zones when it needs one, then switches it on,
+     * which tests the configuration and undoes the link if Nginx refuses it.
+     *
+     * <p>The one thing in Kubo that writes a configuration file. Every value in that file came from a choice
+     * or from a field already refused by {@link SiteDraft#problems()}, and the file itself travels on standard
+     * input, so no part of it is ever read by a shell.
+     *
+     * @return the entry that decides it: the switch on, or whichever step failed first
+     */
+    public CommandEntry createSite(SiteDraft draft) {
+        if (!draft.ready()) {
+            throw new IllegalArgumentException(String.join(" ", draft.problems()));
+        }
+        if (draft.rateLimit().on()) {
+            CommandEntry zones = writeAsRoot(NetworkCommands.writeRateLimits(), SiteDraft.rateLimitZones());
+            if (!zones.success()) {
+                return zones;
+            }
+        }
+        CommandEntry written = writeAsRoot(NetworkCommands.writeSite(draft.fileName()), draft.toConfig());
+        if (!written.success()) {
+            return written;
+        }
+        CommandEntry on = enableSite(draft.fileName());
+        if (!on.success()) {
+            // The site is on disk and off. Left there on purpose: it is the thing to look at to find out why
+            // Nginx refused it, and deleting somebody's file because a test failed would be worse than keeping
+            // a switched-off file around.
+            forget();
+        }
+        return on;
+    }
+
+    /** Removes a site Kubo just created, for undoing one that was refused. */
+    public CommandEntry deleteSite(String site) {
+        CommandEntry entry = runAsRoot(NetworkCommands.deleteSite(site), ACTION_TIMEOUT);
+        forget();
+        return entry;
+    }
+
+    /**
+     * Runs a command that reads a file from its own standard input, as root.
+     *
+     * <p>The sudo password goes first and the content follows it on the same stream, which is safe only because
+     * {@link Privilege#asRootReadingInput} drops any cached ticket so sudo always eats exactly one line.
+     */
+    private CommandEntry writeAsRoot(String command, String content) {
+        byte[] data = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (privilege == null) {
+            throw new IllegalStateException("Writing a configuration file needs root.");
+        }
+        Privilege.Command wrapped = privilege.asRootReadingInput(AdminPath.with(command));
+        byte[] input = wrapped.input() == null ? data : join(wrapped.input(), data);
+        CommandEntry raw = connection.exec(wrapped.command(), input, ACTION_TIMEOUT);
+        // The history keeps the command, as it keeps every command. It has never kept what a command was fed,
+        // and this is the one place where that mattered anyway.
+        CommandEntry entry = new CommandEntry(raw.executedAt(), command, true, raw.exitCode(), raw.output(),
+                raw.error(), raw.duration());
+        commands.add(entry, CommandService.Origin.NETWORK);
+        return entry;
+    }
+
+    private static byte[] join(byte[] first, byte[] second) {
+        byte[] both = java.util.Arrays.copyOf(first, first.length + second.length);
+        System.arraycopy(second, 0, both, first.length, second.length);
+        return both;
     }
 
     public CommandEntry restartApp(String app) {

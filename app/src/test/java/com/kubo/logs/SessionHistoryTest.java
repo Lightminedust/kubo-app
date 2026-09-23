@@ -49,6 +49,42 @@ class SessionHistoryTest {
     }
 
     @Test
+    void remembersWhatWasTypedAndWhatRanAsRoot() throws IOException {
+        Path file = temp.resolve("typed.json");
+        Instant started = Instant.parse("2026-09-15T08:00:00Z");
+        try (SessionLog log = new SessionLog(file, "t", started)) {
+            log.append(new com.kubo.command.CommandService.Logged(new CommandEntry(started, "ss -tn", false, 0, "",
+                    "", Duration.ofMillis(3)), Origin.NETWORK, true));
+            log.append(new CommandEntry(started, "ufw status", true, 0, "", "", Duration.ofMillis(3)), Origin.NETWORK);
+        }
+
+        List<SessionHistory.Command> commands = SessionHistory.read(file).commands();
+
+        assertTrue(commands.get(0).typed());
+        assertTrue(commands.get(0).byHand());
+        assertFalse(commands.get(0).asRoot());
+        assertFalse(commands.get(1).byHand());
+        assertTrue(commands.get(1).asRoot());
+    }
+
+    @Test
+    void readsLogsWrittenBeforeTypedAndRootWereKept() throws IOException {
+        Path file = Files.writeString(temp.resolve("old.json"), """
+                {"target": "t", "startedAt": "2026-09-01T08:00:00Z", "commands": [
+                  {"at": "2026-09-01T08:00:01Z", "origin": "USER", "command": "ls", "exitCode": 0},
+                  {"at": "2026-09-01T08:00:02Z", "origin": "MONITOR", "command": "uptime", "exitCode": 0}
+                ]}
+                """);
+
+        List<SessionHistory.Command> commands = SessionHistory.read(file).commands();
+
+        assertTrue(commands.get(0).byHand(), "USER was how a typed command was marked before the flag");
+        assertFalse(commands.get(0).typed());
+        assertFalse(commands.get(1).byHand());
+        assertFalse(commands.get(1).asRoot());
+    }
+
+    @Test
     void emptySessionHasNoCommands() throws IOException {
         Path file = temp.resolve("empty.json");
         new SessionLog(file, "t", Instant.EPOCH).close();

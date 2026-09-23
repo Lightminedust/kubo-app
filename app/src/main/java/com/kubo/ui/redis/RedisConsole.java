@@ -8,7 +8,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -41,13 +40,11 @@ public final class RedisConsole extends VBox {
 
     private enum Page { LOGS, REDIS, LOCAL }
 
-    private final VBox logOutput = new VBox(3);
-    private final VBox cliOutput = new VBox(3);
-    private final VBox localOutput = new VBox(3);
-    private final ScrollPane logScroll = scroll(logOutput);
-    private final ScrollPane cliScroll = scroll(cliOutput);
-    private final ScrollPane localScroll = scroll(localOutput);
-    private final StackPane pages = new StackPane(logScroll, cliScroll, localScroll);
+    // Every line can be selected and copied, a few or one, never the whole page by force.
+    private final com.kubo.ui.LogLines logOutput = new com.kubo.ui.LogLines(MAX_BLOCKS);
+    private final com.kubo.ui.LogLines cliOutput = new com.kubo.ui.LogLines(MAX_BLOCKS * 10);
+    private final com.kubo.ui.LogLines localOutput = new com.kubo.ui.LogLines(MAX_BLOCKS * 10);
+    private final StackPane pages = new StackPane(logOutput, cliOutput, localOutput);
     private final TextField input = new TextField();
     private final Label sign = label("R›", "prompt-sign");
     private final HBox inputRow;
@@ -110,10 +107,10 @@ public final class RedisConsole extends VBox {
 
         VBox.setVgrow(pages, Priority.ALWAYS);
         getChildren().addAll(header, pages, inputRow);
-        append(logOutput, "REDIS COMMANDS SENT BY KUBO APPEAR HERE IN REAL TIME.", "prompt-meta", logScroll);
-        append(cliOutput, "INTERACTIVE REDIS CONSOLE  ·  ACTIVE SERVICE AND DATABASE.", "prompt-meta", cliScroll);
+        append(logOutput, "REDIS COMMANDS SENT BY KUBO APPEAR HERE IN REAL TIME.", "prompt-meta");
+        append(cliOutput, "INTERACTIVE REDIS CONSOLE  ·  ACTIVE SERVICE AND DATABASE.", "prompt-meta");
         append(localOutput, "LOCAL " + LocalShell.name()
-                + "  ·  EACH ENTRY IS A SEPARATE COMMAND  ·  60 S LIMIT", "prompt-meta", localScroll);
+                + "  ·  EACH ENTRY IS A SEPARATE COMMAND  ·  60 S LIMIT", "prompt-meta");
 
         stopListening = localOnly || commands == null ? () -> { } : commands.addListener((entry, origin) -> {
             if (origin == CommandService.Origin.REDIS) Platform.runLater(() -> appendRedis(entry));
@@ -140,13 +137,13 @@ public final class RedisConsole extends VBox {
     void completeRedis(String command, CommandEntry entry) {
         Platform.runLater(() -> {
             if (entry == null) {
-                append(cliOutput, "KUBO COULD NOT EXECUTE THE COMMAND.", "prompt-error", cliScroll);
+                append(cliOutput, "KUBO COULD NOT EXECUTE THE COMMAND.", "prompt-error");
             } else {
                 String answer = !entry.output().isBlank() ? entry.output().stripTrailing()
                         : !entry.error().isBlank() ? entry.error().stripTrailing() : "(nil)";
-                append(cliOutput, answer, entry.success() ? "prompt-output" : "prompt-error", cliScroll);
+                appendLines(cliOutput, answer, entry.success() ? "prompt-output" : "prompt-error");
                 append(cliOutput, (entry.success() ? "OK" : "FAILED") + "  ·  " + entry.duration().toMillis() + " MS",
-                        entry.success() ? "prompt-meta" : "prompt-error", cliScroll);
+                        entry.success() ? "prompt-meta" : "prompt-error");
             }
             redisRunning = false;
             input.setDisable(false);
@@ -173,9 +170,9 @@ public final class RedisConsole extends VBox {
             case REDIS -> "REDIS CLI  ·  ACTIVE DB";
             case LOCAL -> LocalShell.name() + "  ·  LOCAL PC";
         });
-        visible(logScroll, page == Page.LOGS);
-        visible(cliScroll, page == Page.REDIS);
-        visible(localScroll, page == Page.LOCAL);
+        visible(logOutput, page == Page.LOGS);
+        visible(cliOutput, page == Page.REDIS);
+        visible(localOutput, page == Page.LOCAL);
         visible(inputRow, page != Page.LOGS);
         if (page == Page.REDIS) {
             sign.setText("R›");
@@ -193,7 +190,7 @@ public final class RedisConsole extends VBox {
         String state = entry.success() ? "OK" : entry.ran() ? "EXIT " + entry.exitCode() : "NOT RUN";
         append(logOutput, CLOCK.format(entry.executedAt()) + "  ·  " + state + "  ·  "
                         + entry.duration().toMillis() + " MS\n" + entry.command(),
-                entry.success() ? "prompt-command" : "prompt-error", logScroll);
+                entry.success() ? "prompt-command" : "prompt-error");
     }
 
     private void runRedis() {
@@ -207,7 +204,7 @@ public final class RedisConsole extends VBox {
             if (redisHistory.size() > 100) redisHistory.remove(0);
         }
         historyIndex = redisHistory.size();
-        append(cliOutput, CLOCK.format(Instant.now()) + "  R› " + command, "redis-cli-command", cliScroll);
+        append(cliOutput, CLOCK.format(Instant.now()) + "  R› " + command, "redis-cli-command");
         try {
             onRedisCommand.accept(command);
         } catch (RuntimeException e) {
@@ -220,16 +217,15 @@ public final class RedisConsole extends VBox {
         if (command.isEmpty() || input.isDisabled()) return;
         input.clear();
         input.setDisable(true);
-        append(localOutput, CLOCK.format(Instant.now()) + "  PS› " + command, "prompt-command", localScroll);
+        append(localOutput, CLOCK.format(Instant.now()) + "  PS› " + command, "prompt-command");
         worker.execute(() -> {
             Result result = execute(command);
             Platform.runLater(() -> {
                 if (!result.output().isBlank()) {
-                    append(localOutput, result.output().stripTrailing(), result.exitCode() == 0
-                            ? "prompt-output" : "prompt-error", localScroll);
+                    appendLines(localOutput, result.output().stripTrailing(), result.exitCode() == 0
+                            ? "prompt-output" : "prompt-error");
                 }
-                append(localOutput, result.summary(), result.exitCode() == 0 ? "prompt-meta" : "prompt-error",
-                        localScroll);
+                append(localOutput, result.summary(), result.exitCode() == 0 ? "prompt-meta" : "prompt-error");
                 input.setDisable(false);
                 input.requestFocus();
             });
@@ -279,20 +275,12 @@ public final class RedisConsole extends VBox {
         return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 
-    private static void append(VBox output, String text, String style, ScrollPane scroll) {
-        Label line = label(text, style);
-        line.setWrapText(true);
-        line.setMinHeight(Region.USE_PREF_SIZE);
-        output.getChildren().add(line);
-        while (output.getChildren().size() > MAX_BLOCKS) output.getChildren().remove(0);
-        Platform.runLater(() -> { scroll.layout(); scroll.setVvalue(1); });
+    private static void append(com.kubo.ui.LogLines output, String text, String style) {
+        output.append(text, style);
     }
 
-    private static ScrollPane scroll(VBox content) {
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        return scroll;
+    private static void appendLines(com.kubo.ui.LogLines output, String text, String style) {
+        output.appendLines(text, style);
     }
 
     private static Button tab(String text) {

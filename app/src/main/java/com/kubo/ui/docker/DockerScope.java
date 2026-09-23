@@ -54,6 +54,9 @@ import java.util.concurrent.Executors;
  */
 public final class DockerScope extends StackPane {
 
+    /** The name this screen answers to in {@link com.kubo.command.Attention}. */
+    public static final String ATTENTION = "DOCKER";
+
     private enum View { CONTAINERS, IMAGES, NETWORKS }
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -77,7 +80,13 @@ public final class DockerScope extends StackPane {
     private final ImagesView imagesView = new ImagesView(this::removeImage, this::pruneImages);
     private final NetworksView networksView = new NetworksView();
     private final StackPane center = new StackPane();
-    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(3), event -> refresh(false)));
+    // The poll runs only while this window is the one in front. Every screen shares one connection and it
+    // runs one command at a time, so a read from a window behind another one delays the click in front of it.
+    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(3), event -> {
+        if (com.kubo.command.Attention.holds(ATTENTION)) {
+            refresh(false);
+        }
+    }));
 
     private final Button containersTab = tab("CONTAINERS");
     private final Button imagesTab = tab("IMAGES");
@@ -196,6 +205,15 @@ public final class DockerScope extends StackPane {
     public void start() {
         refresh();
         poll.play();
+    }
+
+
+    /**
+     * Called when this window comes back to the front. Its poll was held back while it was behind, so it reads
+     * once now rather than leaving the operator looking at a stale screen until the next tick.
+     */
+    public void resume() {
+        refresh(false);
     }
 
     public void shutdown() {

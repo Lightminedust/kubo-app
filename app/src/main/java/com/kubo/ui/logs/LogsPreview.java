@@ -1,6 +1,7 @@
 package com.kubo.ui.logs;
 
 import com.kubo.KuboApp;
+import com.kubo.command.CommandService;
 import com.kubo.logs.SessionHistory.Command;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.Scene;
@@ -23,11 +24,40 @@ public final class LogsPreview {
     }
 
     public static void render(Path output) throws IOException {
+        Instant start = Instant.parse("2026-09-15T09:12:00Z");
+        List<Command> commands = sample(start);
+
+        LogsView view = view(output, start, commands);
+        view.selectForPreview(7, 9);
+        snapshot(view, output.resolve("logs.png"));
+
+        LogsView grouped = view(output, start, commands);
+        grouped.showByServiceForPreview(null);
+        snapshot(grouped, output.resolve("logs-by-service.png"));
+
+        LogsView network = view(output, start, commands);
+        network.showByServiceForPreview(CommandService.Origin.NETWORK);
+        snapshot(network, output.resolve("logs-network.png"));
+    }
+
+    private static LogsView view(Path output, Instant start, List<Command> commands) {
         LogsView view = new LogsView(output.resolve("no-logs-here"), null, null);
+        view.showSample("xana@173.212.254.237:22", start, commands);
+        return view;
+    }
+
+    private static void snapshot(LogsView view, Path file) throws IOException {
         Scene scene = new Scene(view, 1260, 820, Color.web("#050508"));
         scene.getStylesheets().add(KuboApp.STYLESHEET);
+        view.applyCss();
+        view.layout();
+        WritableImage image = scene.snapshot(null);
+        ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
+        view.shutdown();
+        System.out.println("Wrote " + file.toAbsolutePath());
+    }
 
-        Instant start = Instant.parse("2026-09-15T09:12:00Z");
+    private static List<Command> sample(Instant start) {
         List<Command> commands = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
             commands.add(new Command(start.plusSeconds(i * 2L), "MONITOR",
@@ -41,19 +71,21 @@ public final class LogsPreview {
                 0, 61, 1_830, ""));
         commands.add(new Command(start.plusSeconds(40), "USER", "cd -- '/home/xana' && cat secrets.env", 1, 22, 0,
                 "cat: secrets.env: Permission denied"));
+        commands.add(new Command(start.plusSeconds(48), "NETWORK", "LC_ALL=C ss -tnH state established",
+                0, 18, 2_140, "", false, false));
+        commands.add(new Command(start.plusSeconds(50), "NETWORK",
+                "LC_ALL=C ufw status verbose | grep -i '^default:'; LC_ALL=C ufw status numbered",
+                0, 212, 640, "", true, false));
+        commands.add(new Command(start.plusSeconds(55), "NETWORK", "LC_ALL=C ss -tnH state established",
+                0, 16, 2_210, "", false, false));
+        commands.add(new Command(start.plusSeconds(58), "NETWORK", "ip -br addr", 0, 9, 310, "", false, true));
+        commands.add(new Command(start.plusSeconds(60), "SERVICES",
+                "systemctl list-units --type=service --all --no-pager --plain", 0, 88, 9_400, ""));
         commands.add(new Command(start.plusSeconds(62), "FILES",
                 "F='/home/xana/projects/'; N='gemmie-2.1.0.tar.gz'; D=\"$F$N\"; if [ -e \"$D\" ] || [ -L \"$D\" ]; then echo 'Something with this name is already there' >&2; exit 17; fi; T=$(mktemp -p \"$F\" .kubo-upload.XXXXXX) || exit 1; cat > \"$T\"; ...",
                 0, 19_420, 45, ""));
         commands.add(new Command(start.plusSeconds(90), "FILES", "rm -rf --one-file-system -- '/home/xana/tmp/build'",
                 -1, 15_000, 0, "No complete answer within 15 s"));
-        view.showSample("xana@173.212.254.237:22", start, commands);
-        view.applyCss();
-        view.layout();
-
-        WritableImage image = scene.snapshot(null);
-        Path file = output.resolve("logs.png");
-        ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
-        view.shutdown();
-        System.out.println("Wrote " + file.toAbsolutePath());
+        return commands;
     }
 }

@@ -20,6 +20,25 @@ import java.util.Map;
  */
 public final class Naming {
 
+    /**
+     * What kind of place the other end of a connection is.
+     *
+     * <p>Separate from the words {@link #place} produces, because a screen wants to sort and filter on this and
+     * a reader wants to read the words. Deriving one from the other would mean matching on display text.
+     */
+    public enum Place {
+        /** The server talking to itself. */
+        LOOPBACK,
+        /** One of this server's own addresses, reached the long way round. */
+        THIS_SERVER,
+        /** A container, on a Docker bridge this server owns. */
+        DOCKER,
+        /** A private address that is neither this server nor one of its containers. */
+        PRIVATE,
+        /** A public address: somewhere on the internet. */
+        INTERNET
+    }
+
     /** A Docker bridge and the network it carries. */
     private record Bridge(String link, String label, long network, long mask, boolean ipv6) {
     }
@@ -83,6 +102,34 @@ public final class Naming {
             }
         }
         return "Docker network";
+    }
+
+    /**
+     * What kind of place an address is. {@link Place#INTERNET} for anything public, and for an address this
+     * server cannot place at all: from here, a public address is the internet.
+     */
+    public Place kindOf(String address) {
+        if (address == null || address.isBlank()) {
+            return Place.INTERNET;
+        }
+        if (ListeningPort.exposureOf(address) == ListeningPort.Exposure.LOCAL) {
+            return Place.LOOPBACK;
+        }
+        if (ownAddresses.contains(address)) {
+            return Place.THIS_SERVER;
+        }
+        long value = toLong(address);
+        if (value >= 0) {
+            for (Bridge bridge : bridges) {
+                if ((value & bridge.mask()) == bridge.network()) {
+                    return Place.DOCKER;
+                }
+            }
+        }
+        if (ListeningPort.exposureOf(address) == ListeningPort.Exposure.INTERNAL) {
+            return Place.PRIVATE;
+        }
+        return Place.INTERNET;
     }
 
     /**

@@ -48,6 +48,9 @@ import java.util.Objects;
  */
 public final class ScopeView extends StackPane {
 
+    /** The name this screen answers to in {@link com.kubo.command.Attention}. */
+    public static final String ATTENTION = "SCOPE";
+
     private static final Color LIVE = Color.web("#35e0a1");
     private static final Color ALERT = Color.web("#ff2d55");
     private static final Color IDLE = Color.web("#6e6e7d");
@@ -170,13 +173,14 @@ public final class ScopeView extends StackPane {
         this.connection = Objects.requireNonNull(connection, "connection");
         this.onClosed = Objects.requireNonNull(onClosed, "onClosed");
         detectRootAccess(connection);
-        console = new com.kubo.ui.ServerConsole(connection, commands, null);
+        console = new com.kubo.ui.ServerConsole(connection, commands, null, "SERVER",
+                CommandService.Origin.MONITOR, java.util.Set.of(CommandService.Origin.PACKAGES));
         layout.setBottom(console);
         targetLabel.setText(connection.target().toString());
         stateDot.setFill(AMBER);
         try {
             sessionLog = SessionLog.start(connection.target().toString());
-            commands.addListener(sessionLog::append);
+            commands.addLoggedListener(sessionLog::append);
             logFileLabel.setText(sessionLog.path().getFileName().toString());
             Tooltip.install(logFileLabel, new Tooltip(sessionLog.path().toString()));
         } catch (IOException e) {
@@ -185,6 +189,9 @@ public final class ScopeView extends StackPane {
         monitor = new ServerMonitor(connection, commands,
                 server -> Platform.runLater(() -> apply(server, commands.getHistory())),
                 message -> Platform.runLater(() -> showLost(message)));
+        // The scope reads every two seconds. It does that only while its window is the one in front: otherwise
+        // it takes the single connection from whichever screen the operator opened on top of it.
+        monitor.setAwake(() -> com.kubo.command.Attention.holds(ATTENTION));
         monitor.setOnProblem(message -> Platform.runLater(() -> {
             problemLabel.setText(message.isEmpty() ? "" : "DEGRADED  ·  " + message);
             problemLabel.setVisible(!message.isEmpty());
@@ -196,6 +203,15 @@ public final class ScopeView extends StackPane {
     /**
      * Stops monitoring and closes the connection in the background. Safe to call more than once.
      */
+    /**
+     * Called when the main window comes back to the front: the figures stopped moving while it was behind.
+     */
+    public void resume() {
+        if (monitor != null) {
+            monitor.readNow();
+        }
+    }
+
     public void shutdown() {
         if (filesWindow != null) {
             filesWindow.close();
@@ -280,8 +296,11 @@ public final class ScopeView extends StackPane {
         // The preview shows the real screen, console and root button included, so their place is checked too.
         rootSession = new com.kubo.privilege.RootSession(com.kubo.privilege.RootAccess.SUDO_PASSWORD);
         installRootButton();
-        console = new com.kubo.ui.ServerConsole(null, commands, null);
+        console = new com.kubo.ui.ServerConsole(null, commands, null, "SERVER",
+                CommandService.Origin.MONITOR, java.util.Set.of(CommandService.Origin.PACKAGES));
         console.setCollapsed(consoleCollapsed);
+        console.showForPreview(log.stream()
+                .map(entry -> new CommandService.Logged(entry, CommandService.Origin.MONITOR, false)).toList());
         layout.setBottom(console);
         targetLabel.setText(target);
         for (ServerMetrics metrics : history) {

@@ -10,7 +10,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.Cursor;
@@ -29,11 +28,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A console onto the server: everything Kubo sends, and a line to send your own.
+ * A console onto the server: what this screen sends, and a line to send your own.
+ *
+ * <p>Each screen shows its own commands only: the network screen what the network screen sent, never the
+ * readings of the main screen in between. The whole session, every screen together, is in LOGS.
  *
  * <p>The log lists commands only, never their output, which is the rule the whole application keeps. Commands you
- * type yourself do show their answer, since you asked for it. When root mode is on the prompt says so and your
- * commands run as root.
+ * type yourself do show their answer, since you asked for it, and are logged like any other, marked as typed.
+ * When root mode is on the prompt says so and your commands run as root. Any line can be selected and copied.
  */
 public final class ServerConsole extends VBox {
 
@@ -43,17 +45,25 @@ public final class ServerConsole extends VBox {
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault());
     private static final int MAX_BLOCKS = 400;
+    /** Lines of typed commands' answers kept: enough for a long listing, not a log file read to the end. */
+    private static final int MAX_LINES = 5000;
     private static final java.time.Duration TIMEOUT = java.time.Duration.ofSeconds(20);
 
     private enum Page { LOGS, SHELL }
 
     private final SshConnection connection;
     private final RootSession root;
-    private final VBox logOutput = new VBox(3);
-    private final VBox shellOutput = new VBox(3);
-    private final ScrollPane logScroll = scroll(logOutput);
-    private final ScrollPane shellScroll = scroll(shellOutput);
-    private final StackPane pages = new StackPane(logScroll, shellScroll);
+    private final CommandService commands;
+    /** What typed commands are logged under: the screen this console sits in. */
+    private final CommandService.Origin typedAs;
+    private final java.util.Set<CommandService.Origin> shows;
+    private final String activity;
+    private final LogLines logOutput = new LogLines(MAX_BLOCKS);
+    private final LogLines shellOutput = new LogLines(MAX_LINES);
+    private final StackPane pages = new StackPane(logOutput, shellOutput);
+    private final Label copied = label("", "prompt-meta");
+    private final javafx.animation.PauseTransition copiedFades =
+            new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
     private final TextField input = new TextField();
     private final Label sign = label("$", "prompt-sign");
     private final HBox inputRow;
@@ -62,7 +72,7 @@ public final class ServerConsole extends VBox {
     private final Button fold = tab("▾");
     private final Button logsTab = tab("LOGS");
     private final Button shellTab = tab("SHELL");
-    private final Label title = label("SERVER ACTIVITY", "column-heading");
+    private final Label title = label("", "column-heading");
     private final Label rootNote = label("", "prompt-meta");
     private final List<String> history = new ArrayList<>();
     private final Runnable stopListening;
@@ -79,9 +89,21 @@ public final class ServerConsole extends VBox {
     private double dragFromHeight;
     private boolean collapsed;
 
-    public ServerConsole(SshConnection connection, CommandService commands, RootSession root) {
+    /**
+     * @param service what the title calls this screen, NETWORK for "NETWORK ACTIVITY"
+     * @param typedAs the origin commands typed here are logged under
+     * @param shows   the origins whose commands this console lists; typedAs is always one of them
+     */
+    public ServerConsole(SshConnection connection, CommandService commands, RootSession root, String service,
+                         CommandService.Origin typedAs, java.util.Set<CommandService.Origin> shows) {
         this.connection = connection;
         this.root = root;
+        this.commands = commands;
+        this.typedAs = java.util.Objects.requireNonNull(typedAs, "typedAs");
+        java.util.Set<CommandService.Origin> all = java.util.EnumSet.of(typedAs);
+        all.addAll(shows);
+        this.shows = java.util.Collections.unmodifiableSet(all);
+        this.activity = service + " ACTIVITY";
         getStyleClass().addAll("prompt-panel", "redis-console");
         setPadding(new Insets(0, 34, 12, 36));
         setPrefHeight(expandedHeight);
@@ -92,10 +114,14 @@ public final class ServerConsole extends VBox {
         shellTab.setOnAction(event -> show(Page.SHELL));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Label hint = label("THE LOG LISTS EVERY COMMAND KUBO SENDS, NEVER ITS OUTPUT  ·  YOUR OWN COMMANDS SHOW "
-                + "THEIRS  ·  NON-INTERACTIVE, 20 S MAX  ·  ↑↓ HISTORY", "metric-label");
+        Label hint = label("ONLY THIS SCREEN'S COMMANDS, NEVER THEIR OUTPUT  ·  EVERY SCREEN IS IN LOGS  ·  "
+                + "SELECT LINES, CTRL+C COPIES  ·  ↑↓ HISTORY", "metric-label");
+        hint.setMinWidth(0);
         fold.setOnAction(event -> setCollapsed(!collapsed));
-        HBox header = new HBox(10, title, logsTab, shellTab, spacer, hint, fold);
+        copiedFades.setOnFinished(event -> copied.setText(""));
+        logOutput.setOnCopied(this::sayCopied);
+        shellOutput.setOnCopied(this::sayCopied);
+        HBox header = new HBox(10, title, logsTab, shellTab, copied, spacer, hint, fold);
         header.setAlignment(Pos.CENTER_LEFT);
         header.setPadding(new Insets(6, 0, 0, 0));
         // Double-clicking the bar is the quick way out of the way.
@@ -120,7 +146,7 @@ public final class ServerConsole extends VBox {
                 input.positionCaret(input.getText().length());
                 event.consume();
             } else if (event.getCode() == KeyCode.L && event.isControlDown()) {
-                shellOutput.getChildren().clear();
+                shellOutput.clearLines();
                 event.consume();
             }
         });
@@ -130,11 +156,15 @@ public final class ServerConsole extends VBox {
 
         VBox.setVgrow(pages, Priority.ALWAYS);
         getChildren().addAll(grip, header, pages, inputRow);
-        append(logOutput, "EVERY COMMAND KUBO SENDS APPEARS HERE AS IT HAPPENS.", "prompt-meta", logScroll);
-        append(shellOutput, "TYPE A COMMAND TO RUN IT ON THE SERVER.", "prompt-meta", shellScroll);
+        logOutput.append("EVERY COMMAND THIS SCREEN SENDS APPEARS HERE AS IT HAPPENS.", "prompt-meta");
+        shellOutput.append("TYPE A COMMAND TO RUN IT ON THE SERVER.", "prompt-meta");
 
         stopListening = commands == null ? () -> {
-        } : commands.addListener((entry, origin) -> Platform.runLater(() -> appendLog(entry, origin)));
+        } : commands.addLoggedListener(logged -> {
+            if (this.shows.contains(logged.origin())) {
+                Platform.runLater(() -> appendLog(logged));
+            }
+        });
         RootSession.elevatedProperty().addListener((observable, before, value) -> updateRootMark());
         updateRootMark();
         show(Page.LOGS);
@@ -145,6 +175,12 @@ public final class ServerConsole extends VBox {
      */
     public void showShell() {
         show(Page.SHELL);
+    }
+
+    /** Only for the previews: commands already in the log, without a server, and the first two selected. */
+    public void showForPreview(List<CommandService.Logged> sent) {
+        sent.forEach(this::appendLog);
+        logOutput.getSelectionModel().selectRange(1, Math.min(3, logOutput.getItems().size()));
     }
 
     public void shutdown() {
@@ -164,11 +200,11 @@ public final class ServerConsole extends VBox {
         logsTab.getStyleClass().remove("mode-toggle-active");
         shellTab.getStyleClass().remove("mode-toggle-active");
         (page == Page.LOGS ? logsTab : shellTab).getStyleClass().add("mode-toggle-active");
-        title.setText(page == Page.LOGS ? "SERVER ACTIVITY" : "SHELL  ·  THIS SERVER");
-        logScroll.setVisible(page == Page.LOGS);
-        logScroll.setManaged(page == Page.LOGS);
-        shellScroll.setVisible(page == Page.SHELL);
-        shellScroll.setManaged(page == Page.SHELL);
+        title.setText(page == Page.LOGS ? activity : "SHELL  ·  THIS SERVER");
+        logOutput.setVisible(page == Page.LOGS);
+        logOutput.setManaged(page == Page.LOGS);
+        shellOutput.setVisible(page == Page.SHELL);
+        shellOutput.setManaged(page == Page.SHELL);
         inputRow.setVisible(page == Page.SHELL);
         inputRow.setManaged(page == Page.SHELL);
         if (page == Page.SHELL) {
@@ -176,12 +212,21 @@ public final class ServerConsole extends VBox {
         }
     }
 
-    private void appendLog(CommandEntry entry, CommandService.Origin origin) {
+    private void appendLog(CommandService.Logged logged) {
+        CommandEntry entry = logged.entry();
         String state = entry.success() ? "OK" : entry.ran() ? "EXIT " + entry.exitCode() : "NOT RUN";
-        append(logOutput, CLOCK.format(entry.executedAt()) + "  ·  " + origin + "  ·  " + state + "  ·  "
+        // The origin only says something when this console lists more than one.
+        String origin = shows.size() > 1 ? "  ·  " + (logged.origin() == CommandService.Origin.USER ? "SHELL"
+                : logged.origin().name()) : "";
+        logOutput.append(CLOCK.format(entry.executedAt()) + origin + "  ·  " + state + "  ·  "
                         + entry.duration().toMillis() + " MS" + (entry.asRoot() ? "  ·  ROOT" : "")
-                        + "\n" + entry.command(),
-                entry.success() ? "prompt-command" : "prompt-error", logScroll);
+                        + (logged.typed() ? "  ·  TYPED" : "") + "\n" + entry.command(),
+                entry.success() ? "prompt-command" : "prompt-error");
+    }
+
+    private void sayCopied(int count) {
+        copied.setText(count == 1 ? "COPIED 1 LINE" : "COPIED " + count + " LINES");
+        copiedFades.playFromStart();
     }
 
     private void run() {
@@ -199,8 +244,8 @@ public final class ServerConsole extends VBox {
         }
         historyIndex = history.size();
         boolean elevated = root != null && root.isElevated();
-        append(shellOutput, CLOCK.format(Instant.now()) + "  " + (elevated ? "# " : "$ ") + command,
-                "prompt-command", shellScroll);
+        shellOutput.append(CLOCK.format(Instant.now()) + "  " + (elevated ? "# " : "$ ") + command,
+                "prompt-command");
         worker.execute(() -> {
             CommandEntry entry;
             try {
@@ -213,20 +258,26 @@ public final class ServerConsole extends VBox {
             } catch (RuntimeException e) {
                 entry = null;
             }
+            if (entry != null && commands != null) {
+                // Logged as typed, under the command as it was typed: the sudo wrapping is how, not what. Its
+                // answer stays on this screen and goes nowhere else.
+                commands.add(new CommandEntry(entry.executedAt(), command, elevated, entry.exitCode(),
+                        entry.output(), entry.error(), entry.duration()), typedAs, true);
+            }
             CommandEntry result = entry;
             Platform.runLater(() -> {
                 input.setDisable(false);
                 if (result == null) {
-                    append(shellOutput, "KUBO COULD NOT RUN THAT.", "prompt-error", shellScroll);
+                    shellOutput.append("KUBO COULD NOT RUN THAT.", "prompt-error");
                 } else {
                     if (!result.output().isBlank()) {
-                        append(shellOutput, result.output().stripTrailing(), "prompt-output", shellScroll);
+                        shellOutput.appendLines(result.output().stripTrailing(), "prompt-output");
                     }
                     if (!result.error().isBlank()) {
-                        append(shellOutput, result.error().stripTrailing(), "prompt-error", shellScroll);
+                        shellOutput.appendLines(result.error().stripTrailing(), "prompt-error");
                     }
-                    append(shellOutput, "exit " + result.exitCode() + "  ·  " + result.duration().toMillis() + " ms",
-                            result.success() ? "prompt-meta" : "prompt-error", shellScroll);
+                    shellOutput.append("exit " + result.exitCode() + "  ·  " + result.duration().toMillis() + " ms",
+                            result.success() ? "prompt-meta" : "prompt-error");
                 }
                 input.requestFocus();
             });
@@ -240,8 +291,9 @@ public final class ServerConsole extends VBox {
         collapsed = value;
         pages.setVisible(!value);
         pages.setManaged(!value);
-        inputRow.setVisible(!value);
-        inputRow.setManaged(!value);
+        // The command line belongs to the shell page: unfolding onto the log must not bring it back.
+        inputRow.setVisible(!value && current == Page.SHELL);
+        inputRow.setManaged(!value && current == Page.SHELL);
         grip.setVisible(!value);
         grip.setManaged(!value);
         fold.setText(value ? "▴" : "▾");
@@ -269,33 +321,6 @@ public final class ServerConsole extends VBox {
             expandedHeight = next;
             setPrefHeight(next);
         });
-    }
-
-    private static void append(VBox output, String text, String style, ScrollPane scroll) {
-        Label line = label(text, style);
-        line.setWrapText(true);
-        line.setMinHeight(Region.USE_PREF_SIZE);
-        // Whether the reader was at the end before this line arrived. A log that writes every second and
-        // drags the view back down with it cannot be read at all: scrolling up has to mean something.
-        boolean following = scroll.getVvalue() > 0.985 || output.getChildren().isEmpty();
-        output.getChildren().add(line);
-        while (output.getChildren().size() > MAX_BLOCKS) {
-            output.getChildren().remove(0);
-        }
-        if (!following) {
-            return;
-        }
-        Platform.runLater(() -> {
-            scroll.layout();
-            scroll.setVvalue(1);
-        });
-    }
-
-    private static ScrollPane scroll(VBox content) {
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        return scroll;
     }
 
     private static Button tab(String text) {

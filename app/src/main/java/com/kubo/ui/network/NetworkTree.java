@@ -1087,8 +1087,10 @@ final class NetworkTree extends Pane {
                         : "SHOWING " + selected.port() + " AND EVERYTHING ITS PROCESS HOLDS  ·  CLICK IT AGAIN TO "
                         + "SHOW THEM ALL", 24, height - 14);
         gc.setTextAlign(TextAlignment.RIGHT);
-        gc.setFill(loading ? CYAN : MUTED);
-        gc.fillText(loading ? "READING…" : Math.round(zoom * 100) + "%", width - 24, height - 14);
+        // The zoom stays true while a reading is in flight, and the reading already says so across the top
+        // of the map. Two labels for one event read as two things happening.
+        gc.setFill(MUTED);
+        gc.fillText(Math.round(zoom * 100) + "%", width - 24, height - 14);
     }
 
     // Helpers

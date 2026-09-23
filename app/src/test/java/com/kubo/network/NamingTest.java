@@ -64,6 +64,18 @@ class NamingTest {
     }
 
     @Test
+    @DisplayName("every address is put in a kind of place, so a screen can sort on it")
+    void sortsPlacesIntoKinds() {
+        assertEquals(Naming.Place.LOOPBACK, NAMING.kindOf("127.0.0.1"));
+        assertEquals(Naming.Place.THIS_SERVER, NAMING.kindOf("203.0.113.10"));
+        assertEquals(Naming.Place.DOCKER, NAMING.kindOf("172.19.0.2"));
+        assertEquals(Naming.Place.DOCKER, NAMING.kindOf("172.17.0.5"));
+        assertEquals(Naming.Place.PRIVATE, NAMING.kindOf("10.4.4.4"));
+        assertEquals(Naming.Place.INTERNET, NAMING.kindOf("86.15.2.9"));
+        assertEquals(Naming.Place.INTERNET, NAMING.kindOf(""), "nothing known means nothing to reassure anyone with");
+    }
+
+    @Test
     @DisplayName("each interface is told what it is for")
     void describesInterfaces() {
         assertEquals("the way in and out", NAMING.role(MACHINE.links().get(1)));

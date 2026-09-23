@@ -114,6 +114,11 @@ public final class DockerWindow {
     }
 
     public void show() {
+        com.kubo.ui.Attentive.bind(stage, DockerScope.ATTENTION, () -> {
+            if (scope != null) {
+                scope.resume();
+            }
+        });
         stage.show();
         stage.toFront();
     }

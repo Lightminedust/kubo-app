@@ -56,6 +56,22 @@ public final class ProbeCommands {
         return "mtr -r -n -c 3 " + ShellQuote.quote(checkedTarget(target));
     }
 
+    /**
+     * Whether a port answers, without netcat: bash opens {@code /dev/tcp/host/port} itself.
+     *
+     * <p>The host and the port are handed to bash as arguments, {@code $0} and {@code $1}, and never pasted into
+     * the script it runs, so neither can be read as code. Three seconds at most, then it stops. It ends by
+     * printing its exit status, because a timeout (124) and a refusal (1) are the two answers worth telling
+     * apart.
+     */
+    public static String checkPort(String target, int port) {
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("A port is a number between 1 and 65535");
+        }
+        return "timeout 3 bash -c 'exec 3<>\"/dev/tcp/$0/$1\"' " + ShellQuote.quote(checkedTarget(target))
+                + " " + port + " 2>&1; echo \"EXIT:$?\"";
+    }
+
     /** Who an address belongs to. This one leaves the network: it asks a public whois server. */
     public static String whois(String target) {
         return "whois " + ShellQuote.quote(checkedTarget(target));

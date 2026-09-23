@@ -246,8 +246,9 @@ public final class RedisService {
         return run(RedisCommands.flushAll());
     }
 
+    /** A command somebody typed into the Redis console: logged as typed. */
     public CommandEntry raw(int db, String commandLine) {
-        return run(RedisCommands.raw(db, commandLine));
+        return run(endpoint, RedisCommands.raw(db, commandLine), true);
     }
 
     public CommandEntry slowlog() {
@@ -281,12 +282,16 @@ public final class RedisService {
     }
 
     private CommandEntry run(RedisEndpoint endpoint, String args) {
+        return run(endpoint, args, false);
+    }
+
+    private CommandEntry run(RedisEndpoint endpoint, String args, boolean typed) {
         Privilege.Command command = endpoint.command(args);
         CommandEntry raw = connection.exec(command.command(), command.input(), TIMEOUT);
         // The history shows the plain redis-cli command, not the sudo/docker wrapper or any password.
         CommandEntry entry = new CommandEntry(raw.executedAt(), endpoint.plain(args), endpoint.isDocker() && docker != null
                 && docker.needsRoot(), raw.exitCode(), raw.output(), raw.error(), raw.duration());
-        commands.add(entry, Origin.REDIS);
+        commands.add(entry, Origin.REDIS, typed);
         return entry;
     }
 

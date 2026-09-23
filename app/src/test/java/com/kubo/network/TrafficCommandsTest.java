@@ -152,4 +152,51 @@ class TrafficCommandsTest {
         assertEquals(Counter.Rate.NONE, afterReboot.since(before, Duration.ZERO));
         assertEquals(Counter.Rate.NONE, afterReboot.since(null, Duration.ofSeconds(2)));
     }
+    @Test
+    @DisplayName("a row with no State column is read, which is what ss prints when one state was asked for")
+    void readsRowsWithoutAState() {
+        // Taken from a real server, through sudo. ss dropped the State column because the command asks for
+        // one state, and the process field made the line the same length a line with a State would have been.
+        String output = """
+                tcp   0  0  172.19.0.1:54032  172.19.0.2:6379  users:(("docker-proxy",pid=1487,fd=48))
+                tcp   0  0  203.0.113.10:22   86.15.2.9:51234  users:(("sshd",pid=8213,fd=5))""";
+
+        List<Connection> connections = TrafficCommands.parseConnections(output, Set.of(22, 6379));
+
+        assertEquals(2, connections.size(), "counting columns threw every one of these away");
+        assertEquals("172.19.0.2", connections.get(0).remoteAddress());
+        assertEquals(6379, connections.get(0).remotePort());
+        assertEquals("docker-proxy", connections.get(0).process());
+        assertEquals(1487, connections.get(0).pid());
+        assertEquals("sshd", connections.get(1).process());
+        assertEquals(22, connections.get(1).localPort());
+        assertTrue(connections.get(1).inbound());
+    }
+
+    @Test
+    @DisplayName("the same row with a State column is read the same way")
+    void readsRowsWithAState() {
+        String output = "tcp  ESTAB 0 0  203.0.113.10:22  86.15.2.9:51234  users:((\"sshd\",pid=8213,fd=5))";
+
+        List<Connection> connections = TrafficCommands.parseConnections(output, Set.of(22));
+
+        assertEquals(1, connections.size());
+        assertEquals("203.0.113.10", connections.get(0).localAddress());
+        assertEquals("86.15.2.9", connections.get(0).remoteAddress());
+        assertEquals("sshd", connections.get(0).process());
+    }
+
+    @Test
+    @DisplayName("an IPv6 row with no State column is read, brackets, colons and all")
+    void readsIpv6WithoutAState() {
+        String output = "tcp  0 0  [2a02:c207:2307:3638::1]:443  [2001:db8::9]:51234  "
+                + "users:((\"nginx\",pid=700,fd=9))";
+
+        List<Connection> connections = TrafficCommands.parseConnections(output, Set.of(443));
+
+        assertEquals(1, connections.size());
+        assertEquals("2a02:c207:2307:3638::1", connections.get(0).localAddress());
+        assertEquals(443, connections.get(0).localPort());
+        assertEquals("2001:db8::9", connections.get(0).remoteAddress());
+    }
 }

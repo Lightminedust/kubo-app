@@ -43,6 +43,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
 /**
@@ -279,6 +280,59 @@ public final class SshConnection implements AutoCloseable {
     }
 
     /**
+     * Runs a command with bytes on its standard input, handing every line it prints to {@code onLine} as it
+     * arrives instead of only at the end.
+     *
+     * <p>For the one command in Kubo whose progress is worth watching: a package manager fetching and unpacking
+     * takes a minute on a slow mirror, and it says what it is doing the whole time. Its output is still kept and
+     * still returned, so the history keeps what it always kept.
+     *
+     * <p>{@code onLine} is called on a reader thread, not the UI thread, and a carriage return ends a line as
+     * well as a newline: that is how a package manager redraws a progress line in place.
+     *
+     * @param input sent then closed; null to send nothing, which is what a command needing no password does
+     */
+    public CommandEntry execWatching(String command, byte[] input, Consumer<String> onLine, Duration timeout) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(onLine, "onLine");
+        Objects.requireNonNull(timeout, "timeout");
+        Instant executedAt = Instant.now();
+
+        try (Session session = client.startSession()) {
+            Session.Command running = session.exec(command);
+
+            // Both streams are drained at the same time, as everywhere else here: a command filling one of them
+            // would block while we waited on the other.
+            Future<String> output = STREAM_READERS.submit(() -> readLines(running.getInputStream(), onLine));
+            Future<String> error = STREAM_READERS.submit(() -> readText(running.getErrorStream()));
+
+            try (OutputStream stdin = running.getOutputStream()) {
+                if (input != null) {
+                    stdin.write(input);
+                    stdin.flush();
+                }
+            } catch (IOException commandStoppedReading) {
+                // The command exited before reading its input; its exit status says why.
+            }
+
+            if (!finished(running, timeout)) {
+                return notRun(executedAt, command, describe(new TimeoutException(), timeout));
+            }
+            Integer exitStatus = running.getExitStatus();
+            return new CommandEntry(executedAt, command, false,
+                    exitStatus == null ? CommandEntry.NOT_RUN : exitStatus,
+                    output.get(STREAM_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+                    error.get(STREAM_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+                    Duration.between(executedAt, Instant.now()));
+        } catch (IOException | ExecutionException | TimeoutException e) {
+            return notRun(executedAt, command, describe(e, timeout));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return notRun(executedAt, command, "Interrupted");
+        }
+    }
+
+    /**
      * Runs a command whose output is streamed into {@code sink} instead of being kept, such as a file being
      * downloaded, reporting the bytes received as they come. The entry's output stays empty.
      * A failure of the sink stops the command and comes back as {@link CommandEntry#NOT_RUN} with "Local: …".
@@ -388,6 +442,44 @@ public final class SshConnection implements AutoCloseable {
 
     private static String readText(InputStream stream) throws IOException {
         return readLimited(stream, MAX_KEPT_BYTES);
+    }
+
+    /**
+     * Reads a stream to its end, handing over each line as it completes and returning the whole text.
+     *
+     * <p>Lines are cut out of the bytes before anything is decoded, so a character split across two reads is
+     * never turned into two broken ones. A carriage return ends a line as well as a newline, because that is how
+     * a package manager redraws its progress in place, and those redraws are exactly what is worth showing.
+     */
+    private static String readLines(InputStream stream, Consumer<String> onLine) throws IOException {
+        StringBuilder kept = new StringBuilder();
+        java.io.ByteArrayOutputStream line = new java.io.ByteArrayOutputStream(256);
+        byte[] buffer = new byte[8 * 1024];
+        int read;
+        while ((read = stream.read(buffer)) >= 0) {
+            for (int i = 0; i < read; i++) {
+                byte b = buffer[i];
+                if (b == '\n' || b == '\r') {
+                    emit(kept, line, onLine);
+                } else {
+                    line.write(b);
+                }
+            }
+        }
+        emit(kept, line, onLine);
+        return kept.toString();
+    }
+
+    private static void emit(StringBuilder kept, java.io.ByteArrayOutputStream line, Consumer<String> onLine) {
+        if (line.size() == 0) {
+            return;
+        }
+        String text = line.toString(StandardCharsets.UTF_8);
+        line.reset();
+        if (kept.length() < MAX_KEPT_BYTES) {
+            kept.append(text).append('\n');
+        }
+        onLine.accept(text);
     }
 
     /**

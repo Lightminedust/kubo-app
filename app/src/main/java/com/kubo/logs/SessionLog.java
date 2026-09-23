@@ -70,12 +70,21 @@ public final class SessionLog implements AutoCloseable {
     /**
      * Adds a command. Failures to write are ignored: logging must never interrupt the session.
      */
-    public synchronized void append(CommandEntry entry, Origin origin) {
+    public void append(CommandEntry entry, Origin origin) {
+        append(new com.kubo.command.CommandService.Logged(entry, origin, false));
+    }
+
+    /**
+     * Adds a command, saying whether a person typed it. Failures to write are ignored: logging must never
+     * interrupt the session.
+     */
+    public synchronized void append(com.kubo.command.CommandService.Logged logged) {
         if (closed) {
             return;
         }
         try {
-            String line = (empty ? "" : ",") + "\n    " + mapper.writeValueAsString(toJson(entry, origin));
+            String line = (empty ? "" : ",") + "\n    "
+                    + mapper.writeValueAsString(toJson(logged.entry(), logged.origin(), logged.typed()));
             // Overwrite the closing brackets, then write them back after the new entry.
             file.seek(file.length() - TAIL_BYTES);
             file.write((line + TAIL).getBytes(StandardCharsets.UTF_8));
@@ -98,10 +107,12 @@ public final class SessionLog implements AutoCloseable {
         }
     }
 
-    private static Map<String, Object> toJson(CommandEntry entry, Origin origin) throws JsonProcessingException {
+    private static Map<String, Object> toJson(CommandEntry entry, Origin origin, boolean typed)
+            throws JsonProcessingException {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("at", entry.executedAt().toString());
         json.put("origin", origin.name());
+        json.put("typed", typed);
         json.put("command", entry.command());
         json.put("asRoot", entry.asRoot());
         json.put("exitCode", entry.exitCode());

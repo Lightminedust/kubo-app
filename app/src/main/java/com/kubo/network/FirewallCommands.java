@@ -30,7 +30,12 @@ public final class FirewallCommands {
             + "command -v \"$T\" >/dev/null 2>&1 && printf '%s\\n' \"$T\"; done; true";
 
     /** UFW's numbered rules. Needs root; the caller wraps it. */
-    public static final String UFW = "ufw status numbered";
+    /**
+     * The default policy line, then the numbered rules. {@code status numbered} alone does not print the
+     * defaults, and they are the answer for every port no rule names. {@code LC_ALL=C} because UFW translates
+     * its output, and this reads the English words.
+     */
+    public static final String UFW = "LC_ALL=C ufw status verbose | grep -i '^default:'; LC_ALL=C ufw status numbered";
 
     /** firewalld: whether it is running, then the default zone in full. Both need root on most servers. */
     public static final String FIREWALLD = "firewall-cmd --state 2>&1; echo '---'; firewall-cmd --list-all 2>&1";
@@ -163,7 +168,75 @@ public final class FirewallCommands {
             boolean v6 = to.contains("(v6)") || from.contains("(v6)");
             rules.add(new FirewallRule(index, to, FirewallRule.Action.parse(verb.group(1)), from, v6, portsIn(to)));
         }
-        return new Firewall(Firewall.Kind.UFW, Firewall.State.ACTIVE, rules);
+        return new Firewall(Firewall.Kind.UFW, Firewall.State.ACTIVE, rules, ufwDefaults(text));
+    }
+
+    /**
+     * "Default: deny (incoming), allow (outgoing), disabled (routed)" read into its three parts. Unknown parts are
+     * left empty rather than guessed.
+     */
+    static Firewall.Defaults ufwDefaults(String output) {
+        for (String line : output.lines().toList()) {
+            String text = line.strip();
+            if (!text.toLowerCase(Locale.ROOT).startsWith("default:")) {
+                continue;
+            }
+            String incoming = "";
+            String outgoing = "";
+            String routed = "";
+            for (String part : text.substring("default:".length()).split(",")) {
+                String[] words = part.strip().split(BACKSLASH + "s+");
+                if (words.length < 2) {
+                    continue;
+                }
+                String policy = words[0];
+                String direction = words[1].replace("(", "").replace(")", "").toLowerCase(Locale.ROOT);
+                switch (direction) {
+                    case "incoming" -> incoming = policy;
+                    case "outgoing" -> outgoing = policy;
+                    case "routed" -> routed = policy;
+                    default -> {
+                        // Nothing else is printed on this line.
+                    }
+                }
+            }
+            return new Firewall.Defaults(incoming, outgoing, routed);
+        }
+        return Firewall.Defaults.unknown();
+    }
+
+    private static final String BACKSLASH = String.valueOf((char) 92);
+
+    /**
+     * The ports UFW's application profiles stand for, for the ones every Ubuntu and Debian server ships. A rule
+     * written as "OpenSSH" named no port, so Kubo could not tell it opened 22, which is the one rule nobody
+     * should delete without knowing that.
+     */
+    private static final java.util.Map<String, List<Integer>> PROFILES = java.util.Map.ofEntries(
+            java.util.Map.entry("openssh", List.of(22)),
+            java.util.Map.entry("nginx full", List.of(80, 443)),
+            java.util.Map.entry("nginx http", List.of(80)),
+            java.util.Map.entry("nginx https", List.of(443)),
+            java.util.Map.entry("nginx quic", List.of(443)),
+            java.util.Map.entry("apache", List.of(80)),
+            java.util.Map.entry("apache full", List.of(80, 443)),
+            java.util.Map.entry("apache secure", List.of(443)),
+            java.util.Map.entry("www", List.of(80)),
+            java.util.Map.entry("www full", List.of(80, 443)),
+            java.util.Map.entry("www secure", List.of(443)),
+            java.util.Map.entry("postfix", List.of(25)),
+            java.util.Map.entry("postfix smtps", List.of(465)),
+            java.util.Map.entry("postfix submission", List.of(587)),
+            java.util.Map.entry("dovecot imap", List.of(143)),
+            java.util.Map.entry("dovecot secure imap", List.of(993)),
+            java.util.Map.entry("bind9", List.of(53)),
+            java.util.Map.entry("samba", List.of(137, 138, 139, 445)),
+            java.util.Map.entry("cups", List.of(631)));
+
+    /** The ports of a known application profile, or empty when this is not one. */
+    static List<Integer> profilePorts(String destination) {
+        String name = destination.replace("(v6)", "").strip().toLowerCase(Locale.ROOT);
+        return PROFILES.getOrDefault(name, List.of());
     }
 
     // firewalld
@@ -380,8 +453,12 @@ public final class FirewallCommands {
      * The ports a UFW destination names: "22/tcp", "80,443/tcp", "8000:8010/tcp".
      */
     static List<Integer> portsIn(String destination) {
+        List<Integer> profile = profilePorts(destination);
+        if (!profile.isEmpty()) {
+            return profile;
+        }
         Set<Integer> ports = new LinkedHashSet<>();
-        for (String token : destination.split("\s+")) {
+        for (String token : destination.split(BACKSLASH + "s+")) {
             // An address is not a list of ports: "192.168.1.5 22/tcp" names one port, not five.
             if (token.indexOf('.') >= 0) {
                 continue;
