@@ -69,6 +69,7 @@ public final class NetworkService {
     // answer, and repeating the question does not change it.
     private List<Firewall.Kind> firewallTools;
     private Firewall firewallRefusal;
+    private List<com.kubo.model.network.WebServer> webServers;
     private List<Vhost> nginxSites;
     private List<com.kubo.model.network.Upstream> nginxUpstreams;
     private String nginxProblem = "";
@@ -95,6 +96,7 @@ public final class NetworkService {
     public void forget() {
         firewallTools = null;
         firewallRefusal = null;
+        webServers = null;
         nginxSites = null;
         nginxUpstreams = null;
         nginxProblem = "";
@@ -254,6 +256,53 @@ public final class NetworkService {
     /**
      * The fail2ban jails. Its socket is root-owned on every install Kubo has seen, so this goes through sudo.
      */
+    /**
+     * Every address this server has shut out, with when and how often.
+     *
+     * <p>Two sources, folded together. fail2ban's own database knows the dates and the counts, and needs root.
+     * The firewall's deny rules are already read for the map, and are the ones that stay until somebody takes
+     * them away.
+     *
+     * @param notes told why the history could not be read, when that is the case
+     */
+    public List<com.kubo.model.network.BlockedAddress> blocked(List<String> notes) {
+        Firewall wall = readFirewall(notes);
+        List<com.kubo.model.network.BlockedAddress> found = new java.util.ArrayList<>();
+
+        // What fail2ban says is banned at this moment, which it answers without any database at all. This is
+        // the floor: a machine with no sqlite3 still shows who is shut out, it just cannot say since when or
+        // how often. Reporting nothing here because the history was unreadable was the worse of the two
+        // wrong answers, because the screen looked like a server nobody was attacking.
+        for (Jail jail : readJails(notes)) {
+            for (String address : jail.banned()) {
+                found.add(new com.kubo.model.network.BlockedAddress(address, jail.name(),
+                        com.kubo.model.network.BlockedAddress.Source.FAIL2BAN, null, null, 1, 0, true));
+            }
+        }
+
+        String output = runAsRoot(GuardCommands.HISTORY, TIMEOUT).output();
+        String problem = GuardCommands.historyProblem(output);
+        if (!problem.isEmpty() && notes != null) {
+            notes.add(problem);
+        }
+        // The dates and the counts, when the database can be read. Merging folds these onto the rows above.
+        found.addAll(GuardCommands.parseHistory(output));
+        // What the firewall is holding out on its own. These have no date and no count: a rule does not
+        // remember when it was written, and saying so is better than inventing one.
+        for (com.kubo.model.network.FirewallRule rule : wall.rules()) {
+            if (rule.action().letsThrough() || rule.from() == null) {
+                continue;
+            }
+            String from = rule.from().replace(" (v6)", "").strip();
+            if (!from.matches("[0-9A-Fa-f.:]{3,45}(/\\d{1,3})?")) {
+                continue;
+            }
+            found.add(new com.kubo.model.network.BlockedAddress(from, "",
+                    com.kubo.model.network.BlockedAddress.Source.FIREWALL, null, null, 1, 0, true));
+        }
+        return List.copyOf(found);
+    }
+
     private List<Jail> readJails(List<String> notes) {
         // A server without fail2ban is asked once, not every cycle: what is banned changes, what is installed
         // does not.
@@ -404,6 +453,20 @@ public final class NetworkService {
     }
 
     /**
+     * Which web servers are on this machine, read once and kept.
+     *
+     * <p>Cheap, needs no root, and runs before anything else on the screen, because every other answer about
+     * the web depends on knowing whether there is an Nginx here at all.
+     */
+    public List<com.kubo.model.network.WebServer> webServers() {
+        if (webServers == null) {
+            webServers = com.kubo.model.network.WebServer.parse(
+                    run(NetworkCommands.WEB_SERVERS).output());
+        }
+        return webServers;
+    }
+
+    /**
      * The domains this server serves, read once and kept.
      *
      * <p>{@code nginx -T} prints every configuration file on the server and needs root to do it, so it is the
@@ -424,7 +487,10 @@ public final class NetworkService {
     private void lookForNginx() {
         nginxProblem = "";
         nginxUpstreams = List.of();
-        if (run(NetworkCommands.NGINX_PRESENT).output().strip().equals("NO")) {
+        if (!com.kubo.model.network.WebServer.hasNginx(webServers())) {
+            // Not an empty answer: whatever else is serving this machine is named, so the screen can say which
+            // rather than leave somebody to read "no Nginx" as "no web server".
+            nginxProblem = com.kubo.model.network.WebServer.noteFor(webServers());
             nginxSites = List.of();
             return;
         }
@@ -529,6 +595,18 @@ public final class NetworkService {
     }
 
     /** Removes several UFW rules, highest number first. The caller re-reads afterwards: the numbers move. */
+    /**
+     * Switches the firewall on or off, and forgets what was read: its whole state just changed.
+     *
+     * @throws IllegalArgumentException for a firewall Kubo has no switch for
+     */
+    public CommandEntry switchFirewall(com.kubo.model.network.Firewall.Kind kind, boolean on) {
+        String command = on ? FirewallCommands.switchOn(kind) : FirewallCommands.switchOff(kind);
+        CommandEntry entry = runAsRoot(command, ACTION_TIMEOUT);
+        forget();
+        return entry;
+    }
+
     public CommandEntry deleteRules(java.util.List<Integer> numbers) {
         return runAsRoot(NetworkCommands.ufwDeleteRules(numbers), ACTION_TIMEOUT);
     }

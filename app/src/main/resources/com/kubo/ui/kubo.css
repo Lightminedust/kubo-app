@@ -2175,3 +2175,29 @@
     -fx-font-size: 12px;
     -fx-text-fill: #f4f4f7;
 }
+
+/* The commands going out while a screen waits for its answers. A terminal made of what is really being sent. */
+
+.work-trail {
+    -fx-background-color: #07070b;
+    -fx-border-color: transparent transparent transparent #35e8ff;
+    -fx-border-width: 0 0 0 2;
+}
+
+.work-trail-line {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #6ee0c8;
+}
+
+.work-trail-cursor {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 12px;
+    -fx-text-fill: #35e8ff;
+}
+
+/* A card written over the screen it belongs to, with the screen dimmed behind it. */
+
+.overlay-dim {
+    -fx-background-color: rgba(5, 5, 8, 0.72);
+}

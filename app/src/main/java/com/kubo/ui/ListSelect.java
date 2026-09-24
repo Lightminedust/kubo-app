@@ -62,6 +62,9 @@ public final class ListSelect {
         MenuItem none = new MenuItem("SELECT NONE");
         none.setOnAction(event -> list.getSelectionModel().clearSelection());
         ContextMenu menu = new ContextMenu();
+        // The same dark menu the rest of Kubo uses. Left alone it drew the operating system's own, white and
+        // blue, in the middle of a black screen.
+        menu.getStyleClass().add("redis-context-menu");
         menu.getItems().addAll(items);
         menu.getItems().addAll(new SeparatorMenuItem(), all, none);
         menu.setOnShowing(event -> {

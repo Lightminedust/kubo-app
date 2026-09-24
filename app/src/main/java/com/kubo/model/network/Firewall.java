@@ -244,6 +244,72 @@ public record Firewall(Kind kind, State state, List<FirewallRule> rules, Default
     }
 
     /**
+     * Whether Kubo can switch this firewall on and off at all.
+     *
+     * <p>UFW and firewalld have one switch each and Kubo knows where it is. Raw nftables and iptables do not:
+     * there is no "off" for them, only a ruleset that may or may not be loaded by something else at boot, and
+     * guessing which something is how a server comes back from a reboot with no filtering at all.
+     */
+    public boolean canBeSwitched() {
+        return kind == Kind.UFW || kind == Kind.FIREWALLD;
+    }
+
+    /**
+     * What switching it off would mean.
+     *
+     * <p>Always worth a confirmation while it is enforcing. Turning a firewall off does not open one port, it
+     * opens every port anything on the machine is listening on, to the whole internet, in one command. There is
+     * no partial version of this to be careless about.
+     */
+    public Lockout ifSwitchedOff() {
+        if (!isEnforcing()) {
+            return new Lockout(false, "");
+        }
+        String counted = rules.isEmpty() ? "" : " Its " + rules.size()
+                + (rules.size() == 1 ? " rule stays written down" : " rules stay written down")
+                + " and will apply again when it is switched back on.";
+        return new Lockout(true, "Switching " + title() + " off stops it filtering anything at all. Every port "
+                + "a program on this machine is listening on becomes reachable from anywhere, at once." + counted);
+    }
+
+    /**
+     * What switching it on would mean, which is the more dangerous direction.
+     *
+     * <p>A firewall that comes up denying incoming traffic, with nothing in it that lets SSH through, refuses
+     * the next connection. The session open now survives, because it is already established, so nothing appears
+     * to go wrong until the moment somebody needs to get back in.
+     *
+     * <p>UFW asks about this itself and Kubo passes {@code --force} to get past its prompt, which a
+     * non-interactive session cannot answer. That makes asking here not a nicety but the replacement for a
+     * question that was being skipped.
+     *
+     * @param sshPort the port this session came in on
+     */
+    public Lockout ifSwitchedOn(int sshPort) {
+        if (isEnforcing()) {
+            return new Lockout(false, "");
+        }
+        if (rules.isEmpty()) {
+            // Switched off, UFW prints no rules, and there is no honest way to promise anything about them.
+            return new Lockout(true, "Kubo cannot read the rules of a firewall that is switched off, so it "
+                    + "cannot tell you whether port " + sshPort + " will still be let through. If nothing in it "
+                    + "allows " + sshPort + ", this session stays up and the next one is refused.");
+        }
+        if (defaults.known() && defaults.letsEverythingIn()) {
+            return new Lockout(false, "Its default is to let incoming traffic in, so " + sshPort
+                    + " stays open.");
+        }
+        boolean allowed = rules.stream().anyMatch(rule -> rule.action().letsThrough()
+                && !rule.ports().isEmpty() && rule.ports().contains(sshPort));
+        if (allowed) {
+            return new Lockout(false, "");
+        }
+        return new Lockout(true, "Nothing in this firewall lets port " + sshPort + " through, and Kubo is "
+                + "connected on it. The session open now stays open. The next SSH connection will be refused, "
+                + "and the way back in is your provider's console.");
+    }
+
+    /**
      * True when Kubo can actually answer the question "is this port filtered?". When it cannot — the status needed
      * root, or the rules are in a form it does not read — every answer below is a guess, and the screen says so
      * instead of showing one.

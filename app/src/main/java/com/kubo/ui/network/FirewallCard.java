@@ -43,6 +43,9 @@ final class FirewallCard extends VBox {
 
         /** Deletes both halves of a rule. */
         void delete(Firewall.RuleGroup group);
+
+        /** Switches the whole firewall on or off. */
+        void setOn(boolean on);
     }
 
     private final Label status = new Label();
@@ -78,7 +81,11 @@ final class FirewallCard extends VBox {
         close.setOnAction(event -> onClose.run());
         HBox header = new HBox(12, label(firewall.title().toUpperCase(Locale.ROOT), "card-title"),
                 label(firewall.shortState(), firewall.isEnforcing() ? "card-success" : "card-problem"),
-                spacer, close);
+                spacer);
+        if (firewall.canBeSwitched() && firewall.isKnown()) {
+            header.getChildren().add(switchButton());
+        }
+        header.getChildren().add(close);
         header.setAlignment(Pos.CENTER_LEFT);
 
         status.getStyleClass().add("card-note");
@@ -103,7 +110,12 @@ final class FirewallCard extends VBox {
         if (!firewall.isKnown()) {
             body.getChildren().add(note(firewall.problem()));
         } else if (firewall.rules().isEmpty()) {
-            body.getChildren().add(note("This firewall is on and has no rule at all."));
+            // Two very different things, and the sentence used to claim the first whichever was true: a
+            // firewall enforcing nothing, and one that is simply switched off and shows nobody its rules.
+            body.getChildren().add(note(firewall.isEnforcing()
+                    ? "This firewall is on and has no rule at all."
+                    : "This firewall is switched off. It does not show its rules while it is off, so what it "
+                            + "would enforce cannot be read from here."));
         } else {
             body.getChildren().add(rules(writable));
         }
@@ -271,6 +283,81 @@ final class FirewallCard extends VBox {
      * Deletes at once when nothing hangs on it. When the rule is what lets SSH in, says so in full and asks for
      * the port to be typed back, because a wrong click here is fixed from a provider's console.
      */
+    /**
+     * The one button that turns the whole thing on or off. Quiet when it switches on, marked as dangerous when
+     * it switches off, because those are not the same act however alike the two commands look.
+     */
+    private Button switchButton() {
+        boolean on = firewall.isEnforcing();
+        Button button = new Button(on ? "SWITCH IT OFF" : "SWITCH IT ON");
+        button.getStyleClass().addAll(on ? "danger-quiet" : "rail-button", "compact-button");
+        button.setFocusTraversable(false);
+        button.setOnAction(event -> askToSwitch(!on));
+        return button;
+    }
+
+    /**
+     * Asks before switching, in whichever direction has something to warn about.
+     *
+     * <p>Switching off always has. Switching on has when nothing in the firewall lets SSH through, which is the
+     * question UFW asks itself and which Kubo skips with {@code --force}; asking it here is what makes skipping
+     * it acceptable.
+     */
+    private void askToSwitch(boolean on) {
+        Firewall.Lockout warning = on ? firewall.ifSwitchedOn(sshPort) : firewall.ifSwitchedOff();
+        if (!warning.risky()) {
+            hideConfirm();
+            if (!warning.reason().isEmpty()) {
+                report(null, warning.reason());
+            }
+            hands.setOn(on);
+            return;
+        }
+        String word = on ? "ON" : "OFF";
+        TextField typed = new TextField();
+        typed.getStyleClass().add("card-field");
+        typed.setPromptText(word);
+        typed.setPrefColumnCount(6);
+        Button anyway = new Button(on ? "SWITCH IT ON ANYWAY" : "SWITCH IT OFF ANYWAY");
+        anyway.getStyleClass().addAll("danger-button", "compact-button");
+        anyway.setFocusTraversable(false);
+        anyway.setDisable(true);
+        typed.textProperty().addListener((observable, before, now) ->
+                anyway.setDisable(!now.strip().equalsIgnoreCase(word)));
+        anyway.setOnAction(event -> {
+            hideConfirm();
+            hands.setOn(on);
+        });
+        Button keep = new Button("LEAVE IT");
+        keep.getStyleClass().addAll("ghost-button", "compact-button");
+        keep.setFocusTraversable(false);
+        keep.setOnAction(event -> hideConfirm());
+
+        Label reason = label(warning.reason(), "card-problem");
+        reason.setWrapText(true);
+        reason.setMaxWidth(640);
+        reason.setMinHeight(Region.USE_PREF_SIZE);
+        HBox line = new HBox(10, label("TYPE " + word + " TO CONFIRM", "metric-label"), typed, anyway, keep);
+        line.setAlignment(Pos.CENTER_LEFT);
+        confirmBox.getChildren().setAll(
+                label(on ? "SWITCHING IT ON MAY CLOSE THE WAY IN" : "THIS STOPS ALL FILTERING", "series"),
+                reason, line);
+        confirmBox.getStyleClass().setAll("lockout-box");
+        confirmBox.setPadding(new Insets(12, 14, 12, 14));
+        confirmBox.setVisible(true);
+        confirmBox.setManaged(true);
+    }
+
+    private void hideConfirm() {
+        confirmBox.setVisible(false);
+        confirmBox.setManaged(false);
+    }
+
+    /** Only for the previews: the confirmation as it looks when the switch is about to be thrown. */
+    void askToSwitchForPreview(boolean on) {
+        askToSwitch(on);
+    }
+
     private void askToDelete(Firewall.RuleGroup group) {
         Firewall.Lockout lockout = firewall.ifDeleted(group, sshPort);
         if (!lockout.risky()) {

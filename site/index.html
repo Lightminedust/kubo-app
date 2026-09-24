@@ -502,13 +502,31 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
             container behind each port. If it cannot read the rules, it says so.</p>
           <p lang="fr">Il lit UFW, firewalld, nftables et iptables, et nomme le processus, l'application PM2 ou le
             conteneur Docker derrière chaque port. S'il ne peut pas lire les règles, il le dit.</p>
+          <p lang="en">UFW is written as well as read. Kubo groups the rules the way a person would say them,
+            opens and closes ports, and switches the firewall on or off. Removing a rule that would cut your own
+            SSH session asks you to type the port first.</p>
+          <p lang="fr">UFW n'est pas seulement lu, il se modifie. Kubo regroupe les règles comme on les dirait à
+            voix haute, ouvre et ferme des ports, allume et éteint le pare-feu. Retirer une règle qui couperait
+            votre propre session SSH demande de taper le port avant.</p>
+          <p lang="en">Nginx has a screen of its own. It draws how a request reaches each site, from the domain
+            to the port it ends on, and turns red at the step that breaks. It reads the access log, shows the
+            file, and writes a new site from a form that checks every field before anything is sent.</p>
+          <p lang="fr">Nginx a son propre écran. Il dessine le trajet d'une requête jusqu'au site, du domaine au
+            port d'arrivée, et passe au rouge à l'étape qui casse. Il lit le journal d'accès, montre le fichier,
+            et écrit un nouveau site depuis un formulaire qui vérifie chaque champ avant d'envoyer quoi que ce
+            soit.</p>
+          <p lang="en">Every address fail2ban and the firewall have shut out is listed on one screen, sorted by
+            which of them keep coming back, with when and how often. It downloads as JSON.</p>
+          <p lang="fr">Toutes les adresses que fail2ban et le pare-feu ont bloquées tiennent sur un écran,
+            triées par celles qui reviennent le plus, avec quand et combien de fois. Le tout se télécharge en
+            JSON.</p>
           <div class="taglist" lang="en">
             <span class="tag">Listening ports</span><span class="tag">Firewall</span><span class="tag">Nginx</span>
-            <span class="tag">PM2</span><span class="tag">Docker</span>
+            <span class="tag">Blocked addresses</span><span class="tag">PM2</span><span class="tag">Docker</span>
           </div>
           <div class="taglist" lang="fr">
             <span class="tag">Ports en écoute</span><span class="tag">Pare-feu</span><span class="tag">Nginx</span>
-            <span class="tag">PM2</span><span class="tag">Docker</span>
+            <span class="tag">Adresses bloquées</span><span class="tag">PM2</span><span class="tag">Docker</span>
           </div>
         </div>
       </div>
@@ -708,10 +726,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" lang="en">64-bit · v1.1.0 · Free<br>
+      <p class="smallprint" lang="en">64-bit · v1.2.0 · Free<br>
         The installer is not signed yet. If Windows warns about an unknown publisher, click
         <b>More info → Run anyway</b>.</p>
-      <p class="smallprint" lang="fr">64 bits · v1.1.0 · Gratuit<br>
+      <p class="smallprint" lang="fr">64 bits · v1.2.0 · Gratuit<br>
         L'installeur n'est pas encore signé. Si Windows signale un éditeur inconnu, cliquez sur
         <b>Informations complémentaires → Exécuter quand même</b>.</p>
 
@@ -760,9 +778,9 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.1.0 · Requires a desktop session and GTK 3<br>
+      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.2.0 · Requires a desktop session and GTK 3<br>
         Kubo runs on your computer, not on the server. On Linux, passwords are never saved. Key files are.</p>
-      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.1.0 · Nécessite une session graphique et GTK 3<br>
+      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.2.0 · Nécessite une session graphique et GTK 3<br>
         Kubo tourne sur votre ordinateur, pas sur le serveur. Sous Linux, les mots de passe ne sont jamais
         enregistrés. Les fichiers de clé, si.</p>
     </div>
@@ -920,7 +938,7 @@ var WINGET_ID = "";
 /* The release whose Linux packages are online. Their file names carry the version, so this is the one line
    to bump when a new release is published — and the one to leave "" while there are none, which keeps the
    whole Linux block hidden instead of offering three links that 404. */
-var LINUX_VERSION = "1.1.0";
+var LINUX_VERSION = "1.2.0";
 
 if (DOWNLOAD_URL) {
   document.querySelectorAll('[data-download]').forEach(function(a){ a.href = DOWNLOAD_URL; });

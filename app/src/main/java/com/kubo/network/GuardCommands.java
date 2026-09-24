@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import com.kubo.model.network.BlockedAddress;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -42,6 +43,28 @@ public final class GuardCommands {
 
     /** Whether fail2ban is there, and everything it knows, in one round trip. */
     public static final String WATCH = "echo '@@present'; " + PRESENT + "; echo '@@jails'; " + JAILS_ONLY;
+
+    /**
+     * Every ban fail2ban has on record, with when and how often.
+     *
+     * <p>The client tells you which addresses are banned right now and nothing more. The dates, the counts and
+     * everything it has let go again live in its own database, and that is the half worth reading: an address
+     * banned eleven times is a different thing from one banned once.
+     *
+     * <p>Two tables. {@code bips} is what is banned at this moment, {@code bans} is everything that ever was.
+     * Needs sqlite3, which is not everywhere, so a machine without it says so instead of printing nothing.
+     */
+    public static final String HISTORY = "DB=/var/lib/fail2ban/fail2ban.sqlite3; "
+            + "command -v sqlite3 >/dev/null 2>&1 || { echo '@@nosqlite'; exit 0; }; "
+            + "[ -r \"$DB\" ] || { echo '@@nodb'; exit 0; }; "
+            + "echo '@@current'; "
+            + "sqlite3 -readonly -separator '|' \"$DB\" "
+            + "'SELECT ip, jail, timeofban, bantime, bancount FROM bips ORDER BY timeofban DESC LIMIT 2000;' "
+            + "2>/dev/null; "
+            + "echo '@@history'; "
+            + "sqlite3 -readonly -separator '|' \"$DB\" "
+            + "'SELECT ip, jail, MAX(timeofban), MAX(bantime), MAX(bancount), COUNT(*) FROM bans "
+            + "GROUP BY ip, jail ORDER BY MAX(timeofban) DESC LIMIT 2000;' 2>/dev/null; true";
 
     /** True when the answer to {@link #WATCH} says fail2ban is installed. */
     public static boolean installed(String output) {
@@ -79,6 +102,78 @@ public final class GuardCommands {
             throw new IllegalArgumentException("Not a jail name: " + jail);
         }
         return jail.strip();
+    }
+
+    /**
+     * Reads {@link #HISTORY}.
+     *
+     * <p>Rows are {@code ip|jail|timeofban|bantime|bancount} and, for the history, one more column counting the
+     * rows folded into it. Anything that is not five or six fields is passed over: a database from a version
+     * that writes a column more is read for what it does have rather than refused whole.
+     */
+    public static List<BlockedAddress> parseHistory(String output) {
+        if (output == null || output.isBlank() || output.contains("@@nosqlite") || output.contains("@@nodb")) {
+            return List.of();
+        }
+        List<BlockedAddress> found = new ArrayList<>();
+        boolean current = false;
+        for (String raw : output.lines().toList()) {
+            String line = raw.strip();
+            if (line.equals("@@current")) {
+                current = true;
+                continue;
+            }
+            if (line.equals("@@history")) {
+                current = false;
+                continue;
+            }
+            String[] parts = line.split("\\|");
+            if (parts.length < 5 || parts[0].isBlank()) {
+                continue;
+            }
+            Instant when = seconds(parts[2]);
+            long bantime = number(parts[3]);
+            found.add(new BlockedAddress(parts[0].strip(), parts[1].strip(),
+                    BlockedAddress.Source.FAIL2BAN, when,
+                    when == null || bantime <= 0 ? null : when.plusSeconds(bantime),
+                    (int) Math.max(1, number(parts[4])),
+                    // The database counts bans, not failures; what it has is the nearest honest answer.
+                    parts.length > 5 ? (int) number(parts[5]) : 0,
+                    current));
+        }
+        return List.copyOf(found);
+    }
+
+    /** Whether the answer to {@link #HISTORY} means the machine could not be asked rather than had nothing. */
+    public static String historyProblem(String output) {
+        if (output == null) {
+            return "";
+        }
+        if (output.contains("@@nosqlite")) {
+            return "fail2ban keeps its history in an sqlite database, and sqlite3 is not installed here. "
+                    + "Kubo can still show what is banned right now, but not when or how often.";
+        }
+        if (output.contains("@@nodb")) {
+            return "fail2ban's database could not be read. It is usually root-only; turn on ROOT and read "
+                    + "again to see the dates and the counts.";
+        }
+        return "";
+    }
+
+    private static Instant seconds(String text) {
+        long value = number(text);
+        // fail2ban writes seconds, sometimes with a fraction.
+        return value <= 0 ? null : Instant.ofEpochSecond(value);
+    }
+
+    private static long number(String text) {
+        try {
+            String clean = text == null ? "" : text.strip();
+            int dot = clean.indexOf('.');
+            return Long.parseLong(dot < 0 ? clean : clean.substring(0, dot));
+        } catch (NumberFormatException notANumber) {
+            return 0;
+        }
     }
 
     /**

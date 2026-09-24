@@ -91,6 +91,8 @@ final class NginxScreen extends BorderPane {
     private final VBox actions = new VBox(8);
     private final Label status = new Label();
     private final Pulse working = new Pulse();
+    /** What is being asked while the screen has nothing to show yet. */
+    private final com.kubo.ui.WorkTrail trail = new com.kubo.ui.WorkTrail();
     // Head
     private final Label tally = new Label();
 
@@ -99,6 +101,14 @@ final class NginxScreen extends BorderPane {
     private List<Upstream> upstreams = List.of();
     private List<Certificate> certificates = List.of();
     private List<com.kubo.model.network.Endpoint> listening = List.of();
+    /** What else serves the web here. Only ever filled when there is no Nginx to show. */
+    private List<com.kubo.model.network.WebServer> servers = List.of();
+    /** The buttons that send an Nginx command, held so they can be shut off when there is no Nginx. */
+    private final List<Button> nginxActions = new ArrayList<>();
+    /** The line under SITES, which talks about sites-available and means nothing without Nginx. */
+    private final Label sitesNote = note("Every file in sites-available. A site that is switched off is "
+            + "invisible to Nginx, which is exactly the one somebody is looking for when a domain stopped "
+            + "answering.");
     private final com.kubo.ui.Chain chain = new com.kubo.ui.Chain();
     private String selected = "";
     private Below below = Below.LOG;
@@ -134,9 +144,56 @@ final class NginxScreen extends BorderPane {
         }
     }
 
+    /**
+     * What web servers the machine has, so that a screen with nothing on it can say why.
+     *
+     * <p>Kubo reads Nginx and only names the rest, which is worth saying out loud rather than leaving an empty
+     * column to be read as a fault.
+     */
+    void setServers(List<com.kubo.model.network.WebServer> found) {
+        servers = found == null ? List.of() : List.copyOf(found);
+        boolean noNginx = !servers.isEmpty() && !com.kubo.model.network.WebServer.hasNginx(servers);
+        for (Button action : nginxActions) {
+            action.setDisable(noNginx);
+        }
+        if (noNginx) {
+            sitesNote.setText("Nginx is not on this machine, so there are no sites here to read.");
+        }
+    }
+
     /** The pools this server names, so the form can offer them as a destination. */
     List<Upstream> pools() {
         return upstreams;
+    }
+
+    /**
+     * Says the screen is reading, and shows what it is asking while it does.
+     *
+     * <p>Eight reads over one connection take as long as eight reads take. A line saying READING looks exactly
+     * like a hung command; the commands themselves do not.
+     */
+    void reading(boolean yes) {
+        trail.setVisible(yes);
+        trail.setManaged(yes);
+        if (yes) {
+            trail.start();
+        } else {
+            trail.finish();
+        }
+    }
+
+    /** One command going out, for the trail. */
+    void asking(String command) {
+        if (trail.running()) {
+            trail.add(command);
+        }
+    }
+
+    /** Only for the previews: the screen mid-read, with the commands already sent. */
+    void showTrailForPreview(java.util.List<String> commands) {
+        trail.setVisible(true);
+        trail.setManaged(true);
+        trail.showForPreview(commands, false);
     }
 
     /** Says a command came back: null for a success, otherwise what the server said. */
@@ -169,20 +226,22 @@ final class NginxScreen extends BorderPane {
         });
 
         Button add = rail("+ NEW SITE", event -> hands.newSite());
+        // Every one of these sends nginx something. On a machine without it they would fail with a message
+        // about a command that is not there, which explains nothing to the person reading it.
+        nginxActions.addAll(List.of(add, test, reload));
         HBox row = new HBox(8, back, separator(), add, separator(), reread, test, reload, spacer);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(0, 0, 10, 0));
 
-        VBox head = new VBox(4, mark, tally, row, working);
+        trail.setVisible(false);
+        trail.setManaged(false);
+        VBox head = new VBox(4, mark, tally, row, working, trail);
         head.setPadding(new Insets(16, 34, 0, 26));
         return head;
     }
 
     private VBox buildSites() {
-        VBox column = new VBox(10, label("SITES", "series"),
-                note("Every file in sites-available. A site that is switched off is invisible to Nginx, which "
-                        + "is exactly the one somebody is looking for when a domain stopped answering."),
-                siteList);
+        VBox column = new VBox(10, label("SITES", "series"), sitesNote, siteList);
         column.setPadding(new Insets(18, 20, 20, 26));
         column.setPrefWidth(280);
         column.setMinWidth(280);
@@ -266,7 +325,10 @@ final class NginxScreen extends BorderPane {
         int all = sites.available().size();
         int on = sites.enabled().size();
         if (all == 0 && on == 0) {
-            tally.setText("Nothing was read. Nginx may not be installed, or its files need root.");
+            String elsewhere = com.kubo.model.network.WebServer.noteFor(servers);
+            tally.setText(elsewhere.isEmpty()
+                    ? "Nothing was read. Nginx may not be installed, or its files need root."
+                    : elsewhere);
             return;
         }
         int off = sites.disabled().size();
@@ -291,7 +353,13 @@ final class NginxScreen extends BorderPane {
             }
         }
         if (order.isEmpty()) {
-            siteList.getChildren().add(note("No site file was found."));
+            if (com.kubo.model.network.WebServer.hasNginx(servers) || servers.isEmpty()) {
+                siteList.getChildren().add(note("No site file was found."));
+            } else {
+                for (com.kubo.model.network.WebServer server : servers) {
+                    siteList.getChildren().add(otherServer(server));
+                }
+            }
             return;
         }
         for (String site : order) {
@@ -803,6 +871,26 @@ final class NginxScreen extends BorderPane {
         line.setMinWidth(1);
         line.setPrefWidth(1);
         return line;
+    }
+
+    /**
+     * One of the others: what it is, where to look, and the command that checks it. Enough to carry on by hand,
+     * and no pretence that Kubo is managing it.
+     */
+    private static VBox otherServer(com.kubo.model.network.WebServer server) {
+        Label name = label(server.label().toUpperCase(java.util.Locale.ROOT), "spine-kicker");
+        Label state = label(server.running() ? "RUNNING" : "INSTALLED, NOT RUNNING",
+                server.running() ? "card-success" : "card-note");
+        HBox head = new HBox(10, name, state);
+        head.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(4, head, note(server.kind().what()),
+                note("Its configuration: " + server.kind().configHome()),
+                note("To check it yourself: " + server.kind().check()));
+        box.getStyleClass().add("server-card");
+        box.setPadding(new Insets(10, 12, 10, 12));
+        box.setMaxWidth(560);
+        return box;
     }
 
     private static Label note(String text) {

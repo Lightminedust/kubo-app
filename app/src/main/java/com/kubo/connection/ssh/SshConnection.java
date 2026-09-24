@@ -303,8 +303,13 @@ public final class SshConnection implements AutoCloseable {
 
             // Both streams are drained at the same time, as everywhere else here: a command filling one of them
             // would block while we waited on the other.
+            // Both streams are handed over line by line, not just the first. A package manager says the most
+            // interesting things on standard error: that it is waiting for another apt to release the lock,
+            // that a repository would not answer, that a key has expired. Watching only standard output showed
+            // a card that sat there for minutes with nothing on it while apt was explaining itself the whole
+            // time. They are still kept apart in the entry; only the watching is shared.
             Future<String> output = STREAM_READERS.submit(() -> readLines(running.getInputStream(), onLine));
-            Future<String> error = STREAM_READERS.submit(() -> readText(running.getErrorStream()));
+            Future<String> error = STREAM_READERS.submit(() -> readLines(running.getErrorStream(), onLine));
 
             try (OutputStream stdin = running.getOutputStream()) {
                 if (input != null) {

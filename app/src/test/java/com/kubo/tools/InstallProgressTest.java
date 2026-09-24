@@ -153,4 +153,31 @@ class InstallProgressTest {
             assertTrue(!progress.phaseName().isBlank());
         }
     }
+
+    @Test
+
+    void readsAnIndexUpdateToTheEnd() {
+        InstallProgress progress = reading(
+                "Hit:1 http://deb.debian.org/debian bookworm InRelease",
+                "Get:2 http://security.debian.org/debian-security bookworm-security InRelease [48.0 kB]",
+                "Fetched 344 kB in 1s (312 kB/s)",
+                "Reading package lists...");
+
+        // Nothing is unpacked while reading an index, and the phase used to say it was.
+        assertEquals(Phase.READING, progress.phase());
+        assertEquals("READING THE LISTS", progress.phaseName());
+        assertEquals(1, progress.fraction(), 0.001, "the download is over; the lists are what is left");
+    }
+
+    @Test
+
+    void stillReadsAnInstallInOrder() {
+        assertEquals(Phase.READING, reading("Reading package lists... Done").phase());
+        assertEquals(Phase.READING, reading("Building dependency tree... Done").phase());
+        assertEquals(Phase.FETCHING, reading("Reading package lists... Done",
+                "Need to get 1,234 kB of archives.").phase());
+        // "Reading database" turns up between fetching and unpacking, and must not send the phase backwards.
+        assertEquals(Phase.UNPACKING, reading("Fetched 1,234 kB in 2s (600 kB/s)",
+                "(Reading database ... 41203 files and directories currently installed.)").phase());
+    }
 }

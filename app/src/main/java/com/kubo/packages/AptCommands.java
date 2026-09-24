@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 public final class AptCommands {
 
     /** What Debian policy allows in a package name, and nothing else. */
+    /** One backslash, written this way so no patch to this file can halve it. */
+    private static final String BACKSLASH = String.valueOf((char) 92);
+
     private static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9+.-]{1,99}");
     private static final Pattern UPGRADABLE =
             Pattern.compile("^([^/\\s]+)/(\\S+)\\s+(\\S+)\\s+\\S+\\s+\\[upgradable from: ([^]]+)]");
@@ -47,6 +50,73 @@ public final class AptCommands {
     /** Whether the kernel or a library update wants a restart. */
     public static final String REBOOT_REQUIRED = "test -f /var/run/reboot-required && echo YES || echo NO";
 
+    /**
+     * Every file apt takes its sources from, each behind a {@code @@file} marker.
+     *
+     * <p>Both formats: the old one-line {@code .list} and the deb822 {@code .sources} a modern installer
+     * writes. Only files this user may read are opened, and nothing is refused loudly for the ones they may
+     * not: on most servers these are world-readable, and on the rest the screen says what it managed to read.
+     */
+    public static final String SOURCES = "for F in /etc/apt/sources.list "
+            + "/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do "
+            + "[ -r \"$F\" ] && { echo \"@@file $F\"; cat -- \"$F\"; }; done 2>/dev/null; true";
+
+    /**
+     * Every signing key apt would accept, each behind a {@code @@keyring} marker.
+     *
+     * <p>The three places keys live now. {@code apt-key} would list them in one go and is deprecated on every
+     * current release, so each keyring is read directly with gpg instead. The colon format is gpg's own
+     * machine-readable output and the only part of it that is stable between versions.
+     */
+    public static final String KEYS = "command -v gpg >/dev/null 2>&1 || { echo '@@nogpg'; exit 0; }; "
+            + "for K in /etc/apt/trusted.gpg.d/* /etc/apt/keyrings/* /usr/share/keyrings/*; do "
+            + "[ -r \"$K\" ] || continue; "
+            + "echo \"@@keyring $K\"; "
+            + "gpg --no-default-keyring --keyring \"$K\" --list-keys --with-colons 2>/dev/null; "
+            + "done 2>/dev/null; true";
+
+    /**
+     * Switches one source line on or off by commenting it, in place, as root.
+     *
+     * <p>The file and the line number come from what Kubo read, never from anything typed. The line number is
+     * a number and the path is checked against the two folders apt reads, so neither can carry anything else
+     * into the command. sed edits the one line and leaves every other byte of the file alone.
+     *
+     * @param file    a path inside /etc/apt
+     * @param line    the line to change, counting from 1
+     * @param enable  true to take the comment off, false to put one on
+     * @throws IllegalArgumentException for a path outside apt's own folders, or a line that is not one
+     */
+    public static String switchSource(String file, int line, boolean enable) {
+        String path = file == null ? "" : file.strip();
+        if (!path.matches("/etc/apt/sources\\.list|/etc/apt/sources\\.list\\.d/[A-Za-z0-9._-]{1,120}")) {
+            throw new IllegalArgumentException("That is not one of apt's own source files: " + file);
+        }
+        if (line < 1 || line > 100000) {
+            throw new IllegalArgumentException("That is not a line number: " + line);
+        }
+        String script = enable
+                // Take off one leading # and the spaces around it, and only in front of a deb line.
+                ? line + "s/^[[:space:]]*#[[:space:]]*\\(deb\\)/" + BACKSLASH + "1/"
+                // Put one on, unless there is one already.
+                : line + "s/^[[:space:]]*\\(deb\\)/# " + BACKSLASH + "1/";
+        return "sed -i " + com.kubo.files.ShellQuote.quote(script) + " -- "
+                + com.kubo.files.ShellQuote.quote(path);
+    }
+
+    /**
+     * Which services are running on libraries that have since been replaced.
+     *
+     * <p>{@code -b} is needrestart's batch mode: one {@code NEEDRESTART-FIELD: value} per line and no
+     * questions, which is the only form a session with no terminal can use. Without it needrestart opens a
+     * menu and waits forever.
+     *
+     * <p>Needs root to see processes that are not this user's, which is most of them on a server. A machine
+     * without needrestart says so rather than printing nothing, because nothing would read as "all clear".
+     */
+    public static final String NEEDRESTART = "if command -v needrestart >/dev/null 2>&1; "
+            + "then needrestart -b 2>/dev/null; else echo NEEDRESTART-ABSENT; fi";
+
     private AptCommands() {
     }
 
@@ -66,6 +136,68 @@ public final class AptCommands {
 
     /** Frees the downloaded archives. */
     public static final String CLEAN = "apt-get clean";
+
+    /**
+     * Restarts the machine, after a short delay so the answer gets back before the connection goes.
+     *
+     * <p>{@code systemctl reboot} where there is systemd, {@code shutdown} otherwise. Either way the command
+     * does not return in the ordinary sense, and the screen is told to read that as success.
+     */
+    /** How much disk the downloaded index and the package cache are taking. */
+    public static final String CACHE_SIZE = "du -sb /var/lib/apt/lists /var/cache/apt/archives 2>/dev/null "
+            + "| awk '{ total += $1 } END { print total+0 }'";
+
+    /**
+     * Writes a new source file with one line in it.
+     *
+     * <p>Its own file under sources.list.d rather than a line appended to sources.list, so switching it off or
+     * removing it later touches nothing anybody else wrote. The name, the address and the rest are each
+     * checked against a strict shape before any of them reach a command, and the line is written through
+     * standard input rather than built into one.
+     *
+     * @throws IllegalArgumentException when any part of it is not the shape it has to be
+     */
+    public static String addSource(String name) {
+        String file = name == null ? "" : name.strip().toLowerCase(Locale.ROOT);
+        if (!file.matches("[a-z0-9][a-z0-9_-]{0,40}")) {
+            throw new IllegalArgumentException("A name for the file uses lower-case letters, digits, - and _");
+        }
+        String path = "/etc/apt/sources.list.d/" + file + ".list";
+        return "if [ -e " + com.kubo.files.ShellQuote.quote(path) + " ]; then "
+                + "echo 'A source by that name is already there' >&2; exit 17; fi; "
+                + "cat > " + com.kubo.files.ShellQuote.quote(path) + " && chmod 0644 "
+                + com.kubo.files.ShellQuote.quote(path);
+    }
+
+    /**
+     * The line that goes into that file, built from checked parts.
+     *
+     * <p>Never reaches a shell: it is written through standard input. It is still checked, because a newline
+     * smuggled into the address would put a second source in the file.
+     */
+    public static String sourceLine(String uri, String suite, String components, String signedBy) {
+        String address = uri == null ? "" : uri.strip();
+        if (!address.matches("https?://[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]{3,300}")) {
+            throw new IllegalArgumentException("An address starts with http:// or https:// and has no spaces");
+        }
+        String where = suite == null ? "" : suite.strip();
+        if (!where.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,60}")) {
+            throw new IllegalArgumentException("A suite is a name such as bookworm or stable");
+        }
+        String parts = components == null ? "" : components.strip();
+        if (!parts.matches("[A-Za-z0-9][A-Za-z0-9 ._-]{0,120}")) {
+            throw new IllegalArgumentException("Components are names such as main contrib non-free");
+        }
+        String key = signedBy == null ? "" : signedBy.strip();
+        if (!key.isEmpty() && !key.matches("/[A-Za-z0-9._/-]{3,200}")) {
+            throw new IllegalArgumentException("A keyring is a path such as /usr/share/keyrings/docker.gpg");
+        }
+        return "deb " + (key.isEmpty() ? "" : "[signed-by=" + key + "] ")
+                + address + " " + where + " " + parts + System.lineSeparator();
+    }
+
+    public static final String REBOOT = "if command -v systemctl >/dev/null 2>&1; "
+            + "then systemctl reboot; else shutdown -r +0; fi";
 
     public static String install(String name) {
         return "DEBIAN_FRONTEND=noninteractive apt-get -y install " + require(name);

@@ -54,6 +54,40 @@ public final class FirewallCommands {
      * world-readable. Knowing "it is running, I just cannot see its rules" is worth a great deal more to someone
      * than "I have no idea".
      */
+    /**
+     * Switches the firewall on.
+     *
+     * <p>{@code --force} is there because a session with no terminal cannot answer UFW's own
+     * "this may disrupt existing ssh connections, proceed?". Skipping a question is only acceptable when
+     * somebody else asks it, which is what {@link Firewall#ifSwitchedOn} is for.
+     *
+     * <p>firewalld goes through systemd with {@code --now}, so it starts and also comes back after a reboot.
+     * Starting a firewall that will be gone at the next restart is worse than not starting it, because it looks
+     * as though something was done.
+     *
+     * @throws IllegalArgumentException for a tool Kubo has no switch for
+     */
+    public static String switchOn(Firewall.Kind kind) {
+        return switch (kind) {
+            case UFW -> "ufw --force enable";
+            case FIREWALLD -> "systemctl enable --now firewalld";
+            default -> throw new IllegalArgumentException("Kubo has no switch for " + kind);
+        };
+    }
+
+    /**
+     * Switches the firewall off. The rules stay written down; only the enforcing stops.
+     *
+     * @throws IllegalArgumentException for a tool Kubo has no switch for
+     */
+    public static String switchOff(Firewall.Kind kind) {
+        return switch (kind) {
+            case UFW -> "ufw disable";
+            case FIREWALLD -> "systemctl disable --now firewalld";
+            default -> throw new IllegalArgumentException("Kubo has no switch for " + kind);
+        };
+    }
+
     public static String liveness(Firewall.Kind kind) {
         String service = switch (kind) {
             case UFW -> "ufw";

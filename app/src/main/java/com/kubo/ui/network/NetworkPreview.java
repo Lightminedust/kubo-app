@@ -93,6 +93,12 @@ public final class NetworkPreview {
                 inside.showOnly("INSIDE");
                 renderCard(output, "network-connections-inside", inside);
                 renderCard(output, "network-firewall", firewallCard(REAL_UFW, null));
+                // Switching the whole thing off: everything listening becomes reachable, in one command.
+                renderCard(output, "network-firewall-off", firewallCard(REAL_UFW, null, Boolean.FALSE));
+                // And switching one on that has no rule for SSH, which closes the way back in at the next
+                // connection rather than at the click.
+                renderCard(output, "network-firewall-on", firewallCard(String.join(NEWLINE,
+                        "Status: inactive"), null, Boolean.TRUE));
                 // The one confirmation that asks for a number: the only rule letting SSH in, about to go.
                 renderCard(output, "network-firewall-lockout", firewallCard(String.join(NEWLINE,
                         "Default: deny (incoming), allow (outgoing), disabled (routed)",
@@ -100,7 +106,25 @@ public final class NetworkPreview {
                         "[ 1] 22/tcp                     ALLOW IN    Anywhere",
                         "[ 2] 80                         ALLOW IN    Anywhere",
                         "[ 3] 443                        ALLOW IN    Anywhere"), "22/tcp"));
+                renderCard(output, "network-blocked", blockedScreen());
+                // The screen as it looks on a server with no sqlite3: the addresses fail2ban names, without
+                // the dates or the counts, and the reason said rather than an empty table.
+                renderCard(output, "network-blocked-bare", bareBlockedScreen());
                 renderNginx(output, "network-nginx", exposedServer().endpoints());
+                // The screen mid-read: the commands going out, rather than a word saying READING that looks
+                // exactly like a command that has hung.
+                renderNginx(output, "network-nginx-reading", exposedServer().endpoints(), List.of(), List.of(
+                        "LC_ALL=C ss -tnlpH",
+                        "ip -j -o addr show",
+                        "LC_ALL=C ufw status verbose | grep -i '^default:'; LC_ALL=C ufw status numbered",
+                        "nginx -T",
+                        "ls -1 /etc/nginx/sites-available /etc/nginx/sites-enabled",
+                        "for C in /etc/letsencrypt/live/*/fullchain.pem; do openssl x509 -enddate -noout -in $C; done"));
+                // A machine that serves the web with something Kubo does not read. The screen has to say which,
+                // rather than leave an empty column to be read as a fault.
+                renderNginx(output, "network-nginx-elsewhere", exposedServer().endpoints(),
+                        com.kubo.model.network.WebServer.parse(
+                                String.join(NEWLINE, "HAVE caddy", "RUN caddy", "HAVE haproxy")));
                 // The same site with nothing listening on the port it forwards to: the 502 nobody sees coming.
                 renderNginx(output, "network-nginx-broken", exposedServer().endpoints().stream()
                         .filter(endpoint -> endpoint.socket().port() != 3000).toList());
@@ -149,13 +173,37 @@ public final class NetworkPreview {
      */
     private static void renderNginx(Path output, String name,
                                     List<com.kubo.model.network.Endpoint> listening) throws IOException {
+        renderNginx(output, name, listening, List.of());
+    }
+
+    /**
+     * @param servers what else serves the web here; when it holds no Nginx the screen shows those instead of
+     *                sites, which is the only thing it can honestly do
+     */
+    private static void renderNginx(Path output, String name,
+                                    List<com.kubo.model.network.Endpoint> listening,
+                                    List<com.kubo.model.network.WebServer> servers) throws IOException {
+        renderNginx(output, name, listening, servers, List.of());
+    }
+
+    /**
+     * @param asking the commands already sent, for the screen as it looks while it is still reading
+     */
+    private static void renderNginx(Path output, String name,
+                                    List<com.kubo.model.network.Endpoint> listening,
+                                    List<com.kubo.model.network.WebServer> servers,
+                                    List<String> asking) throws IOException {
         NetworkScope scope = new NetworkScope();
         Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
         scene.getStylesheets().add(KuboApp.STYLESHEET);
         scope.applyCss();
         scope.layout();
         scope.showForPreview(exposedServer(), -1);
-        scope.showNginxForPreview(nginxScreen(listening));
+        NginxScreen screen = servers.isEmpty() ? nginxScreen(listening) : emptyNginxScreen(servers);
+        if (!asking.isEmpty()) {
+            screen.showTrailForPreview(asking);
+        }
+        scope.showNginxForPreview(screen);
         write(scene, output, name);
         scope.shutdown();
     }
@@ -223,6 +271,14 @@ public final class NetworkPreview {
      * @param deleting the rule whose delete is being asked about, or null for none
      */
     private static FirewallCard firewallCard(String ufw, String deleting) {
+        return firewallCard(ufw, deleting, null);
+    }
+
+    /**
+     * @param switching TRUE for the confirmation shown before switching the firewall on, FALSE before switching
+     *                  it off, null for neither
+     */
+    private static FirewallCard firewallCard(String ufw, String deleting, Boolean switching) {
         FirewallCard card = new FirewallCard(com.kubo.network.FirewallCommands.parseUfw(ufw),
                 new FirewallCard.Hands() {
                     @Override public void allowFrom(String source, int port,
@@ -230,9 +286,13 @@ public final class NetworkPreview {
                     @Override public void denyFrom(String source, int port,
                             com.kubo.model.server.ListeningPort.Protocol protocol) { }
                     @Override public void delete(com.kubo.model.network.Firewall.RuleGroup group) { }
+                    @Override public void setOn(boolean on) { }
                 }, 22, () -> { });
         if (deleting != null) {
             card.askForPreview(deleting);
+        }
+        if (switching != null) {
+            card.askToSwitchForPreview(switching);
         }
         return card;
     }
@@ -278,6 +338,83 @@ public final class NetworkPreview {
         // What the server said when fullchain.pem was picked: its armour line, and only that.
         picker.knowForPreview(folder + "/fullchain.pem", "-----BEGIN CERTIFICATE-----");
         return picker;
+    }
+
+    /** The screen as it looks on a machine with no Nginx: no sites, and what is there named instead. */
+    private static NginxScreen emptyNginxScreen(List<com.kubo.model.network.WebServer> servers) {
+        NginxScreen screen = new NginxScreen(new NginxScreen.Hands() {
+            @Override public void enable(String site, java.util.function.Consumer<String> done) { }
+            @Override public void disable(String site, java.util.function.Consumer<String> done) { }
+            @Override public void test(java.util.function.Consumer<String> done) { }
+            @Override public void reload(java.util.function.Consumer<String> done) { }
+            @Override public void readFile(String path, java.util.function.Consumer<String> done) { }
+            @Override public void readLog(String path, java.util.function.Consumer<String> done) { }
+            @Override public void back() { }
+            @Override public void reread() { }
+            @Override public void newSite() { }
+            @Override public void showPort(int port) { }
+            @Override public void browse(String path) { }
+        });
+        screen.setServers(servers);
+        screen.show(com.kubo.model.network.NginxSites.none(), List.of(), List.of(), List.of(), List.of());
+        return screen;
+    }
+
+    /** Every address the server has shut out, sorted by who keeps coming back. */
+    private static BlockedScreen blockedScreen() {
+        BlockedScreen screen = new BlockedScreen(new BlockedScreen.Hands() {
+            @Override public void whois(String address,
+                    java.util.function.Consumer<com.kubo.model.network.WhoisSummary> done) { }
+            @Override public void release(com.kubo.model.network.BlockedAddress one,
+                    java.util.function.Consumer<String> done) { }
+            @Override public void export(List<com.kubo.model.network.BlockedAddress> blocked,
+                    java.util.function.BiConsumer<Boolean, String> done) { }
+            @Override public void back() { }
+            @Override public void reread() { }
+        }, java.time.Instant.ofEpochSecond(1758700000));
+        screen.showForPreview(com.kubo.network.GuardCommands.parseHistory(String.join(NEWLINE,
+                        "@@current",
+                        "45.135.232.17|sshd|1758696400|600|11",
+                        "45.135.232.18|sshd|1758699100|600|7",
+                        "91.0.0.4|sshd|1758699600|600|1",
+                        "20.114.5.33|nginx-bad|1758699000|3600|3",
+                        "@@history",
+                        "45.135.232.17|nginx-bad|1758699900|3600|2|1",
+                        "45.135.232.90|sshd|1758600000|600|4|4",
+                        "8.42.77.190|sshd|1758500000|600|1|1")),
+                java.util.Map.of(
+                        "45.135.232.17", com.kubo.model.network.WhoisSummary.parse(String.join(NEWLINE,
+                                "netname:        NL-SERVERION", "country:        NL",
+                                "org-name:       Serverion BV")),
+                        "20.114.5.33", com.kubo.model.network.WhoisSummary.parse(String.join(NEWLINE,
+                                "netname:        MSFT", "country:        US",
+                                "org-name:       Microsoft Corporation"))),
+                "");
+        return screen;
+    }
+
+    /** Everything fail2ban names, on a machine whose database could not be read. */
+    private static BlockedScreen bareBlockedScreen() {
+        BlockedScreen screen = new BlockedScreen(new BlockedScreen.Hands() {
+            @Override public void whois(String address,
+                    java.util.function.Consumer<com.kubo.model.network.WhoisSummary> done) { }
+            @Override public void release(com.kubo.model.network.BlockedAddress one,
+                    java.util.function.Consumer<String> done) { }
+            @Override public void export(List<com.kubo.model.network.BlockedAddress> blocked,
+                    java.util.function.BiConsumer<Boolean, String> done) { }
+            @Override public void back() { }
+            @Override public void reread() { }
+        }, java.time.Instant.ofEpochSecond(1758700000));
+        List<com.kubo.model.network.BlockedAddress> bare = new java.util.ArrayList<>();
+        for (String address : List.of("187.251.123.104", "168.232.66.60", "20.157.117.15", "122.3.179.176",
+                "45.198.224.120", "78.38.94.140")) {
+            bare.add(new com.kubo.model.network.BlockedAddress(address, "sshd",
+                    com.kubo.model.network.BlockedAddress.Source.FAIL2BAN, null, null, 1, 0, true));
+        }
+        screen.showForPreview(bare, java.util.Map.of(),
+                "fail2ban keeps its history in an sqlite database, and sqlite3 is not installed here. Kubo can "
+                        + "still show what is banned right now, but not when or how often.");
+        return screen;
     }
 
     private static NginxScreen nginxScreen(List<com.kubo.model.network.Endpoint> listening) {

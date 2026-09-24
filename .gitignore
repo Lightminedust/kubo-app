@@ -11,3 +11,8 @@ build
 .idea
 *.iml
 .vscode
+
+# The licence tool. Its own Gradle build, on standby, and not part of what Kubo ships. It holds the private
+# half of a signing key pair, so it stays out of this repository until there is a decision about where it
+# belongs: a repository this one mirrors releases from is the last place a signing key should drift into.
+kubo_licence/

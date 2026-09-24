@@ -24,6 +24,14 @@ public final class InstallProgress {
     public enum Phase {
         /** The command has been sent and nothing recognisable has come back yet. */
         STARTING,
+        /**
+         * The manager is going through its own lists rather than the network.
+         *
+         * <p>Apt says this at the start of anything it does, and again at the end of reading the index, where
+         * it is the last thing that happens. Without it, reading the index ended on UNPACKING, which is not
+         * something that occurs while reading an index at all.
+         */
+        READING,
         /** Packages are coming over the network. */
         FETCHING,
         /** The archives are on the server and are being opened. */
@@ -111,7 +119,12 @@ public final class InstallProgress {
         }
 
         String lower = text.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("downloading packages") || lower.startsWith("retrieving package")
+        // "Reading package lists" only, never "Reading database": the second one turns up between fetching and
+        // unpacking during an install, where it would flick the phase backwards for one line.
+        if (lower.startsWith("reading package lists") || lower.startsWith("building dependency tree")
+                || lower.startsWith("reading state information")) {
+            phase = Phase.READING;
+        } else if (lower.startsWith("downloading packages") || lower.startsWith("retrieving package")
                 || lower.startsWith("downloading ")) {
             phase = Phase.FETCHING;
         } else if (lower.startsWith("preparing to unpack") || lower.startsWith("unpacking")
@@ -162,7 +175,7 @@ public final class InstallProgress {
         if (phase == Phase.DONE) {
             return 1;
         }
-        if (phase == Phase.UNPACKING || phase == Phase.SETTING_UP) {
+        if (phase == Phase.UNPACKING || phase == Phase.SETTING_UP || phase == Phase.READING) {
             return total > 0 ? 1 : -1;
         }
         if (total <= 0 || fetched <= 0) {
@@ -185,6 +198,7 @@ public final class InstallProgress {
     public String phaseName() {
         return switch (phase) {
             case STARTING -> "ASKING THE PACKAGE MANAGER";
+            case READING -> "READING THE LISTS";
             case FETCHING -> "FETCHING";
             case UNPACKING -> "UNPACKING";
             case SETTING_UP -> "SETTING UP";

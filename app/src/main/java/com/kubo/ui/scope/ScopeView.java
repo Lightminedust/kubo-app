@@ -510,7 +510,10 @@ public final class ScopeView extends StackPane {
             packagesView = new com.kubo.ui.packages.PackagesView(
                     new com.kubo.packages.AptService(connection, commands,
                             rootSession == null ? null : rootSession.privilege()),
-                    rootSession);
+                    rootSession,
+                    // Only so the packages screen can restart what an upgrade left running on old libraries.
+                    new com.kubo.services.ServiceControl(connection, commands,
+                            rootSession == null ? null : rootSession.privilege()));
             packagesView.start();
         }
         layout.setCenter(packagesView);

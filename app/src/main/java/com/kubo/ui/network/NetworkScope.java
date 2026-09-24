@@ -82,6 +82,10 @@ public final class NetworkScope extends StackPane {
      */
     private java.util.Set<com.kubo.model.tools.Tool> knownTools = java.util.Set.of();
     private final RootSession root;
+    private BlockedScreen blockedScreen;
+    private final String target;
+    /** Only to show what is being asked while a screen waits. Null in the previews. */
+    private final CommandService commands;
     private final ServerConsole console;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "kubo-network");
@@ -134,8 +138,11 @@ public final class NetworkScope extends StackPane {
         this.network = network;
         this.root = root;
         this.sshPort = connection == null ? 22 : connection.target().port();
+        // Kept for the exported journal, which is read away from this screen and has to say which server.
+        this.target = connection == null ? "?" : connection.target().toString();
         this.tools = connection == null || root == null ? null
                 : new com.kubo.tools.ToolService(connection, commands, root.privilege());
+        this.commands = commands;
         this.console = new ServerConsole(connection, commands, root, "NETWORK",
                 CommandService.Origin.NETWORK, java.util.Set.of());
         getStyleClass().add("scope-view");
@@ -721,6 +728,126 @@ public final class NetworkScope extends StackPane {
                 knownTools.contains(com.kubo.model.tools.Tool.WHOIS), held, this::hideOverlay));
     }
 
+    /**
+     * Every address the server has shut out, as a table.
+     *
+     * <p>Its own screen rather than a card, because two hundred rows sorted three ways is not something that
+     * belongs over the top of a map.
+     */
+    private void showBlocked() {
+        if (network == null) {
+            return;
+        }
+        if (blockedScreen == null) {
+            blockedScreen = new BlockedScreen(new BlockedScreen.Hands() {
+                @Override
+                public void whois(String address,
+                                  java.util.function.Consumer<com.kubo.model.network.WhoisSummary> done) {
+                    // Only if the server has whois; otherwise the column simply stays empty rather than
+                    // filling with failures.
+                    if (!knownTools.contains(com.kubo.model.tools.Tool.WHOIS)) {
+                        return;
+                    }
+                    runProbe(() -> com.kubo.tools.ProbeCommands.whois(address),
+                            said -> done.accept(com.kubo.model.network.WhoisSummary.parse(said)));
+                }
+
+                @Override
+                public void release(com.kubo.model.network.BlockedAddress one,
+                                    java.util.function.Consumer<String> done) {
+                    // A fail2ban ban is lifted in its jail; a firewall rule is a rule and is removed where the
+                    // firewall card removes rules, which is a different act and is not offered here.
+                    if (one.source() != com.kubo.model.network.BlockedAddress.Source.FAIL2BAN) {
+                        done.accept("This one is a firewall rule, not a ban. Remove it from the firewall card.");
+                        return;
+                    }
+                    String jail = one.jail().contains(",") ? one.jail().split(",")[0].strip() : one.jail();
+                    send(trouble -> {
+                        done.accept(trouble);
+                        readBlocked();
+                    }, () -> network.unban(jail, one.address()));
+                }
+
+                @Override
+                public void export(java.util.List<com.kubo.model.network.BlockedAddress> blocked,
+                                   java.util.function.BiConsumer<Boolean, String> done) {
+                    exportBlocked(blocked, done);
+                }
+
+                @Override
+                public void back() {
+                    showMap();
+                }
+
+                @Override
+                public void reread() {
+                    network.forget();
+                    readBlocked();
+                }
+            }, java.time.Instant.now());
+        }
+        screens.getChildren().setAll(blockedScreen);
+        masthead.getChildren().setAll(identityRow);
+        cameraBar.setVisible(false);
+        cameraBar.setManaged(false);
+        readBlocked();
+    }
+
+    private void readBlocked() {
+        if (network == null || blockedScreen == null) {
+            return;
+        }
+        BlockedScreen screen = blockedScreen;
+        // The commands themselves while it reads: the jails, the database, the firewall rules. A blank table
+        // for four seconds looks exactly like a server with nothing to show.
+        screen.reading(true);
+        Runnable stopWatching = commands == null ? () -> { } : commands.addLoggedListener(logged -> {
+            if (logged.origin() == CommandService.Origin.NETWORK) {
+                javafx.application.Platform.runLater(() -> screen.asking(logged.entry().command()));
+            }
+        });
+        runWithRoot(() -> worker.execute(() -> {
+            java.util.List<String> notes = new java.util.ArrayList<>();
+            java.util.List<com.kubo.model.network.BlockedAddress> blocked;
+            try {
+                blocked = network.blocked(notes);
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the blocked addresses failed", e);
+                blocked = java.util.List.of();
+                notes.add("Kubo could not read the blocked addresses: " + e.getMessage());
+            }
+            java.util.List<com.kubo.model.network.BlockedAddress> found = blocked;
+            String problem = String.join("  ", notes);
+            javafx.application.Platform.runLater(() -> {
+                stopWatching.run();
+                screen.reading(false);
+                screen.show(found, problem);
+            });
+        }));
+    }
+
+    /**
+     * Writes the journal wherever the operator wants it, and says so.
+     *
+     * <p>Through the shared save card rather than a status line: a save that says nothing is a save nobody
+     * trusts, and on a slow disk it looks exactly like one that failed.
+     */
+    private void exportBlocked(java.util.List<com.kubo.model.network.BlockedAddress> blocked,
+                               java.util.function.BiConsumer<Boolean, String> done) {
+        com.kubo.ui.SaveCard card = com.kubo.ui.SaveCard.ask(
+                getScene() == null ? null : getScene().getWindow(),
+                "THE BLOCKED ADDRESSES", "kubo-blocked.json",
+                file -> com.kubo.model.network.BlockedExport.write(target, blocked, file,
+                        java.time.Instant.now()),
+                worker, this::hideOverlay);
+        if (card == null) {
+            // Cancelling the chooser is an answer, not an error.
+            return;
+        }
+        done.accept(true, "");
+        showOverlay(card);
+    }
+
     private void showEdge() {
         java.time.Instant now = java.time.Instant.now();
         guard = new GuardCard(map.jails(), now, new GuardCard.Hands() {
@@ -846,6 +973,13 @@ public final class NetworkScope extends StackPane {
             @Override
             public void delete(com.kubo.model.network.Firewall.RuleGroup group) {
                 send(result -> changed(result, "Rule deleted"), () -> network.deleteRules(group.numbers()));
+            }
+
+            @Override
+            public void setOn(boolean on) {
+                com.kubo.model.network.Firewall.Kind kind = map.firewall().kind();
+                send(result -> changed(result, on ? "The firewall is on" : "The firewall is off"),
+                        () -> network.switchFirewall(kind, on));
             }
         }, sshPort, this::hideOverlay);
         showOverlay(firewallCard);
@@ -1112,6 +1246,14 @@ public final class NetworkScope extends StackPane {
             return;
         }
         NginxScreen screen = nginx;
+        // The commands themselves, as they go out, instead of a line saying READING that looks the same as a
+        // command that has hung. They arrive on the thread that sent them, so they come back to this one.
+        screen.reading(true);
+        Runnable stopWatching = commands == null ? () -> { } : commands.addLoggedListener(logged -> {
+            if (logged.origin() == com.kubo.command.CommandService.Origin.NETWORK) {
+                javafx.application.Platform.runLater(() -> screen.asking(logged.entry().command()));
+            }
+        });
         runWithRoot(() -> worker.execute(() -> {
             NginxSites read;
             try {
@@ -1132,7 +1274,14 @@ public final class NetworkScope extends StackPane {
             NginxSites sites = read;
             java.util.List<com.kubo.model.network.Certificate> found = certs;
             java.util.List<com.kubo.model.network.Endpoint> listening = map.endpoints();
-            javafx.application.Platform.runLater(() -> screen.show(sites, blocks, pools, found, listening));
+            // What else serves the web here, so a screen with no sites on it can say why rather than look broken.
+            java.util.List<com.kubo.model.network.WebServer> servers = network.webServers();
+            javafx.application.Platform.runLater(() -> {
+                stopWatching.run();
+                screen.reading(false);
+                screen.setServers(servers);
+                screen.show(sites, blocks, pools, found, listening);
+            });
         }));
     }
 
@@ -1393,6 +1542,7 @@ public final class NetworkScope extends StackPane {
         });
         Button connections = rail("CONNECTIONS", event -> showConnections());
         Button edge = rail("THE EDGE", event -> showEdge());
+        Button blocked = rail("BLOCKED", event -> showBlocked());
         Button rules = rail("FIREWALL RULES", event -> showFirewall());
         Button sites = rail("NGINX", event -> showNginx());
         Button diagnose = rail("DIAGNOSE", event -> showDiagnostics());
@@ -1401,7 +1551,7 @@ public final class NetworkScope extends StackPane {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, rules, sites,
+        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, blocked, rules, sites,
                 separator(), diagnose, shell, spacer, help);
         rail.setAlignment(Pos.CENTER_LEFT);
         rail.setPadding(new Insets(0, 0, 10, 0));

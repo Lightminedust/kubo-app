@@ -2,6 +2,8 @@ package com.kubo.platform;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.net.URISyntaxException;
+import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 
@@ -98,6 +100,45 @@ public final class Host {
      */
     public static void openFolder(Path folder) throws IOException {
         start(openFolderCommand(folder, KIND));
+    }
+
+    /**
+     * The command that opens a web address in whatever browser this computer uses.
+     *
+     * <p>On Windows the address goes through {@code rundll32} rather than {@code explorer}, because explorer
+     * hands anything it does not recognise to the shell.
+     */
+    public static List<String> openLinkCommand(String url, Kind kind) {
+        return switch (kind) {
+            case WINDOWS -> List.of("rundll32", "url.dll,FileProtocolHandler", url);
+            case MAC -> List.of("open", url);
+            case LINUX, OTHER -> List.of("xdg-open", url);
+        };
+    }
+
+    /**
+     * Opens a web address on this computer, never on the server.
+     *
+     * <p>The address is checked before it is handed to anything. Addresses shown by Kubo can come off the
+     * server, out of a package index it did not write, and a browser handed {@code file://} or a custom scheme
+     * does things nobody asked for. Only plain http and https are opened; anything else is refused and said so.
+     *
+     * @throws IllegalArgumentException when it is not an http or https address
+     * @throws IOException when no browser could be started
+     */
+    public static void openLink(String url) throws IOException {
+        String address = url == null ? "" : url.strip();
+        URI parsed;
+        try {
+            parsed = new URI(address);
+        } catch (URISyntaxException notAnAddress) {
+            throw new IllegalArgumentException("That is not a web address", notAnAddress);
+        }
+        String scheme = parsed.getScheme() == null ? "" : parsed.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("http") && !scheme.equals("https") || parsed.getHost() == null) {
+            throw new IllegalArgumentException("Only http and https addresses are opened, and this is: " + address);
+        }
+        start(openLinkCommand(parsed.toString(), KIND));
     }
 
     private static void start(List<String> command) throws IOException {

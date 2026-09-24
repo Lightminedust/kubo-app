@@ -178,6 +178,25 @@ class SshConnectionIntegrationTest {
     }
 
     @Test
+    void watchingHandsOverBothStreamsAsTheyArrive() throws Exception {
+        java.util.List<String> seen = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execWatching("fail 3 waiting for the lock", null, seen::add,
+                    Duration.ofSeconds(20));
+
+            // A package manager says the interesting things on standard error: that it is waiting for another
+            // apt to let go of the lock, that a repository would not answer, that a key has expired. Watching
+            // only standard output left a card sitting there for minutes with nothing on it while apt was
+            // explaining itself the whole time.
+            assertTrue(seen.contains("waiting for the lock"), "standard error never reached the watcher: " + seen);
+            assertEquals(3, entry.exitCode());
+            // They are still kept apart in the entry; only the watching is shared.
+            assertEquals("waiting for the lock\n", entry.error());
+            assertEquals("", entry.output());
+        }
+    }
+
+    @Test
     void streamedInputReportsProgress() throws Exception {
         byte[] data = new byte[500_000];
         AtomicLong reported = new AtomicLong();

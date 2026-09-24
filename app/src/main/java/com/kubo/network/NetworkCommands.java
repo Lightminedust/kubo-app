@@ -8,6 +8,7 @@ import com.kubo.model.network.FirewallRule;
 import com.kubo.model.network.ListeningSocket;
 import com.kubo.model.network.PmApp;
 import com.kubo.model.network.Vhost;
+import com.kubo.model.network.WebServer;
 import com.kubo.model.server.ListeningPort;
 import com.kubo.model.server.ListeningPort.Protocol;
 
@@ -52,6 +53,29 @@ public final class NetworkCommands {
             + "/etc/nginx/sites-enabled/*; do [ -r \"$F\" ] && cat \"$F\"; done 2>/dev/null";
 
     public static final String NGINX_PRESENT = "command -v nginx >/dev/null 2>&1 && echo YES || echo NO";
+
+    /**
+     * Which web servers are on the machine, and which of them are up.
+     *
+     * <p>Prints {@code HAVE nginx} for each binary that exists and {@code RUN nginx} for each process that is
+     * running, which {@link WebServer#parse} reads. Two facts rather than one, because installed and serving
+     * are different things and the screen says different words for each.
+     *
+     * <p>No root. Every part of it is something any user may ask, which matters: this runs on the first read of
+     * the screen, before anybody has been asked for a password, and its whole purpose is to stop Kubo saying
+     * "no Nginx" to somebody running Caddy.
+     */
+    public static final String WEB_SERVERS = webServersCommand();
+
+    private static String webServersCommand() {
+        String names = String.join(" ", WebServer.Kind.everyBinary());
+        // command -v finds it on the PATH; ps names what is actually up. sed strips a path from a process name,
+        // and the list is matched whole so that "nginx" never matches something merely containing it.
+        return "for P in " + names + "; do command -v \"$P\" >/dev/null 2>&1 && echo \"HAVE $P\"; done; "
+                + "ps -eo comm= 2>/dev/null | sed 's#.*/##' | sort -u "
+                + "| grep -xE '" + String.join("|", WebServer.Kind.everyBinary()) + "' "
+                + "| sed 's/^/RUN /'";
+    }
 
     /** Checks the Nginx configuration and reloads it only if it is valid. */
     public static final String NGINX_RELOAD = "nginx -t && systemctl reload nginx";

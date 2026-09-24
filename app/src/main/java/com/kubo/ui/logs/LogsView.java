@@ -110,6 +110,15 @@ public final class LogsView extends BorderPane {
     private Instant openStarted = Instant.EPOCH;
     private Runnable stopListening = () -> {
     };
+    /** Where the save card goes while a file is being written. */
+    private final javafx.scene.layout.StackPane saveOverlay = new javafx.scene.layout.StackPane();
+    /** Writing happens here rather than on the interface thread. */
+    private final java.util.concurrent.ExecutorService saving =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "kubo-logs-save");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     /**
      * @param current  the log of the running session, or null
@@ -124,13 +133,17 @@ public final class LogsView extends BorderPane {
 
         setTop(buildHeader());
         setLeft(buildSessions());
-        setCenter(buildCommands());
+        saveOverlay.setVisible(false);
+        saveOverlay.setManaged(false);
+        saveOverlay.setPickOnBounds(true);
+        setCenter(new javafx.scene.layout.StackPane(buildCommands(), saveOverlay));
 
         refreshSessions();
     }
 
     public void shutdown() {
         stopListening.run();
+        saving.shutdownNow();
     }
 
     /**
@@ -419,33 +432,46 @@ public final class LogsView extends BorderPane {
     }
 
     /** The whole open session as a structured JSON file, wherever the reader wants it. */
+    /**
+     * Writes the open session wherever the operator wants it, and says so.
+     *
+     * <p>Through the shared save card, the same as every other export: a file written in silence is a file
+     * nobody is sure about, and on a slow disk it looks exactly like one that failed.
+     */
     private void export() {
         if (openTarget.isEmpty() && entries.isEmpty()) {
             say("NO SESSION IS OPEN");
             return;
         }
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Export the session as JSON");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON", "*.json"));
-        String base = openPath == null ? "kubo-session"
-                : openPath.getFileName().toString().replaceFirst("\\.json$", "");
-        chooser.setInitialFileName(base + "-export.json");
-        Path downloads = Path.of(System.getProperty("user.home"), "Downloads");
-        if (Files.isDirectory(downloads)) {
-            chooser.setInitialDirectory(downloads.toFile());
-        }
-        java.io.File file = chooser.showSaveDialog(getScene() == null ? null : getScene().getWindow());
-        if (file == null) {
-            return;
-        }
         SessionHistory.Session session = new SessionHistory.Session(openPath, openTarget, openStarted,
                 List.copyOf(entries));
-        try {
-            LogExport.write(session, file.toPath(), Instant.now());
-            say("SAVED  ·  " + file.getName());
-        } catch (IOException e) {
-            say("COULD NOT SAVE: " + e.getMessage());
+        String base = openPath == null ? "kubo-session"
+                : openPath.getFileName().toString().replaceFirst("\\.json$", "");
+        com.kubo.ui.SaveCard card = com.kubo.ui.SaveCard.ask(
+                getScene() == null ? null : getScene().getWindow(),
+                "THIS SESSION", base + "-export.json",
+                file -> LogExport.write(session, file, Instant.now()),
+                saving, this::hideSaving);
+        if (card == null) {
+            // Cancelling the chooser is an answer, not an error.
+            return;
         }
+        showSaving(card);
+    }
+
+    /** The save card sits over the whole view while it writes. */
+    private void showSaving(javafx.scene.Node card) {
+        javafx.scene.layout.StackPane over = new javafx.scene.layout.StackPane(card);
+        over.getStyleClass().add("overlay-dim");
+        saveOverlay.getChildren().setAll(over);
+        saveOverlay.setVisible(true);
+        saveOverlay.setManaged(true);
+    }
+
+    private void hideSaving() {
+        saveOverlay.getChildren().clear();
+        saveOverlay.setVisible(false);
+        saveOverlay.setManaged(false);
     }
 
     private void say(String text) {
