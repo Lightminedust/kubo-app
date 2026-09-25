@@ -55,7 +55,7 @@ public final class EditorWindow {
         stage.toFront();
     }
 
-    boolean isShowing() {
+    public boolean isShowing() {
         return stage.isShowing();
     }
 

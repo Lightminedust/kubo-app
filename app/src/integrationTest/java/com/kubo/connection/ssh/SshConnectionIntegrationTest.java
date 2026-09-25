@@ -197,6 +197,107 @@ class SshConnectionIntegrationTest {
     }
 
     @Test
+    void aCommandThatAsksSomethingCanBeAnswered() throws Exception {
+        java.util.List<String> seen = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        java.util.concurrent.atomic.AtomicReference<SshConnection.Live> live =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.CountDownLatch prompted = new java.util.concurrent.CountDownLatch(1);
+
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execInteractive("ask hunter2",
+                    line -> {
+                        seen.add(line.text());
+                        if (line.text().contains("Passphrase")) {
+                            prompted.countDown();
+                        }
+                    },
+                    handle -> {
+                        live.set(handle);
+                        // The prompt has no newline after it, so the answer goes once something has arrived.
+                        try {
+                            prompted.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        handle.answer("hunter2".toCharArray());
+                    },
+                    Duration.ofSeconds(20));
+
+            // Without a terminal this command would have waited for its input until the timeout, which is what
+            // anybody cloning a private repository or unlocking a key ran into.
+            assertEquals(0, entry.exitCode(), "the answer never reached the command: " + seen);
+            assertTrue(entry.output().contains("unlocked"), entry.output());
+        }
+    }
+
+    @Test
+    void aQuestionArrivesBeforeAnythingIsTyped() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean inTime = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.CountDownLatch prompted = new java.util.concurrent.CountDownLatch(1);
+
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execInteractive("ask hunter2",
+                    line -> {
+                        // Waiting, not merely printed: the command stopped on that line without ending it.
+                        if (line.waiting() && line.text().contains("Passphrase")) {
+                            prompted.countDown();
+                        }
+                    },
+                    handle -> {
+                        // Nothing has been written to the command yet. A prompt carries no newline, so if the
+                        // reader waits for one it waits forever, and the only thing that ever flushed it was
+                        // the terminal echoing what somebody had already typed blind: the question turned up
+                        // after the answer. That is what somebody types a password into.
+                        try {
+                            inTime.set(prompted.await(5, java.util.concurrent.TimeUnit.SECONDS));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        handle.answer("hunter2".toCharArray());
+                    },
+                    Duration.ofSeconds(20));
+
+            assertTrue(inTime.get(), "the question was never handed over while the command waited for it");
+            assertEquals(0, entry.exitCode());
+        }
+    }
+
+    @Test
+    void theAnswerIsWipedOnceItHasGone() throws Exception {
+        char[] secret = "hunter2".toCharArray();
+        try (SshConnection connection = connectWithPassword()) {
+            connection.execInteractive("ask hunter2", line -> { },
+                    handle -> handle.answer(secret), Duration.ofSeconds(20));
+        }
+
+        // Kubo holds an answer as characters so it can take it back. A string could not be taken back.
+        assertArrayEquals(new char[secret.length], secret, "the answer was left in memory");
+    }
+
+    @Test
+    void aCommandThatWillNotEndCanBeStopped() throws Exception {
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execInteractive("hang", line -> { },
+                    handle -> {
+                        // Control-C, which is the way out of something that would otherwise sit there until
+                        // the timeout took it.
+                        new Thread(() -> {
+                            try {
+                                Thread.sleep(300);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            handle.interrupt();
+                        }).start();
+                    },
+                    Duration.ofSeconds(20));
+
+            assertTrue(entry.duration().toSeconds() < 15, "it ran for " + entry.duration());
+            assertEquals(130, entry.exitCode(), "130 is what a shell reports for a command stopped this way");
+        }
+    }
+
+    @Test
     void streamedInputReportsProgress() throws Exception {
         byte[] data = new byte[500_000];
         AtomicLong reported = new AtomicLong();

@@ -26,6 +26,7 @@ import java.util.Arrays;
  *     <li>{@code count}: reads its input to the end and prints how many bytes arrived</li>
  *     <li>{@code flood BYTES}: prints BYTES times the letter x</li>
  *     <li>{@code hang}: never ends</li>
+ *     <li>{@code ask SECRET}: prints a prompt with no line break, reads one line, says whether it matched</li>
  * </ul>
  */
 final class TestServer implements AutoCloseable {
@@ -151,7 +152,34 @@ final class TestServer implements AutoCloseable {
                             left -= size;
                         }
                     }
-                    case "hang" -> Thread.sleep(Long.MAX_VALUE);
+                    // On a real server a terminal driver turns the interrupt character into SIGINT. This
+                    // server has no terminal driver, so it watches for the character itself: what the test is
+                    // really checking is that Kubo sends it.
+                    case "hang" -> {
+                        int read;
+                        while ((read = in.read()) >= 0) {
+                            if (read == 3) {
+                                code = 130;
+                                break;
+                            }
+                        }
+                        if (read < 0) {
+                            Thread.sleep(Long.MAX_VALUE);
+                        }
+                    }
+                    // Behaves the way anything asking for a secret behaves: a prompt with no newline after
+                    // it, then a line read from the input, then a verdict. Exactly the shape the console has
+                    // to be able to answer.
+                    case "ask" -> {
+                        write(out, "Passphrase: ");
+                        out.flush();
+                        java.io.BufferedReader reader = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+                        String answer = reader.readLine();
+                        boolean right = parts.length > 1 && parts[1].equals(answer);
+                        write(out, (right ? "unlocked" : "wrong passphrase") + "\n");
+                        code = right ? 0 : 1;
+                    }
                     default -> {
                         write(err, "unknown command: " + line + "\n");
                         code = 127;

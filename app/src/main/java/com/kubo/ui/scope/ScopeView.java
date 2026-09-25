@@ -301,6 +301,15 @@ public final class ScopeView extends StackPane {
         console.setCollapsed(consoleCollapsed);
         console.showForPreview(log.stream()
                 .map(entry -> new CommandService.Logged(entry, CommandService.Origin.MONITOR, false)).toList());
+        if (consoleCollapsed) {
+            return;
+        }
+        // The shell mid-command: what was typed, what came back, and the line that is waiting for an answer.
+        console.showShellForPreview(java.util.List.of(
+                "11:02:14  $ git clone https://github.com/xana/private-notes.git",
+                "Cloning into 'private-notes'...",
+                "Username for 'https://github.com': xana",
+                "Password for 'https://xana@github.com':"));
         layout.setBottom(console);
         targetLabel.setText(target);
         for (ServerMetrics metrics : history) {

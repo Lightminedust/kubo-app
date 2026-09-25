@@ -352,6 +352,14 @@ tasks.register<JavaExec>("previewConnection") {
     args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
 }
 
+tasks.register<JavaExec>("previewShell") {
+    group = "application"
+    description = "Renders the two windows the shell opens for itself to PNG files in build/previews."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.kubo.ui.shell.ShellPreview"
+    args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
+}
+
 tasks.register<JavaExec>("previewScope") {
     group = "application"
     description = "Renders the server scope with sample data to PNG files in build/previews."

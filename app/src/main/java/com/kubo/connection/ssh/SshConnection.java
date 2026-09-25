@@ -21,6 +21,9 @@ import net.schmizz.sshj.userauth.password.PasswordFinder;
 import net.schmizz.sshj.userauth.password.Resource;
 
 import java.io.ByteArrayInputStream;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.CharBuffer;
+import java.nio.ByteBuffer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -292,6 +295,178 @@ public final class SshConnection implements AutoCloseable {
      *
      * @param input sent then closed; null to send nothing, which is what a command needing no password does
      */
+    /**
+     * A command that is still running and can be answered.
+     *
+     * <p>Handed to the caller once the command has started, and useless afterwards.
+     */
+    /** What a terminal sends when somebody presses Control-C. */
+    private static final int INTERRUPT = 3;
+
+    /**
+     * One line from a command that has a terminal.
+     *
+     * <p>{@code waiting} is the whole reason this is a record rather than a string. A command that is asking
+     * for something does not end the line it asks on: the cursor stays there. So a line handed over because
+     * the far end went quiet without finishing it is, by that fact alone, a command waiting to be answered.
+     * That is knowing rather than guessing, and no reading of the words could do as well: "Password:" is a
+     * question and "root@vmi:~#" is a question, and they have nothing in common to match on.
+     *
+     * @param text    the line as it arrived, escape sequences and all
+     * @param waiting true when the line never ended and the command stopped there
+     */
+    public record Line(String text, boolean waiting) {
+    }
+
+    public interface Live {
+
+        /**
+         * Sends one line of input, with the newline the waiting program expects.
+         *
+         * <p>The array is wiped once written. Kubo holds answers as characters rather than as strings for the
+         * same reason it holds passwords that way: a string stays in memory until something else needs the
+         * space, and there is no way to ask for it back.
+         */
+        void answer(char[] text);
+
+        /** Control-C, for a command that will not end on its own. */
+        void interrupt();
+
+        /** False once the command has finished, whatever it finished as. */
+        boolean running();
+
+        /**
+         * Stops it and lets the channel go.
+         *
+         * <p>Control-C first, which is what a program following a log is waiting to be told. Then the channel
+         * itself, because a few of them catch the interrupt and carry on, and something closed here must not
+         * be left running on the server until the timeout remembers it.
+         */
+        void stop();
+    }
+
+    /**
+     * Runs one command with a terminal, so that anything it asks can be answered.
+     *
+     * <p>This is the only place in Kubo that allocates a pseudo-terminal, and only the typed console uses it.
+     * A terminal is exactly what a person needs and exactly what a parser does not: it merges standard error
+     * into standard output and sprinkles escape sequences through both, which would quietly ruin every reading
+     * the other screens depend on. They keep {@link #exec} and {@link #execWatching}.
+     *
+     * <p>What it buys is the thing the console could not do at all. {@code sudo}, {@code ssh} and {@code git}
+     * refuse to read a password from a pipe; they open the terminal directly. Without one they hang until the
+     * timeout, which is what somebody trying to clone a private repository ran into.
+     *
+     * <p>Still one command, one session, one entry in the log. A terminal and a persistent shell are separate
+     * things, and only the second would cost Kubo its promise that the log lists the commands it sent.
+     *
+     * @param onLine  called on a reader thread as output arrives, never on the UI thread
+     * @param started called once, with the handle for answering, once the output is being read
+     * @param timeout how long the command may run in total; Control-C is the way out before then
+     */
+    public CommandEntry execInteractive(String command, Consumer<Line> onLine, Consumer<Live> started,
+                                        Duration timeout) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(onLine, "onLine");
+        Objects.requireNonNull(started, "started");
+        Objects.requireNonNull(timeout, "timeout");
+        Instant executedAt = Instant.now();
+
+        try (Session session = client.startSession()) {
+            // Before exec, and for this command alone.
+            session.allocateDefaultPTY();
+            Session.Command running = session.exec(command);
+            OutputStream stdin = running.getOutputStream();
+            AtomicBoolean alive = new AtomicBoolean(true);
+
+            Live handle = new Live() {
+                @Override
+                public void answer(char[] text) {
+                    if (text == null || !alive.get()) {
+                        return;
+                    }
+                    try {
+                        ByteBuffer bytes = StandardCharsets.UTF_8.encode(CharBuffer.wrap(text));
+                        byte[] line = new byte[bytes.remaining() + 1];
+                        bytes.get(line, 0, line.length - 1);
+                        line[line.length - 1] = '\n';
+                        stdin.write(line);
+                        stdin.flush();
+                        java.util.Arrays.fill(line, (byte) 0);
+                    } catch (IOException gone) {
+                        // The command stopped reading; its exit status is what says why.
+                    } finally {
+                        java.util.Arrays.fill(text, '\0');
+                    }
+                }
+
+                /**
+                 * Control-C, sent the way a terminal sends it: the interrupt character on the input, which the
+                 * server's terminal driver turns into SIGINT for whatever is in the foreground.
+                 *
+                 * <p>Not the SSH "signal" request. Plenty of servers, OpenSSH included for most of its life,
+                 * ignore that request outright, so a command would sit there until the timeout took it while
+                 * Kubo believed it had asked politely. The character is what actually works, and having a
+                 * terminal is what makes it possible.
+                 */
+                @Override
+                public void interrupt() {
+                    if (!alive.get()) {
+                        return;
+                    }
+                    try {
+                        stdin.write(INTERRUPT);
+                        stdin.flush();
+                    } catch (IOException gone) {
+                        // The command already stopped reading.
+                    }
+                }
+
+                @Override
+                public boolean running() {
+                    return alive.get();
+                }
+
+                @Override
+                public void stop() {
+                    interrupt();
+                    try {
+                        session.close();
+                    } catch (Exception alreadyGone) {
+                        // Closing twice, or closing one the server has already dropped.
+                    }
+                }
+            };
+
+            // A terminal merges the two streams, so there is only one to read.
+            // Reading starts before the handle is handed over, not after. The other way round, nothing was
+            // being read while the caller decided what to do with the handle, so the first thing the command
+            // said, which is usually the question it is waiting on, sat unread until that returned.
+            Future<String> output = STREAM_READERS.submit(() -> readInteractive(running.getInputStream(), onLine));
+            started.accept(handle);
+            boolean ended = finished(running, timeout);
+            alive.set(false);
+            try {
+                stdin.close();
+            } catch (IOException alreadyGone) {
+                // The command closed it first.
+            }
+            if (!ended) {
+                return notRun(executedAt, command, describe(new TimeoutException(), timeout));
+            }
+            Integer exitStatus = running.getExitStatus();
+            return new CommandEntry(executedAt, command, false,
+                    exitStatus == null ? CommandEntry.NOT_RUN : exitStatus,
+                    output.get(STREAM_TIMEOUT_MS, TimeUnit.MILLISECONDS), "",
+                    Duration.between(executedAt, Instant.now()));
+        } catch (IOException | ExecutionException | TimeoutException e) {
+            return notRun(executedAt, command, describe(e, timeout));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return notRun(executedAt, command, "Interrupted");
+        }
+    }
+
     public CommandEntry execWatching(String command, byte[] input, Consumer<String> onLine, Duration timeout) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(onLine, "onLine");
@@ -473,6 +648,70 @@ public final class SshConnection implements AutoCloseable {
         }
         emit(kept, line, onLine);
         return kept.toString();
+    }
+
+    /** How long the far end has to stay silent before an unfinished line is taken for a question. */
+    private static final long QUIET_MS = 200;
+
+    /**
+     * Reads a stream the way a terminal does, where the last line may never end.
+     *
+     * <p>{@link #readLines} hands over a line when a newline arrives, which is right for a command that talks
+     * and stops. It is wrong for one that asks. "[sudo] password for xana: " carries no newline: the cursor
+     * stays on that line waiting for somebody to type. So the question sat in the buffer, unshown, and the only
+     * thing that ever flushed it was the terminal echoing what the person had already typed blind. The question
+     * appeared after the answer.
+     *
+     * <p>Here a line is also handed over when the stream goes quiet with something unfinished in it. Silence is
+     * the only signal there is that the far end has said its piece and is waiting. The wait is there so a long
+     * line arriving in pieces is not cut at every packet boundary.
+     */
+    private static String readInteractive(InputStream stream, Consumer<Line> onLine) throws IOException {
+        StringBuilder kept = new StringBuilder();
+        java.io.ByteArrayOutputStream line = new java.io.ByteArrayOutputStream(256);
+        byte[] buffer = new byte[8 * 1024];
+        while (true) {
+            if (line.size() > 0 && stream.available() == 0) {
+                try {
+                    Thread.sleep(QUIET_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (stream.available() == 0) {
+                    // Still nothing. Whatever is in there is all there is going to be until somebody answers.
+                    emitTerminal(kept, line, onLine, true);
+                }
+                continue;
+            }
+            int read = stream.read(buffer);
+            if (read < 0) {
+                break;
+            }
+            for (int i = 0; i < read; i++) {
+                byte b = buffer[i];
+                if (b == '\n' || b == '\r') {
+                    emitTerminal(kept, line, onLine, false);
+                } else {
+                    line.write(b);
+                }
+            }
+        }
+        emitTerminal(kept, line, onLine, false);
+        return kept.toString();
+    }
+
+    private static void emitTerminal(StringBuilder kept, java.io.ByteArrayOutputStream line,
+                                     Consumer<Line> onLine, boolean waiting) {
+        if (line.size() == 0) {
+            return;
+        }
+        String text = line.toString(StandardCharsets.UTF_8);
+        line.reset();
+        if (kept.length() < MAX_KEPT_BYTES) {
+            kept.append(text).append('\n');
+        }
+        onLine.accept(new Line(text, waiting));
     }
 
     private static void emit(StringBuilder kept, java.io.ByteArrayOutputStream line, Consumer<String> onLine) {

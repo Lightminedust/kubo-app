@@ -42,10 +42,10 @@ public final class KuboWindow extends BorderPane {
     private double dragY;
     private boolean moving;
 
-    private KuboWindow(Stage stage, Node content) {
+    private KuboWindow(Stage stage, Node content, boolean full) {
         this.stage = stage;
         getStyleClass().add("kubo-window");
-        setTop(titleBar());
+        setTop(titleBar(full));
         setContent(content);
         installResizeEdges();
     }
@@ -54,18 +54,33 @@ public final class KuboWindow extends BorderPane {
      * Installs the custom frame. Must be called before the stage is shown.
      */
     public static KuboWindow install(Stage stage, Node content) {
+        return install(stage, content, true);
+    }
+
+    /**
+     * The same frame with one button on it.
+     *
+     * <p>For a window that is watching something rather than holding a screen: it is opened to be read and
+     * closed when it has been. Minimise and maximise on a panel like that are two more things to decide about
+     * and neither is ever wanted. It still moves by its bar and still resizes by its edges.
+     */
+    public static KuboWindow installBare(Stage stage, Node content) {
+        return install(stage, content, false);
+    }
+
+    private static KuboWindow install(Stage stage, Node content, boolean full) {
         Objects.requireNonNull(stage, "stage");
         Objects.requireNonNull(content, "content");
         stage.initStyle(StageStyle.UNDECORATED);
         AppIcons.applyTo(stage);
-        return new KuboWindow(stage, content);
+        return new KuboWindow(stage, content, full);
     }
 
     public void setContent(Node content) {
         setCenter(Objects.requireNonNull(content, "content"));
     }
 
-    private HBox titleBar() {
+    private HBox titleBar(boolean full) {
         ImageView icon = new ImageView(AppIcons.mark());
         icon.setFitWidth(16);
         icon.setFitHeight(16);
@@ -94,7 +109,9 @@ public final class KuboWindow extends BorderPane {
         close.setOnAction(event -> stage.close());
         stage.maximizedProperty().addListener((observable, previous, value) -> maximize.setText(value ? "❐" : "□"));
 
-        HBox bar = new HBox(10, icon, mark, title, spacer, minimize, maximize, close);
+        HBox bar = full
+                ? new HBox(10, icon, mark, title, spacer, minimize, maximize, close)
+                : new HBox(10, icon, mark, title, spacer, close);
         bar.getStyleClass().add("window-title-bar");
         bar.setAlignment(Pos.CENTER_LEFT);
         installMove(bar);
