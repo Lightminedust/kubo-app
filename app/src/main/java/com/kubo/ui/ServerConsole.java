@@ -113,6 +113,11 @@ public final class ServerConsole extends VBox {
     private final java.util.Map<String, com.kubo.ui.logs.StreamWindow> streams = new java.util.HashMap<>();
     private com.kubo.ui.shell.ProcessWindow processes;
     private com.kubo.ui.shell.TopWindow running;
+    /**
+     * Where the interactive shell Kubo is relaying for has got to, or null when what is waiting is not a
+     * shell at all. Read out of the prompt, which is the only place it is written down.
+     */
+    private String shellFolder;
 
     /**
      * @param service what the title calls this screen, NETWORK for "NETWORK ACTIVITY"
@@ -459,6 +464,7 @@ public final class ServerConsole extends VBox {
         }
         shellOutput.follow();
         if (question) {
+            shellFolder = com.kubo.model.shell.Prompt.shellFolder(text).orElse(null);
             mark.set(RunningMark.State.ASKING, root != null && root.isElevated());
             // Only where it starts. One press either way, and the guess never overrides a person twice.
             mask(com.kubo.model.shell.Prompt.asksForASecret(text));
@@ -476,6 +482,13 @@ public final class ServerConsole extends VBox {
     private void answer(SshConnection.Live running) {
         javafx.scene.control.TextField field = masked ? hidden : input;
         String typed = field.getText();
+        if (!masked && shellFolder != null && intercepted(typed)) {
+            // Typed at a shell prompt, so it is a command to that shell and deserves what a command typed
+            // anywhere else here gets. Nothing is sent: the shell stays at its prompt, waiting.
+            field.clear();
+            shellOutput.follow();
+            return;
+        }
         running.answer(typed.toCharArray());
         field.clear();
         // Never echoed by Kubo: if the far end echoes it, that is the far end's business and it is a terminal.
@@ -651,6 +664,68 @@ public final class ServerConsole extends VBox {
         running.show();
     }
 
+    /**
+     * Answers a command typed inside an interactive shell with the screen Kubo has for it, if it has one.
+     *
+     * <p>Inside "sudo su" every line goes to that shell as input, so nothing typed there was reaching any of
+     * this: nano drew its screen into the console exactly as it did before there was an editor, because the
+     * word never passed through the place that catches it.
+     *
+     * @return true when it was handled here and must not be sent on
+     */
+    private boolean intercepted(String typed) {
+        String command = typed.strip();
+        if (command.isEmpty() || connection == null) {
+            return false;
+        }
+        java.util.Optional<com.kubo.model.shell.EditorCall> opening =
+                com.kubo.model.shell.EditorCall.of(command);
+        if (opening.isPresent()) {
+            return openFromShell(command, opening.get());
+        }
+        java.util.Optional<com.kubo.model.shell.TableCall> table =
+                com.kubo.model.shell.TableCall.of(command);
+        if (table.isPresent()) {
+            openTable(command, table.get());
+            return true;
+        }
+        java.util.Optional<com.kubo.model.shell.StreamCall> following =
+                com.kubo.model.shell.StreamCall.of(command);
+        if (following.isPresent()) {
+            openStream(command, following.get());
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Opens a file named inside an interactive shell.
+     *
+     * <p>A relative name only means something against the folder that shell is in, and Kubo only knows that
+     * when the prompt writes it down, which the default one on Debian and its family does. Against a prompt
+     * somebody has rewritten, it says so instead of guessing: opening the wrong file is worse than opening
+     * none at all.
+     */
+    private boolean openFromShell(String command, com.kubo.model.shell.EditorCall call) {
+        if (call.paths().isEmpty()) {
+            return false;
+        }
+        String wanted = call.paths().get(0);
+        String folder = shellFolder;
+        if (!wanted.startsWith("/") && !wanted.startsWith("~") && (folder == null || folder.startsWith("~"))) {
+            shellOutput.append(CLOCK.format(Instant.now()) + "  $ " + command, "shell-sent");
+            shellOutput.append("KUBO CANNOT SEE WHERE THIS SHELL IS. GIVE THE WHOLE PATH, OR LEAVE THE SHELL "
+                    + "AND TYPE IT HERE.", "prompt-meta");
+            shellOutput.follow();
+            return true;
+        }
+        shellOutput.append(CLOCK.format(Instant.now()) + "  $ " + command, "shell-sent");
+        shellOutput.append("IT DRAWS A SCREEN, SO KUBO OPENED THE FILE INSTEAD.", "prompt-meta");
+        shellOutput.follow();
+        openFile(com.kubo.model.shell.EditorCall.resolve(wanted, folder));
+        return true;
+    }
+
     /** Puts the caret back where somebody is about to type. */
     private void focusField() {
         javafx.scene.control.TextField field = masked ? hidden : input;
@@ -691,6 +766,7 @@ public final class ServerConsole extends VBox {
             input.clear();
             hidden.clear();
             mask(false);
+            shellFolder = null;
         }
         mark.set(yes ? RunningMark.State.RUNNING : RunningMark.State.IDLE, elevated);
         listening(!yes);

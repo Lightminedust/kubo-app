@@ -76,6 +76,31 @@ class PromptTest {
     }
 
     @Test
+    void theFolderAnOrdinaryShellPromptWritesIntoItself() {
+        // The only place Kubo can read where an interactive shell has got to. Every command it sends of its
+        // own gets a fresh session that starts at home, and it never sees a "cd" typed into a shell it relays.
+        assertEquals(java.util.Optional.of("/home/xana"),
+                com.kubo.model.shell.Prompt.shellFolder("root@vmi3073638:/home/xana#"));
+        assertEquals(java.util.Optional.of("/etc/nginx"),
+                com.kubo.model.shell.Prompt.shellFolder("xana@vmi:/etc/nginx$"));
+        assertEquals(java.util.Optional.of("~"),
+                com.kubo.model.shell.Prompt.shellFolder("xana@vmi:~$"));
+    }
+
+    @Test
+    void anythingThatIsNotAShellPromptGivesNoFolder() {
+        // A rewritten prompt, and a question that ends the same way. Guessing a folder from either of them
+        // means opening the wrong file, which is worse than opening none.
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder("$"));
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder("[sudo] password for xana:"));
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder("❯"));
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder("total 48"));
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder("cost: 40$"),
+                "no user@host in front of it");
+        assertEquals(java.util.Optional.empty(), com.kubo.model.shell.Prompt.shellFolder(null));
+    }
+
+    @Test
     void aShellPromptComesOutWithNothingLeftOfItsSequences() {
         // What zsh actually sends when it takes the line: the window title, a bell, the keypad mode. None of
         // it is meant to be seen, and all of it turned up in the console as a hostname, a box and an equals.

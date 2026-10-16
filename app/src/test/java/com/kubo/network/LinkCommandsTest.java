@@ -28,7 +28,7 @@ class LinkCommandsTest {
                 {"family":"inet6","local":"::1","prefixlen":128,"scope":"host"}]},
              {"ifindex":2,"ifname":"eth0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,
               "operstate":"UP","address":"96:00:02:d1:4f:aa","addr_info":[
-                {"family":"inet","local":"173.212.254.237","prefixlen":24,"scope":"global"},
+                {"family":"inet","local":"203.0.113.42","prefixlen":24,"scope":"global"},
                 {"family":"inet6","local":"2a02:c207:2044:1::1","prefixlen":64,"scope":"global"}]},
              {"ifindex":3,"ifname":"docker0","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,
               "operstate":"DOWN","address":"02:42:1b:9c:11:02","addr_info":[
@@ -45,7 +45,7 @@ class LinkCommandsTest {
         assertEquals("UP", eth0.state());
         assertEquals("96:00:02:d1:4f:aa", eth0.mac());
         assertEquals(1500, eth0.mtu());
-        assertEquals(List.of("173.212.254.237/24", "2a02:c207:2044:1::1/64"),
+        assertEquals(List.of("203.0.113.42/24", "2a02:c207:2044:1::1/64"),
                 eth0.addresses().stream().map(Link.Address::cidr).toList());
         assertTrue(eth0.addresses().get(1).ipv6());
     }
@@ -76,7 +76,7 @@ class LinkCommandsTest {
     void readsThePlainOutput() {
         String output = """
                 1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
-                2: eth0    inet 173.212.254.237/24 brd 173.212.254.255 scope global eth0\\       valid_lft forever
+                2: eth0    inet 203.0.113.42/24 brd 173.212.254.255 scope global eth0\\       valid_lft forever
                 2: eth0    inet6 2a02:c207:2044:1::1/64 scope global \\       valid_lft forever
                 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default
                 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT \
@@ -87,7 +87,7 @@ class LinkCommandsTest {
 
         assertEquals(List.of("lo", "eth0"), links.stream().map(Link::name).toList());
         Link eth0 = links.get(1);
-        assertEquals(List.of("173.212.254.237/24", "2a02:c207:2044:1::1/64"),
+        assertEquals(List.of("203.0.113.42/24", "2a02:c207:2044:1::1/64"),
                 eth0.addresses().stream().map(Link.Address::cidr).toList());
         assertEquals("UP", eth0.state());
         assertEquals("96:00:02:d1:4f:aa", eth0.mac());

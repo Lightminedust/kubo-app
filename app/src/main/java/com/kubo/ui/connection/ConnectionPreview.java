@@ -94,7 +94,7 @@ public final class ConnectionPreview {
         store.remember(SshTarget.parse("deploy@203.0.113.10:2222"), SavedSession.Auth.PASSWORD, null, true,
                 "sample".toCharArray());
         store.remember(SshTarget.parse("root@198.51.100.7"), SavedSession.Auth.KEY, "C:\\old\\missing.ppk", false, null);
-        store.remember(SshTarget.parse("xana@173.212.254.237"), SavedSession.Auth.KEY,
+        store.remember(SshTarget.parse("xana@203.0.113.42"), SavedSession.Auth.KEY,
                 Path.of(System.getProperty("user.home")).toString(), false, null);
         return store;
     }

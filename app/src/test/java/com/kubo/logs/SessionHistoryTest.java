@@ -26,7 +26,7 @@ class SessionHistoryTest {
     void readsBackWhatTheSessionLogWrote() throws IOException {
         Path file = temp.resolve("2026-09-15_10-00-00_xana.json");
         Instant started = Instant.parse("2026-09-15T08:00:00Z");
-        try (SessionLog log = new SessionLog(file, "xana@173.212.254.237:22", started)) {
+        try (SessionLog log = new SessionLog(file, "xana@203.0.113.42:22", started)) {
             log.append(new CommandEntry(started.plusSeconds(1), "uptime", false, 0, "up 3 days", "",
                     Duration.ofMillis(40)), Origin.MONITOR);
             log.append(new CommandEntry(started.plusSeconds(2), "rm x", false, 1, "", "rm: denied\n",
@@ -35,7 +35,7 @@ class SessionHistoryTest {
 
         SessionHistory.Session session = SessionHistory.read(file);
 
-        assertEquals("xana@173.212.254.237:22", session.target());
+        assertEquals("xana@203.0.113.42:22", session.target());
         assertEquals(started, session.startedAt());
         assertEquals(2, session.commands().size());
         SessionHistory.Command failed = session.commands().get(1);

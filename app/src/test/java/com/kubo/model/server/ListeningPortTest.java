@@ -39,7 +39,7 @@ class ListeningPortTest {
             "::,                  PUBLIC",
             "[::],                PUBLIC",
             // Public addresses
-            "173.212.254.237,     PUBLIC",
+            "203.0.113.42,     PUBLIC",
             "172.32.0.1,          PUBLIC",
             "2a02:c207::1,        PUBLIC",
     })

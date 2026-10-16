@@ -62,7 +62,7 @@ public final class RedisPreview {
         Scene scene = scene(scope);
         RedisKey session = new RedisKey("session:9f2a", RedisType.STRING, 1740);
         scope.showForPreview(info(), keys(), session, RedisValue.string(
-                "{\"user\":420,\"role\":\"admin\",\"csrf\":\"a91f...\",\"ip\":\"173.212.254.237\"}", false));
+                "{\"user\":420,\"role\":\"admin\",\"csrf\":\"a91f...\",\"ip\":\"203.0.113.42\"}", false));
         scope.stack().freeze(2.4);
         write(scene, output, "redis");
         scope.shutdown();

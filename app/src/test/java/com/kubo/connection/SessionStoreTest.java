@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionStoreTest {
 
-    private static final SshTarget VPS = SshTarget.parse("xana@173.212.254.237");
+    private static final SshTarget VPS = SshTarget.parse("xana@203.0.113.42");
     private static final String KEY = "C:\\Users\\xana\\keys\\vps.ppk";
 
     /**

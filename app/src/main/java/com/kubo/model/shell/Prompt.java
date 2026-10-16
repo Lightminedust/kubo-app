@@ -2,6 +2,7 @@ package com.kubo.model.shell;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Reading the last line a command printed, to guess whether it is waiting for a secret.
@@ -69,6 +70,38 @@ public final class Prompt {
         String lower = text.toLowerCase(Locale.ROOT);
         return last == ']' && (lower.endsWith("[y/n]") || lower.endsWith("[n/y]")
                 || lower.endsWith("[yes/no]") || lower.endsWith("[o/n]"));
+    }
+
+    /**
+     * The folder a shell prompt says it is sitting in, or empty when the line is not a shell prompt.
+     *
+     * <p>The default prompt on Debian, Ubuntu and their family is "user@host:/where/it/is$". The folder is
+     * written into it, which is the only way Kubo can know where an interactive shell has got to: every
+     * command it sends of its own gets a fresh session that starts at home, and it never sees the "cd" that
+     * somebody typed into a shell it is only relaying for.
+     *
+     * <p>A prompt somebody has rewritten will not match, and that is answered by saying so rather than by
+     * guessing: opening the wrong file is worse than opening none.
+     */
+    public static Optional<String> shellFolder(String line) {
+        String text = line == null ? "" : line.strip();
+        if (text.length() < 2) {
+            return Optional.empty();
+        }
+        char last = text.charAt(text.length() - 1);
+        if (last != '#' && last != '$') {
+            return Optional.empty();
+        }
+        int colon = text.lastIndexOf(':');
+        int at = text.indexOf('@');
+        if (colon < 0 || at < 0 || at > colon) {
+            return Optional.empty();
+        }
+        String folder = text.substring(colon + 1, text.length() - 1).strip();
+        if (folder.isEmpty() || folder.indexOf(' ') >= 0) {
+            return Optional.empty();
+        }
+        return folder.startsWith("/") || folder.startsWith("~") ? Optional.of(folder) : Optional.empty();
     }
 
     /**

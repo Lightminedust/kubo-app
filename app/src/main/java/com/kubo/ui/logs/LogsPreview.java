@@ -42,7 +42,7 @@ public final class LogsPreview {
 
     private static LogsView view(Path output, Instant start, List<Command> commands) {
         LogsView view = new LogsView(output.resolve("no-logs-here"), null, null);
-        view.showSample("xana@173.212.254.237:22", start, commands);
+        view.showSample("xana@203.0.113.42:22", start, commands);
         return view;
     }
 
