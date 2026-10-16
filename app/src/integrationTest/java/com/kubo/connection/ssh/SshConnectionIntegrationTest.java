@@ -298,6 +298,37 @@ class SshConnectionIntegrationTest {
     }
 
     @Test
+    void aStreamedCommandCanBeToldSomethingFirst() throws Exception {
+        // What sudo is. Without this the only way to stream a command as root was to wrap it in sudo and
+        // then close its input, and sudo answered what it always answers: a password is required. Every
+        // download of a file only root could read failed that way, with root mode on.
+        ByteArrayOutputStream into = new ByteArrayOutputStream();
+
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execInto("ask hunter2",
+                    "hunter2\n".getBytes(StandardCharsets.UTF_8), into, received -> { }, () -> false,
+                    Duration.ofSeconds(20));
+
+            assertEquals(0, entry.exitCode(), entry.error());
+            assertTrue(into.toString(StandardCharsets.UTF_8).contains("unlocked"),
+                    into.toString(StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void aStreamedCommandToldNothingStillRuns() throws Exception {
+        ByteArrayOutputStream into = new ByteArrayOutputStream();
+
+        try (SshConnection connection = connectWithPassword()) {
+            CommandEntry entry = connection.execInto("echo hello", into, received -> { }, () -> false,
+                    Duration.ofSeconds(20));
+
+            assertEquals(0, entry.exitCode());
+            assertTrue(into.toString(StandardCharsets.UTF_8).contains("hello"));
+        }
+    }
+
+    @Test
     void streamedInputReportsProgress() throws Exception {
         byte[] data = new byte[500_000];
         AtomicLong reported = new AtomicLong();

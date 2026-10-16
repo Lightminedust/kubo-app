@@ -520,8 +520,22 @@ public final class SshConnection implements AutoCloseable {
      * @param cancelled checked between chunks; cancelling closes the session and comes back as "Cancelled"
      * @param timeout   how long the command may run once its output has ended
      */
-    public CommandEntry execInto(String command, OutputStream sink, LongConsumer onReceived, BooleanSupplier cancelled,
-                                 Duration timeout) {
+    public CommandEntry execInto(String command, OutputStream sink, LongConsumer onReceived,
+                                 BooleanSupplier cancelled, Duration timeout) {
+        return execInto(command, null, sink, onReceived, cancelled, timeout);
+    }
+
+    /**
+     * The same, for a command that has something to be told before it will produce anything.
+     *
+     * <p>Which is what sudo is. Without this, the only way to run a streaming command as root was to wrap it
+     * in sudo and then close its input, and sudo answered what it always answers: a password is required. So
+     * downloading a file only root could read failed, every time, with root mode on.
+     *
+     * @param input written to the command's input, then the input is closed; null for nothing
+     */
+    public CommandEntry execInto(String command, byte[] input, OutputStream sink, LongConsumer onReceived,
+                                 BooleanSupplier cancelled, Duration timeout) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(sink, "sink");
         Objects.requireNonNull(onReceived, "onReceived");
@@ -532,7 +546,14 @@ public final class SshConnection implements AutoCloseable {
         try (Session session = client.startSession()) {
             Session.Command running = session.exec(command);
             Future<String> error = STREAM_READERS.submit(() -> readText(running.getErrorStream()));
-            running.getOutputStream().close();
+            try (OutputStream stdin = running.getOutputStream()) {
+                if (input != null && input.length > 0) {
+                    stdin.write(input);
+                    stdin.flush();
+                }
+            } catch (IOException commandStoppedReading) {
+                // The command exited before reading its input; its exit status says why.
+            }
 
             InputStream stdout = running.getInputStream();
             byte[] buffer = new byte[64 * 1024];

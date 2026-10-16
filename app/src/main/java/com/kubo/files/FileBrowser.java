@@ -427,8 +427,9 @@ public final class FileBrowser {
             return record(connection.execInto(command, sink, onReceived, cancelled, timeout), origin);
         }
         Privilege.Command wrapped = root.privilege().asRoot(command);
-        return recordAsRoot(connection.execInto(wrapped.command(), sink, onReceived, cancelled, timeout),
-                command, origin);
+        // The password goes in. Closing the input without it is what sudo calls "no password was provided".
+        return recordAsRoot(connection.execInto(wrapped.command(), wrapped.input(), sink, onReceived,
+                cancelled, timeout), command, origin);
     }
 
     /**

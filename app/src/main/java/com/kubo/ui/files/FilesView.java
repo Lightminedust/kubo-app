@@ -80,6 +80,8 @@ public final class FilesView extends StackPane {
 
     private final Map<String, CachedListing> cache = new HashMap<>();
     private final Map<String, EditorWindow> editors = new HashMap<>();
+    /** One window per file, so opening the same picture twice brings the first one back. */
+    private final Map<String, com.kubo.ui.media.MediaWindow> viewers = new HashMap<>();
     private Account account;
     private LocalCard localCard;
     private Runnable onLogs = () -> {
@@ -165,6 +167,8 @@ public final class FilesView extends StackPane {
         worker.shutdownNow();
         editors.values().forEach(EditorWindow::close);
         editors.clear();
+        viewers.values().forEach(com.kubo.ui.media.MediaWindow::close);
+        viewers.clear();
     }
 
     /**
@@ -305,6 +309,24 @@ public final class FilesView extends StackPane {
 
     void openFolder(RemoteEntry folder) {
         canvas.openPath(folder.path());
+    }
+
+    /**
+     * Shows a picture, plays a sound or a film.
+     *
+     * <p>Separate from {@link #edit}, because an editor opening an MP4 shows a page of bytes and the first
+     * thing it would do is offer to save them back.
+     */
+    void view(RemoteEntry file, com.kubo.model.media.MediaKind kind) {
+        if (browser == null) {
+            return;
+        }
+        com.kubo.ui.media.MediaWindow window = viewers.get(file.path());
+        if (window == null || !window.isShowing()) {
+            window = new com.kubo.ui.media.MediaWindow(browser, file, kind);
+            viewers.put(file.path(), window);
+        }
+        window.show();
     }
 
     void edit(RemoteEntry file) {

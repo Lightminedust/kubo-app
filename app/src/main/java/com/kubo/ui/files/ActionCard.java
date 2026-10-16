@@ -77,8 +77,27 @@ final class ActionCard extends VBox {
                 view.openFolder(subject);
             }));
         } else {
+            // A picture, a sound or a film is offered to the viewer first. An editor opening an MP4 shows a
+            // page of bytes, and the first thing it would do is offer to save them back.
+            java.util.Optional<com.kubo.model.media.MediaKind> shows =
+                    com.kubo.model.media.MediaKind.playable(subject.name());
+            java.util.Optional<com.kubo.model.media.MediaKind> media =
+                    com.kubo.model.media.MediaKind.of(subject.name());
+            if (shows.isPresent()) {
+                com.kubo.model.media.MediaKind kind = shows.get();
+                items.add(action(kind == com.kubo.model.media.MediaKind.IMAGE ? "VIEW" : "PLAY", "ENTER",
+                        enterProblem(subject), false, () -> {
+                            view.closeCard();
+                            view.view(subject, kind);
+                        }));
+            } else if (media.isPresent()) {
+                // Named rather than silent. Somebody who right-clicks a .mkv and finds no PLAY has learnt
+                // nothing; told there is no decoder for it, they know to download it.
+                items.add(action("PLAY", "",
+                        com.kubo.model.media.MediaKind.whyNot(subject.name()).orElse(null), false, () -> { }));
+            }
             boolean writable = account == null || view.elevated() || account.canWrite(subject);
-            items.add(action(writable ? "EDIT" : "VIEW", "ENTER", editProblem(subject), false, () -> {
+            items.add(action(writable ? "EDIT" : "VIEW", "", editProblem(subject), false, () -> {
                 view.closeCard();
                 view.edit(subject);
             }));

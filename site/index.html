@@ -418,10 +418,14 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         <p lang="fr">Un service qui ne redémarrera pas au prochain reboot. Un port de base de données ouvert sur
           Internet. Un conteneur qui consomme de plus en plus de mémoire. Tout cela se voit depuis un shell, à
           condition de savoir quelle commande lancer, et quand. Kubo les lance pour vous et affiche le résultat.</p>
-        <p lang="en">The terminal stays available inside the app. Anything that changes the server asks for
+        <p lang="en">The terminal stays available inside the app, and it answers what a command asks: a
+          password, a passphrase, a yes or no. Type <code>nano</code> and the file opens in the editor. Type
+          <code>htop</code> and you get a table you can sort. Anything that changes the server asks for
           confirmation first.</p>
-        <p lang="fr">Le terminal reste disponible dans l'application. Toute action qui modifie le serveur demande
-          une confirmation.</p>
+        <p lang="fr">Le terminal reste disponible dans l'application, et il répond à ce qu'une commande demande :
+          un mot de passe, une phrase secrète, un oui ou non. Tapez <code>nano</code> et le fichier s'ouvre dans
+          l'éditeur. Tapez <code>htop</code> et vous obtenez un tableau triable. Toute action qui modifie le
+          serveur demande une confirmation.</p>
       </div>
     </div>
   </section>
@@ -457,13 +461,21 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
           <p lang="en">Root mode unlocks the folders that belong to root. A shell opens in the current folder.</p>
           <p lang="fr">Le mode root donne accès aux dossiers qui appartiennent à root. Un shell s'ouvre dans le
             dossier courant.</p>
+          <p lang="en">Pictures, videos and sound files open in the app. Kubo copies the file across with a
+            progress bar, then plays it. The arrows move through the other files of the same kind in that
+            folder, so opening one video opens the folder it is in.</p>
+          <p lang="fr">Les images, les vidéos et les fichiers audio s'ouvrent dans l'application. Kubo copie le
+            fichier avec une barre de progression, puis le lit. Les flèches passent aux autres fichiers du même
+            type dans le dossier, donc ouvrir une vidéo ouvre le dossier où elle est.</p>
           <div class="taglist" lang="en">
             <span class="tag">Edit</span><span class="tag">Permissions</span><span class="tag">Upload</span>
             <span class="tag">Download</span><span class="tag">Root mode</span><span class="tag">Shell</span>
+            <span class="tag">Pictures</span><span class="tag">Video</span><span class="tag">Audio</span>
           </div>
           <div class="taglist" lang="fr">
             <span class="tag">Édition</span><span class="tag">Droits</span><span class="tag">Envoi</span>
             <span class="tag">Téléchargement</span><span class="tag">Mode root</span><span class="tag">Shell</span>
+            <span class="tag">Images</span><span class="tag">Vidéo</span><span class="tag">Audio</span>
           </div>
         </div>
       </div>
@@ -726,10 +738,10 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" lang="en">64-bit · v1.3.0 · Free<br>
+      <p class="smallprint" lang="en">64-bit · v1.4.0 · Free<br>
         The installer is not signed yet. If Windows warns about an unknown publisher, click
         <b>More info → Run anyway</b>.</p>
-      <p class="smallprint" lang="fr">64 bits · v1.3.0 · Gratuit<br>
+      <p class="smallprint" lang="fr">64 bits · v1.4.0 · Gratuit<br>
         L'installeur n'est pas encore signé. Si Windows signale un éditeur inconnu, cliquez sur
         <b>Informations complémentaires → Exécuter quand même</b>.</p>
 
@@ -778,9 +790,9 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
         </div>
       </div>
 
-      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.3.0 · Requires a desktop session and GTK 3<br>
+      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.4.0 · Requires a desktop session and GTK 3<br>
         Kubo runs on your computer, not on the server. On Linux, passwords are never saved. Key files are.</p>
-      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.3.0 · Nécessite une session graphique et GTK 3<br>
+      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.4.0 · Nécessite une session graphique et GTK 3<br>
         Kubo tourne sur votre ordinateur, pas sur le serveur. Sous Linux, les mots de passe ne sont jamais
         enregistrés. Les fichiers de clé, si.</p>
     </div>
@@ -938,7 +950,7 @@ var WINGET_ID = "";
 /* The release whose Linux packages are online. Their file names carry the version, so this is the one line
    to bump when a new release is published — and the one to leave "" while there are none, which keeps the
    whole Linux block hidden instead of offering three links that 404. */
-var LINUX_VERSION = "1.3.0";
+var LINUX_VERSION = "1.4.0";
 
 if (DOWNLOAD_URL) {
   document.querySelectorAll('[data-download]').forEach(function(a){ a.href = DOWNLOAD_URL; });

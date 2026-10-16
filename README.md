@@ -84,13 +84,14 @@ You do not have to take any of the above on faith.
 
 ## What it saves, and where
 
-Three files, all under your home folder, all plain text you can open.
+Everything is under your home folder, and all of it is plain text you can open.
 
 | Path | What is in it |
 | --- | --- |
 | `.kubo/known_hosts` | The fingerprint of each server you chose to trust |
 | `.kubo/sessions.json` | Your saved servers: address, user, which method, path to a key file |
 | `.kubo/logs/*.json` | One file per session: every command, when, from which screen, exit code, how long it took |
+| `.kubo/media/` | Only while a picture, sound or film is open. Kubo copies the file here to play it and deletes it when the window closes. |
 
 On Windows that is `%USERPROFILE%\.kubo`. On Linux, `~/.kubo`. Delete the folder and Kubo has forgotten
 everything.
@@ -141,8 +142,8 @@ The installer is not code-signed yet, so Windows may call the publisher unknown.
 
 | | |
 | --- | --- |
-| **Debian, Ubuntu, Mint** | `sudo apt install ./kubo_1.3.0_amd64.deb` |
-| **Fedora, RHEL, Rocky, Alma, openSUSE** | `sudo dnf install ./kubo-1.3.0-1.x86_64.rpm` |
+| **Debian, Ubuntu, Mint** | `sudo apt install ./kubo_1.4.0_amd64.deb` |
+| **Fedora, RHEL, Rocky, Alma, openSUSE** | `sudo dnf install ./kubo-1.4.0-1.x86_64.rpm` |
 | **Anything else** | `tar -xzf Kubo-linux-x86_64.tar.gz && ./Kubo/bin/Kubo` |
 
 Note that Kubo *manages* Linux servers. It does not run on one as a server; it is a desktop app.
@@ -206,6 +207,7 @@ they were for:
 | **Docker** | Containers, their state, processor and memory use, ports, volumes. Start, stop, restart, delete, read logs, open a terminal inside a container, browse its filesystem. |
 | **Redis** | Keys by type, editing a hash or list or set as JSON, memory use, slow queries, a live monitor and a Redis console. It never runs `KEYS *` on your database. |
 | **Logs** | Every session, every command, filterable and exportable. |
+| **Pictures, sounds, films** | A `.png`, `.mp4` or `.mp3` on the server opens in a small window, with a bar while it is copied across. The arrows walk through the other files of the same kind in that folder, so opening one holiday video opens the folder it is in. Kubo plays what JavaFX can decode: H.264 in MP4, AAC, MP3, WAV, AIFF, PNG, JPEG, GIF, BMP. It recognises Matroska, WebM, FLAC and the rest well enough to say it has no decoder for them, rather than offering a player that would show nothing. |
 
 Everything is read-only until you act. Anything that changes the server asks first, and anything destructive asks
 you to type the name of what you are about to destroy.
@@ -278,7 +280,7 @@ macOS.
 
 `jpackage` cannot build for a system other than the one it runs on. The Windows installers need Windows with the
 WiX Toolset v3 on the PATH; the Linux ones need Linux with `fakeroot`, `binutils`, `dpkg-dev` and `rpm`. CI builds
-both on a tag. Add `-PappVersion=1.3.0` to stamp a version.
+both on a tag. Add `-PappVersion=1.4.0` to stamp a version.
 
 ### Tests
 

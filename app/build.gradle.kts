@@ -68,7 +68,9 @@ java {
 
 javafx {
     version = "21.0.8"
-    modules = listOf("javafx.controls", "javafx.swing")
+    // javafx.media carries its own decoders, which is what the picture, sound and film viewer plays
+    // through. It is the one module that adds native libraries of any size to the package.
+    modules = listOf("javafx.controls", "javafx.swing", "javafx.media")
 }
 
 application {
@@ -349,6 +351,16 @@ tasks.register<JavaExec>("previewConnection") {
     description = "Renders the connection screen to PNG files in build/previews."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.kubo.ui.connection.ConnectionPreview"
+    args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("previewMedia") {
+    group = "application"
+    description = "Renders the picture, sound and film viewer to PNG files in build/previews."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.kubo.ui.media.MediaPreview"
+    // The sample picture is a file in the repository, so the task runs from its root.
+    workingDir = rootProject.projectDir
     args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
 }
 
