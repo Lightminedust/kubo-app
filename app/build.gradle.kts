@@ -210,6 +210,7 @@ val packageLib = tasks.register<Sync>("packageLib") {
 // to stamp a release.
 
 val onWindows = System.getProperty("os.name").lowercase().startsWith("windows")
+val onMac = System.getProperty("os.name").lowercase().startsWith("mac")
 val packageLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
 
 /**
@@ -219,8 +220,11 @@ val packageLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguag
 fun jpackageCommand(type: String, destination: File): List<String> {
     val binary = if (onWindows) "bin/jpackage.exe" else "bin/jpackage"
     val jpackage = packageLauncher.get().metadata.installationPath.file(binary).asFile.absolutePath
-    // Windows wants an .ico; every other system wants a plain PNG.
-    val icon = if (onWindows) "assets/kubo.ico" else "assets/kubo.png"
+    val icon = when {
+        onWindows -> "assets/kubo.ico"
+        onMac -> "assets/kubo.icns"
+        else -> "assets/kubo.png"
+    }
     val arguments = mutableListOf(
         jpackage,
         "--type", type,
@@ -255,7 +259,7 @@ fun jpackageCommand(type: String, destination: File): List<String> {
             // A fixed id so a new version REPLACES the old install instead of stacking a second Kubo beside it.
             // This value must never change once released.
             "--win-upgrade-uuid", "0ef6eab5-fefa-4d5c-8eb4-5abd3e462b86",
-        ) else listOf(
+        ) else if (onMac) emptyList() else listOf(
             // Package names are lower-case on Linux by convention, and required to be by dpkg.
             "--linux-package-name", "kubo",
             // The desktop entry, and the freedesktop category the menu files it under.
