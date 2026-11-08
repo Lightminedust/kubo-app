@@ -51,7 +51,7 @@ jobs:
           dmg="packages/Kubo-macos-${{ matrix.arch }}.dmg"
           hdiutil verify "$dmg"
           mkdir -p /tmp/kubo-dmg
-          hdiutil attach -readonly -nobrowse -mountpoint /tmp/kubo-dmg "$dmg"
+          hdiutil attach -agree -readonly -nobrowse -mountpoint /tmp/kubo-dmg "$dmg"
           test -x /tmp/kubo-dmg/Kubo.app/Contents/MacOS/Kubo
           /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' /tmp/kubo-dmg/Kubo.app/Contents/Info.plist | grep -Fx 1.4.0
           file /tmp/kubo-dmg/Kubo.app/Contents/MacOS/Kubo
