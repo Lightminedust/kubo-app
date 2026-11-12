@@ -71,7 +71,7 @@ class UpdateInstallerTest {
         assertEquals(0,process.exitValue(),Files.readString(temporary.resolve("helper.log")));
         assertEquals("new executable",Files.readString(build.launcher()));
         Path backup = Path.of(command.get(command.indexOf("portable-zip") + 4));
-        assertTrue(backup.startsWith(temporary));
+        assertEquals(build.launcher().toRealPath().getParent().getParent(), backup.getParent());
         assertEquals("old executable",Files.readString(backup.resolve("Kubo.exe")));
     }
     @Test @EnabledOnOs(OS.WINDOWS)
