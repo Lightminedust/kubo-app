@@ -7,7 +7,7 @@ working, which ports are open to the internet, what files are on it, which servi
 Docker is running, what needs updating. Everything you would normally find by typing a dozen commands and
 remembering what each one means.
 
-It runs on your own computer, Windows or Linux. The server gets nothing installed on it.
+It runs on your own computer, Windows, macOS or Linux. The server gets nothing installed on it.
 
 **[⬇ Download Kubo](https://github.com/Lightminedust/Kubo/releases/latest)** · [kubo.gemmi-e.com](https://kubo.gemmi-e.com)
 · [Built by Gemmie](https://gemmi-e.com/contact)
@@ -17,9 +17,10 @@ It runs on your own computer, Windows or Linux. The server gets nothing installe
 *The network screen. The internet on the left, the server on the right, the firewall between them. Each port is
 sorted by how far it can really be reached, not by whether something is listening on it.*
 
-> **If you only read one thing:** Kubo has no account, no cloud and no telemetry. It opens exactly one network
-> connection, the SSH connection to the server you typed. Everything it saves, it saves on your computer, in files
-> you can open and read. [How you can check that for yourself](#how-you-can-check-this-yourself) is further down.
+> **If you only read one thing:** Kubo has no account, no cloud backend and no telemetry. It connects to your
+> server over SSH and checks GitHub for app updates at startup. Downloads and installation require your approval;
+> the startup check can be disabled. Saved servers, credentials and logs stay on your computer.
+> [How you can check that for yourself](#how-you-can-check-this-yourself) is further down.
 
 ---
 
@@ -51,31 +52,32 @@ lot of trust.
 | **No account** | There is nothing to sign up for. No email, no licence key, no login screen. |
 | **No cloud** | Kubo has no backend. There is no server of ours for it to talk to, because there is no "ours". |
 | **No telemetry** | Nothing is counted, measured or reported. No crash reports, no usage statistics, no "anonymous" anything. |
-| **No update check** | The app never phones home to ask whether it is out of date. You update it when you choose to, by downloading a new version. |
+| **No silent installation** | Kubo checks the public GitHub release at startup, then asks before downloading and again before closing to install. You can disable startup checks. |
 | **No reading your other files** | Kubo opens files on your computer only when you pick them: a key file you choose, a file you drag in to upload, a folder you choose to download into. |
 | **Nothing installed on the server** | No agent, no daemon, no package. Kubo sends ordinary shell commands through SSH, the same ones you could type yourself. Uninstalling Kubo leaves the server exactly as it was. |
 
-### The one connection it makes
+### The connections it makes
 
-Kubo opens an SSH connection to the address you typed, with the credentials you gave it. That is the only outbound
-connection the app itself makes. Not "the only one we use for analytics". The only one, full stop.
+Kubo opens an SSH connection to the address you typed, with the credentials you gave it. At startup it also makes
+an anonymous HTTPS request to `api.github.com/repos/Lightminedust/Kubo/releases/latest`. This sends no saved
+server addresses, credentials or logs. GitHub receives the ordinary connection metadata, including your IP.
+If you choose to download an update, Kubo downloads the matching asset from GitHub's release CDN.
 
-**One honest exception, which is not really an exception.** Some commands you can ask Kubo to run make *the server*
+Some commands you can ask Kubo to run make *the server*
 talk to the internet: `apt` downloads packages from your distribution's mirrors, `whois` asks a public registry who
 owns an address. That is the server reaching out because you asked it to, exactly as if you had typed the command
-yourself in a terminal. Your computer still talks only to your server. Kubo says so on the tools that do this,
-before they run.
+yourself in a terminal. Kubo says so on the tools that do this, before they run.
 
 ### How you can check this yourself
 
 You do not have to take any of the above on faith.
 
-1. **Count the libraries.** Kubo is built from three ([`gradle/libs.versions.toml`](gradle/libs.versions.toml)):
-   `sshj` for SSH, `jackson` for reading and writing the JSON files on your own disk, and `slf4j-simple` for
-   internal logging. There is no HTTP client in the application at all. There is nothing in it that *could* make a
-   web request.
+1. **Read the dependencies** in [`gradle/libs.versions.toml`](gradle/libs.versions.toml): `sshj` for SSH,
+   `jackson` for JSON, `slf4j-simple` for logging, and Apache Commons Compress for portable update archives.
+   The updater uses Java's HTTPS client and the public GitHub release API.
 2. **Watch the connections.** Run Kubo and look at your own machine's open connections (`netstat`, Resource
-   Monitor, Little Snitch, whatever you use). You will see port 22 to your server, and nothing else.
+   Monitor, Little Snitch, whatever you use). Expect SSH to your server, HTTPS to GitHub during an enabled update
+   check, and GitHub's release CDN during a download you requested.
 3. **Read the log.** Every command Kubo sends is written to a JSON file on your computer, as it is sent. Open it in
    any text editor. If Kubo ever sent something you did not ask for, it would be in there.
 4. **Read the source.** It is in this repository.
@@ -92,6 +94,7 @@ Everything is under your home folder, and all of it is plain text you can open.
 | `.kubo/sessions.json` | Your saved servers: address, user, which method, path to a key file |
 | `.kubo/logs/*.json` | One file per session: every command, when, from which screen, exit code, how long it took |
 | `.kubo/media/` | Only while a picture, sound or film is open. Kubo copies the file here to play it and deletes it when the window closes. |
+| `.kubo/updates/` | Update preferences, downloaded packages and installer logs; contains no SSH credentials |
 
 On Windows that is `%USERPROFILE%\.kubo`. On Linux, `~/.kubo`. Delete the folder and Kubo has forgotten
 everything.
@@ -142,11 +145,31 @@ The installer is not code-signed yet, so Windows may call the publisher unknown.
 
 | | |
 | --- | --- |
-| **Debian, Ubuntu, Mint** | `sudo apt install ./kubo_1.4.0_amd64.deb` |
-| **Fedora, RHEL, Rocky, Alma, openSUSE** | `sudo dnf install ./kubo-1.4.0-1.x86_64.rpm` |
+| **Debian, Ubuntu, Mint** | `sudo apt install ./kubo_1.5.0_amd64.deb` |
+| **Fedora, RHEL, Rocky, Alma, openSUSE** | `sudo dnf install ./kubo-1.5.0-1.x86_64.rpm` |
 | **Anything else** | `tar -xzf Kubo-linux-x86_64.tar.gz && ./Kubo/bin/Kubo` |
 
 Note that Kubo *manages* Linux servers. It does not run on one as a server; it is a desktop app.
+
+### Update Kubo
+
+Kubo checks the latest stable release in `Lightminedust/Kubo` in the background at startup. Use **Check for updates**
+on the connection screen to check manually or change the startup preference. An unavailable network never blocks login.
+The first edition containing this updater must be installed manually; older releases cannot check for updates themselves.
+
+The package format is recorded when building: EXE stays EXE, MSI stays MSI, ZIP stays portable, and DEB, RPM and
+Linux tar.gz each keep their format. Only a matching architecture is offered. Development builds and unsupported
+formats link to the release page instead of guessing a package. Drafts, pre-releases and downgrades are excluded.
+
+After you approve a download, its size and SHA-256 digest are checked against GitHub's release metadata.
+**Close and install** (or **Restart and update** for a portable edition) closes Kubo before applying it. Close other
+Kubo windows and save edited files first. Native editions use the Windows installer or Linux package manager;
+Linux needs `pkexec` for its normal administrator prompt. No administrator access is used for portable editions.
+
+Portable updates unpack into a temporary sibling directory before closing, reject links and unsafe archive paths,
+then swap the application folder. A failed swap restores the old folder. The previous installation is kept beside
+the new one as `Kubo.previous-…` (using your folder's name); it can be removed after verifying the new version.
+Saved servers and logs under `.kubo` are preserved. Downloaded packages and `install.log` remain in `.kubo/updates`.
 
 ---
 

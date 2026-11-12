@@ -138,6 +138,8 @@ public final class DockerScope extends StackPane {
     private String containerPath = "/";
     private boolean deleteArmed;
     private StackPane overlay;
+    /** Told once, when the first list of containers is on screen. */
+    private Runnable onFirstRead = () -> { };
 
     public DockerScope(DockerService docker, DockerStatus status, Privilege privilege) {
         this(docker, status, privilege, false);
@@ -207,6 +209,11 @@ public final class DockerScope extends StackPane {
         poll.play();
     }
 
+    /** Told once, when the first list of containers is on screen. */
+    public void setOnFirstRead(Runnable onFirstRead) {
+        this.onFirstRead = onFirstRead == null ? () -> { } : onFirstRead;
+    }
+
 
     /**
      * Called when this window comes back to the front. Its poll was held back while it was behind, so it reads
@@ -249,6 +256,8 @@ public final class DockerScope extends StackPane {
                     Platform.runLater(() -> {
                         cluster.setLoading(false);
                         cluster.setContainers(containers);
+                        onFirstRead.run();
+                        onFirstRead = () -> { };
                         if (selected != null) {
                             containers.stream().filter(c -> c.id().equals(selected.id())).findFirst()
                                     .ifPresentOrElse(this::updateSelected, () -> showContainer(null));

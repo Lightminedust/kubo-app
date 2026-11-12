@@ -641,6 +641,11 @@ public final class NetworkService {
         return runAsRoot(NetworkCommands.NGINX_SITES, TIMEOUT);
     }
 
+    /** Every site file as it is written, switched on or not, each under its own heading. */
+    public CommandEntry nginxSiteFiles() {
+        return runAsRoot(NetworkCommands.NGINX_SITE_FILES, TIMEOUT);
+    }
+
     /**
      * Turns a site on, tests the configuration, and undoes the link if Nginx refuses it.
      */

@@ -148,6 +148,24 @@ public final class SessionStore {
         write(sessions);
     }
 
+    /**
+     * Points a key session at its key file where it now is. Everything else stays, the remembered passphrase
+     * included: the key moved, it did not change.
+     *
+     * @throws IllegalArgumentException when the path is blank
+     */
+    public synchronized void relocateKey(String id, String keyFile) throws IOException {
+        if (keyFile == null || keyFile.isBlank()) {
+            throw new IllegalArgumentException("A key session needs its key file");
+        }
+        List<SavedSession> sessions = new ArrayList<>(list());
+        sessions.replaceAll(session -> session.id().equals(id) && session.auth() == Auth.KEY
+                ? new SavedSession(session.id(), session.username(), session.host(), session.port(), session.auth(),
+                        keyFile, session.protectedSecret(), session.lastUsedMillis())
+                : session);
+        write(sessions);
+    }
+
     public synchronized void delete(String id) throws IOException {
         List<SavedSession> sessions = new ArrayList<>(list());
         sessions.removeIf(session -> session.id().equals(id));

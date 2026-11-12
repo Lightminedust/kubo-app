@@ -33,7 +33,7 @@ public final class LogsWindow {
         stage.setTitle("Kubo — Logs");
         stage.setMinWidth(Math.min(820, screen.getWidth() - 32));
         stage.setMinHeight(Math.min(480, screen.getHeight() - 48));
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnHidden(event -> view.shutdown());
     }
 

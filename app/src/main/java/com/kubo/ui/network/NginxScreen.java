@@ -2,11 +2,15 @@ package com.kubo.ui.network;
 
 import com.kubo.model.network.AccessLine;
 import com.kubo.model.network.Certificate;
+import com.kubo.model.network.Endpoint;
 import com.kubo.model.network.NginxSites;
 import com.kubo.model.network.Rule;
+import com.kubo.model.network.ServiceOwner;
 import com.kubo.model.network.Upstream;
 import com.kubo.model.network.Vhost;
+import com.kubo.model.network.WebServer;
 import com.kubo.ui.Pulse;
+import com.kubo.ui.Tile;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -14,24 +18,24 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Everything Nginx is doing on this server, as a screen of its own.
+ * Everything Nginx is doing on this server, as a screen of its own, in the same frames as the rest.
  *
- * <p>It used to be a card floating over the map, listing file names with a switch beside each. A file name is an
- * administrator's filing choice; what a visitor types is the domain, what a domain does is a handful of rules,
- * and none of that fits in a card. So clicking NGINX leaves the map behind entirely and this takes the window.
- *
- * <p>Three columns, and they answer three questions in order. Which sites are there. What the selected one does
- * with each path somebody asks for. What is true about it, and what can be done to it.
+ * <p>On the left the sites, switched on or not. In the middle the way a request reaches the chosen one, every
+ * path of it and what answers each. On the right what is true about it and what can be done to it, and under
+ * them what it has been answering lately, or its file.
  */
 final class NginxScreen extends BorderPane {
 
@@ -69,57 +73,55 @@ final class NginxScreen extends BorderPane {
         void back();
     }
 
-    /** What the bottom of the middle column is showing. */
-    private enum Below { LOG, FILE }
+    /** What the frame at the bottom is showing. */
+    private enum Below { REQUESTS, FILE }
 
     private final Hands hands;
 
-    // Left
-    private final VBox siteList = new VBox(1);
-    // Middle
-    private final Label domain = new Label();
-    private final Label subtitle = new Label();
-    private final VBox rules = new VBox(1);
-    private final VBox pool = new VBox(8);
-    private final VBox belowBox = new VBox(8);
-    private final TextArea file = new TextArea();
-    private final VBox logLines = new VBox(1);
-    private final Pulse belowPulse = new Pulse();
-    private final HBox belowTabs = new HBox(6);
-    // Right
-    private final VBox facts = new VBox(10);
-    private final VBox actions = new VBox(8);
+    private final VBox siteList = new VBox(2);
+    private final SiteRoute route = new SiteRoute();
+    private final Label routeEmpty = new Label();
+    private final VBox facts = new VBox(6);
+    private final VBox pool = new VBox(4);
+    private final FlowPane actions = new FlowPane(16, 8);
     private final Label status = new Label();
     private final Pulse working = new Pulse();
-    /** What is being asked while the screen has nothing to show yet. */
-    private final com.kubo.ui.WorkTrail trail = new com.kubo.ui.WorkTrail();
-    // Head
     private final Label tally = new Label();
+    private final TextArea file = new TextArea();
+    private final VBox logLines = new VBox(2);
+    private final Pulse belowPulse = new Pulse();
+    private final Button requestsTab = tab("requests", Below.REQUESTS);
+    private final Button fileTab = tab("file", Below.FILE);
+    private final Label belowSource = new Label();
+    private Tile routeTile;
+    private Tile siteTile;
+    private ScrollPane logScroll;
 
     private NginxSites sites = NginxSites.none();
     private List<Vhost> vhosts = List.of();
     private List<Upstream> upstreams = List.of();
     private List<Certificate> certificates = List.of();
-    private List<com.kubo.model.network.Endpoint> listening = List.of();
+    private List<Endpoint> listening = List.of();
     /** What else serves the web here. Only ever filled when there is no Nginx to show. */
-    private List<com.kubo.model.network.WebServer> servers = List.of();
+    private List<WebServer> servers = List.of();
     /** The buttons that send an Nginx command, held so they can be shut off when there is no Nginx. */
     private final List<Button> nginxActions = new ArrayList<>();
-    /** The line under SITES, which talks about sites-available and means nothing without Nginx. */
-    private final Label sitesNote = note("Every file in sites-available. A site that is switched off is "
-            + "invisible to Nginx, which is exactly the one somebody is looking for when a domain stopped "
-            + "answering.");
-    private final com.kubo.ui.Chain chain = new com.kubo.ui.Chain();
     private String selected = "";
-    private Below below = Below.LOG;
+    private Below below = Below.REQUESTS;
+    /** The chosen site's certificate in words, worked out once a drawing so every place says the same. */
+    private String[] certificate = {"", "UNKNOWN"};
+    /** What this machine is called, for the bottom of the route. */
+    private String machineName = "this server";
+
+    /** The key of the one node every program and folder on the route stands on. */
+    private static final String MACHINE = "machine";
 
     NginxScreen(Hands hands) {
         this.hands = hands;
         getStyleClass().add("scope-view");
-        setTop(buildHead());
-        setLeft(buildSites());
-        setCenter(buildMiddle());
-        setRight(buildFacts());
+        setTop(buildBar());
+        setCenter(buildBody());
+        paintTabs();
         draw();
     }
 
@@ -128,36 +130,28 @@ final class NginxScreen extends BorderPane {
      * that knows about a site that exists and is switched off.
      */
     void show(NginxSites sites, List<Vhost> vhosts, List<Upstream> upstreams, List<Certificate> certificates,
-              List<com.kubo.model.network.Endpoint> listening) {
+              List<Endpoint> listening) {
         this.listening = listening == null ? List.of() : List.copyOf(listening);
         this.sites = sites == null ? NginxSites.none() : sites;
         this.vhosts = vhosts == null ? List.of() : List.copyOf(vhosts);
         this.upstreams = upstreams == null ? List.of() : List.copyOf(upstreams);
         this.certificates = certificates == null ? List.of() : List.copyOf(certificates);
-        if (selected.isEmpty() || !this.sites.available().contains(selected)) {
+        if (selected.isEmpty() || !order().contains(selected)) {
             selected = this.sites.enabled().stream().findFirst()
                     .orElse(this.sites.available().stream().findFirst().orElse(""));
         }
         draw();
-        if (!selected.isEmpty()) {
-            loadBelow();
-        }
+        loadBelow();
     }
 
     /**
      * What web servers the machine has, so that a screen with nothing on it can say why.
-     *
-     * <p>Kubo reads Nginx and only names the rest, which is worth saying out loud rather than leaving an empty
-     * column to be read as a fault.
      */
-    void setServers(List<com.kubo.model.network.WebServer> found) {
+    void setServers(List<WebServer> found) {
         servers = found == null ? List.of() : List.copyOf(found);
-        boolean noNginx = !servers.isEmpty() && !com.kubo.model.network.WebServer.hasNginx(servers);
+        boolean noNginx = !servers.isEmpty() && !WebServer.hasNginx(servers);
         for (Button action : nginxActions) {
             action.setDisable(noNginx);
-        }
-        if (noNginx) {
-            sitesNote.setText("Nginx is not on this machine, so there are no sites here to read.");
         }
     }
 
@@ -166,34 +160,11 @@ final class NginxScreen extends BorderPane {
         return upstreams;
     }
 
-    /**
-     * Says the screen is reading, and shows what it is asking while it does.
-     *
-     * <p>Eight reads over one connection take as long as eight reads take. A line saying READING looks exactly
-     * like a hung command; the commands themselves do not.
-     */
+    /** Kept for the scope that drives it; the reading is shown by the journal laid over the screen. */
     void reading(boolean yes) {
-        trail.setVisible(yes);
-        trail.setManaged(yes);
         if (yes) {
-            trail.start();
-        } else {
-            trail.finish();
+            tally.setText("reading…");
         }
-    }
-
-    /** One command going out, for the trail. */
-    void asking(String command) {
-        if (trail.running()) {
-            trail.add(command);
-        }
-    }
-
-    /** Only for the previews: the screen mid-read, with the commands already sent. */
-    void showTrailForPreview(java.util.List<String> commands) {
-        trail.setVisible(true);
-        trail.setManaged(true);
-        trail.showForPreview(commands, false);
     }
 
     /** Says a command came back: null for a success, otherwise what the server said. */
@@ -205,112 +176,118 @@ final class NginxScreen extends BorderPane {
         status.setManaged(true);
     }
 
+    /** Names the machine at the bottom of the route. */
+    void setMachine(String name) {
+        machineName = name == null || name.isBlank() ? "this server" : name;
+        if (!selected.isEmpty()) {
+            drawSelected();
+        }
+    }
+
+    /** Only for the previews: picks one site as if it had been clicked. */
+    void selectForPreview(String site) {
+        selected = site;
+        draw();
+        loadBelow();
+    }
+
+    /** Only for the previews: the route as it stands once it has come in, with light part way down it. */
+    void freezeForPreview() {
+        route.freeze(2.7);
+    }
+
+    /** Only for the previews: the way through one node of the route lit, as under the pointer. */
+    void pointForPreview(String key) {
+        route.pointForPreview(key);
+    }
+
     // Building
 
-    private VBox buildHead() {
-        Label mark = label("NGINX", "sheet-title");
-        tally.getStyleClass().add("lede");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        Button back = rail("← BACK TO THE MAP", event -> hands.back());
-        Button reread = rail("↻ RE-READ", event -> hands.reread());
-        Button test = rail("TEST THE CONFIGURATION", event -> {
+    /** The screen's own actions, under the window's bar, the way the map has its own. */
+    private HBox buildBar() {
+        Button back = bar("← map", event -> hands.back());
+        Button add = bar("new site", event -> hands.newSite());
+        Button reread = bar("re-read", event -> hands.reread());
+        Button test = bar("test", event -> {
+            working.setText("nginx -t");
             working.setRunning(true);
-            hands.test(trouble -> report(trouble, "The configuration is valid. Nothing was changed."));
+            hands.test(trouble -> report(trouble, "the configuration is valid, nothing was changed"));
         });
-        Button reload = rail("TEST AND RELOAD", event -> {
+        Button reload = bar("test & reload", event -> {
+            working.setText("nginx -t && systemctl reload nginx");
             working.setRunning(true);
-            hands.reload(trouble -> report(trouble, "The configuration is valid and Nginx reloaded it. "
-                    + "No request was dropped."));
+            hands.reload(trouble -> report(trouble, "valid, and nginx reloaded it without dropping a request"));
         });
-
-        Button add = rail("+ NEW SITE", event -> hands.newSite());
         // Every one of these sends nginx something. On a machine without it they would fail with a message
         // about a command that is not there, which explains nothing to the person reading it.
         nginxActions.addAll(List.of(add, test, reload));
-        HBox row = new HBox(8, back, separator(), add, separator(), reread, test, reload, spacer);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        tally.getStyleClass().add("home-muted");
+        tally.setMinWidth(Region.USE_PREF_SIZE);
+        HBox row = new HBox(18, back, add, reread, test, reload, spacer, tally);
         row.setAlignment(Pos.CENTER_LEFT);
-        row.setPadding(new Insets(0, 0, 10, 0));
-
-        trail.setVisible(false);
-        trail.setManaged(false);
-        VBox head = new VBox(4, mark, tally, row, working, trail);
-        head.setPadding(new Insets(16, 34, 0, 26));
-        return head;
+        row.getStyleClass().addAll("home-nav", "redis-actions");
+        return row;
     }
 
-    private VBox buildSites() {
-        VBox column = new VBox(10, label("SITES", "series"), sitesNote, siteList);
-        column.setPadding(new Insets(18, 20, 20, 26));
-        column.setPrefWidth(280);
-        column.setMinWidth(280);
-        column.getStyleClass().add("network-machine");
-        return column;
-    }
+    /**
+     * The sites on the left, the route the whole height of the middle, because it is drawn in layers top to
+     * bottom and needs the height, and on the right the chosen site with its traffic under it.
+     */
+    private HBox buildBody() {
+        ScrollPane sitesScroll = scroll(siteList);
+        Tile sitesTile = new Tile("sites", sitesScroll).accent("tile-cyan");
+        sitesTile.setMinWidth(190);
+        sitesTile.setPrefWidth(220);
+        sitesTile.setMaxWidth(250);
 
-    private BorderPane buildMiddle() {
-        domain.getStyleClass().add("host-key-host");
-        domain.setWrapText(true);
-        subtitle.getStyleClass().add("mono-muted");
+        ScrollPane routeScroll = scroll(route);
+        routeScroll.setFitToHeight(true);
+        routeEmpty.getStyleClass().add("home-muted");
+        routeEmpty.setWrapText(true);
+        routeEmpty.setMaxWidth(440);
+        StackPane routeArea = new StackPane(routeScroll, routeEmpty);
+        routeTile = new Tile("route", routeArea).accent("tile-amber");
+        routeTile.setMinWidth(420);
+        HBox.setHgrow(routeTile, Priority.ALWAYS);
 
-        file.setEditable(false);
-        file.setWrapText(false);
-        file.getStyleClass().add("redis-diagnostic-output");
-        file.setPrefRowCount(12);
-
-        belowTabs.setAlignment(Pos.CENTER_LEFT);
-        ScrollPane belowScroll = new ScrollPane(new VBox(2, logLines, file));
-        belowScroll.setFitToWidth(true);
-        belowScroll.getStyleClass().add("plain-scroll");
-        belowScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        belowScroll.setPrefViewportHeight(150);
-        belowScroll.setMinHeight(150);
-        belowBox.getChildren().addAll(belowTabs, belowPulse, belowScroll);
-        belowBox.setPadding(new Insets(14, 0, 0, 0));
-
-        VBox body = new VBox(18,
-                new VBox(2, domain, subtitle),
-                new VBox(4, label("HOW A REQUEST GETS THERE", "series"), chain),
-                new VBox(8, label("WHAT EACH PATH DOES", "series"), rules));
-        body.setPadding(new Insets(18, 26, 12, 26));
-
-        ScrollPane scroll = new ScrollPane(body);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("plain-scroll");
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-
-        // The log keeps its own room at the bottom rather than sitting under everything else and being the
-        // first thing to fall off the screen. It is the part somebody watches.
-        BorderPane middle = new BorderPane(scroll);
-        belowBox.setPadding(new Insets(10, 26, 16, 26));
-        middle.setBottom(belowBox);
-        middle.getStyleClass().add("network-flow");
-        return middle;
-    }
-
-    private VBox buildFacts() {
         status.setWrapText(true);
         status.setMinHeight(Region.USE_PREF_SIZE);
         status.setVisible(false);
         status.setManaged(false);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        VBox siteColumn = new VBox(16, facts, pool, actions, working, status);
+        siteColumn.setMinWidth(0);
+        siteTile = new Tile("site", scroll(siteColumn));
+        siteTile.setMinHeight(200);
+        siteTile.setMaxHeight(430);
 
-        VBox column = new VBox(16, label("THIS SITE", "series"), facts, pool,
-                label("WHAT CAN BE DONE", "series"), actions, status);
-        column.setPadding(new Insets(18, 26, 20, 22));
-        column.setPrefWidth(340);
-        column.setMinWidth(340);
-        column.getStyleClass().add("network-inspector");
+        file.setEditable(false);
+        file.setWrapText(false);
+        file.getStyleClass().add("redis-diagnostic-output");
+        belowSource.getStyleClass().add("home-muted");
+        belowSource.setMinWidth(0);
+        Region gap = new Region();
+        HBox.setHgrow(gap, Priority.ALWAYS);
+        HBox tabs = new HBox(16, requestsTab, fileTab, gap, belowSource);
+        tabs.setAlignment(Pos.CENTER_LEFT);
+        logScroll = scroll(logLines);
+        VBox.setVgrow(logScroll, Priority.ALWAYS);
+        VBox.setVgrow(file, Priority.ALWAYS);
+        VBox belowBox = new VBox(8, tabs, belowPulse, logScroll, file);
+        Tile belowTile = new Tile("traffic", belowBox).accent("tile-green");
+        belowTile.setMinHeight(180);
+        VBox.setVgrow(belowTile, Priority.ALWAYS);
 
-        ScrollPane scroll = new ScrollPane(column);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("plain-scroll");
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        VBox holder = new VBox(scroll);
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-        holder.setPrefWidth(356);
-        holder.setMinWidth(356);
-        return holder;
+        VBox right = new VBox(18, siteTile, belowTile);
+        right.setMinWidth(300);
+        right.setPrefWidth(340);
+        right.setMaxWidth(380);
+
+        HBox body = new HBox(18, sitesTile, routeTile, right);
+        body.getStyleClass().add("tiles");
+        return body;
     }
 
     // Drawing
@@ -325,38 +302,40 @@ final class NginxScreen extends BorderPane {
         int all = sites.available().size();
         int on = sites.enabled().size();
         if (all == 0 && on == 0) {
-            String elsewhere = com.kubo.model.network.WebServer.noteFor(servers);
-            tally.setText(elsewhere.isEmpty()
-                    ? "Nothing was read. Nginx may not be installed, or its files need root."
-                    : elsewhere);
+            tally.setText(WebServer.hasNginx(servers) || servers.isEmpty() ? "no site read" : "no nginx");
             return;
         }
-        int off = sites.disabled().size();
-        StringBuilder text = new StringBuilder();
-        text.append(all).append(all == 1 ? " site" : " sites");
-        text.append("  ·  ").append(on).append(" answering");
-        if (off > 0) {
-            text.append("  ·  ").append(off).append(" switched off");
+        List<String> parts = new ArrayList<>();
+        parts.add(all + (all == 1 ? " site" : " sites"));
+        parts.add(on + " answering");
+        if (!sites.disabled().isEmpty()) {
+            parts.add(sites.disabled().size() + " off");
         }
         if (!sites.dangling().isEmpty()) {
-            text.append("  ·  ").append(sites.dangling().size()).append(" linked to a file that is gone");
+            parts.add(sites.dangling().size() + " broken");
         }
-        tally.setText(text.toString());
+        tally.setText(String.join("  ·  ", parts));
     }
 
-    private void drawSites() {
-        siteList.getChildren().clear();
+    /** The sites switched on first, then the ones that are off. */
+    private List<String> order() {
         List<String> order = new ArrayList<>(sites.enabled());
         for (String site : sites.available()) {
             if (!order.contains(site)) {
                 order.add(site);
             }
         }
+        return order;
+    }
+
+    private void drawSites() {
+        siteList.getChildren().clear();
+        List<String> order = order();
         if (order.isEmpty()) {
-            if (com.kubo.model.network.WebServer.hasNginx(servers) || servers.isEmpty()) {
-                siteList.getChildren().add(note("No site file was found."));
+            if (WebServer.hasNginx(servers) || servers.isEmpty()) {
+                siteList.getChildren().add(muted("no site file was read"));
             } else {
-                for (com.kubo.model.network.WebServer server : servers) {
+                for (WebServer server : servers) {
                     siteList.getChildren().add(otherServer(server));
                 }
             }
@@ -367,24 +346,36 @@ final class NginxScreen extends BorderPane {
         }
     }
 
-    private VBox siteRow(String site) {
+    private HBox siteRow(String site) {
         boolean on = sites.isEnabled(site);
         boolean broken = sites.dangling().contains(site);
-
-        Label name = label(firstName(site), "mono");
-        name.setWrapText(true);
-        Label state = label(broken ? "the file it points at is gone" : on ? "answering" : "switched off",
-                broken ? "card-problem" : on ? "card-success" : "card-note");
-        Label from = label(site, "tool-caveat");
-
-        VBox row = new VBox(1, name, state);
+        Label dot = new Label("●");
+        dot.getStyleClass().add("port-dot");
+        dot.setStyle("-fx-text-fill: " + (broken ? "#ff2d55" : on ? "#35e0a1" : "#5f5f72") + ";");
+        Label name = new Label(firstName(site));
+        name.getStyleClass().add(on ? "port-owner" : "port-what");
+        name.setMinWidth(0);
+        VBox words = new VBox(1, name);
         if (!firstName(site).equals(site)) {
-            row.getChildren().add(from);
+            Label from = new Label(site);
+            from.getStyleClass().add("port-quiet");
+            words.getChildren().add(from);
         }
-        row.setPadding(new Insets(9, 12, 10, 12));
-        row.getStyleClass().add(site.equals(selected) ? "site-row-open" : on ? "tool-row-here" : "tool-row");
+        if (broken) {
+            Label why = new Label("its file is gone");
+            why.getStyleClass().add("port-alert");
+            words.getChildren().add(why);
+        }
+        HBox row = new HBox(10, dot, words);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("port-row");
+        if (site.equals(selected)) {
+            row.getStyleClass().add("port-row-chosen");
+        }
         row.setOnMouseClicked(event -> {
             selected = site;
+            status.setVisible(false);
+            status.setManaged(false);
             draw();
             loadBelow();
         });
@@ -407,7 +398,7 @@ final class NginxScreen extends BorderPane {
         return site;
     }
 
-    /** The server blocks that came out of this file. */
+    /** The server blocks that came out of this file, whether Nginx read it or Kubo read it off the disk. */
     private List<Vhost> vhostsOf(String site) {
         List<Vhost> found = new ArrayList<>();
         for (Vhost vhost : vhosts) {
@@ -419,258 +410,87 @@ final class NginxScreen extends BorderPane {
     }
 
     private void drawSelected() {
-        rules.getChildren().clear();
-        pool.getChildren().clear();
         facts.getChildren().clear();
+        pool.getChildren().clear();
         actions.getChildren().clear();
-
         if (selected.isEmpty()) {
-            domain.setText("No site selected");
-            subtitle.setText("");
-            rules.getChildren().add(note("Pick a site on the left."));
-            belowBox.setVisible(false);
-            belowBox.setManaged(false);
+            route.clear();
+            routeTile.setTag("");
+            routeEmpty.setText(order().isEmpty() && !servers.isEmpty() && !WebServer.hasNginx(servers)
+                    ? "nginx is not on this machine, so there is no route to draw"
+                    : "no site was read. reading /etc/nginx may need root: turn root on in the bar");
+            routeEmpty.setVisible(true);
             return;
         }
-        belowBox.setVisible(true);
-        belowBox.setManaged(true);
-
+        routeEmpty.setVisible(false);
         List<Vhost> blocks = vhostsOf(selected);
         boolean on = sites.isEnabled(selected);
-        domain.setText(firstName(selected));
-        subtitle.setText(subtitleFor(blocks, on));
-
-        drawChain(blocks, on);
-        drawRules(blocks, on);
-        drawPool(blocks);
+        routeTile.setTag(firstName(selected));
+        certificate = certificateWords(blocks);
+        drawRoute(blocks, on);
         drawFacts(blocks, on);
+        drawPool(blocks);
         drawActions(on);
-        drawBelowTabs();
+        paintTabs();
     }
+
+    // The route
 
     /**
-     * The way in, one link at a time, for the rule that answers most of the site: the domain, the file, the
-     * certificate, the rule, and what is behind it. The first link that does not hold is red, and so is the
-     * spine below it, because that is where a request stops.
+     * The chosen site as layers: its names, Nginx, every path, where each path is sent, what holds that port,
+     * and this machine. Each path is followed as far as Kubo can follow it.
      */
-    private void drawChain(List<Vhost> blocks, boolean on) {
-        List<com.kubo.ui.Chain.Link> links = new ArrayList<>();
-        links.add(new com.kubo.ui.Chain.Link("THE DOMAIN", firstName(selected),
-                "What a visitor types. Kubo does not check where it points.", com.kubo.ui.Chain.State.UNKNOWN,
-                null));
-
+    private void drawRoute(List<Vhost> blocks, boolean on) {
+        SiteRoute.Builder graph = new SiteRoute.Builder();
         boolean broken = sites.dangling().contains(selected);
-        links.add(new com.kubo.ui.Chain.Link("NGINX", "sites-available/" + selected,
-                // A link that holds says nothing more: the right-hand column already says it, and a chain where
-                // every link talks is a chain nobody reads to the red one.
-                broken ? "Linked to a file that is gone. Nginx will refuse to start with this link in place."
-                        : on ? "" : "Switched off, so Nginx never reads it.",
-                broken || !on ? com.kubo.ui.Chain.State.BROKEN : com.kubo.ui.Chain.State.WORKS, null));
-        if (broken || !on || blocks.isEmpty()) {
-            chain.setLinks(links);
-            return;
+        String front = graph.add(nginxNode(blocks, on, broken));
+        for (String domain : domainsOf(blocks)) {
+            graph.link(graph.add(new SiteRoute.Node("domain " + domain, SiteRoute.Layer.DOMAINS,
+                    SiteRoute.Kind.DOMAIN, domain, "", SiteRoute.State.WORKS)), front);
         }
-
-        Vhost serving = blocks.stream().filter(block -> !block.forcesHttps()).findFirst().orElse(blocks.get(0));
-        if (serving.ssl()) {
-            links.add(certificateLink(serving.certificate()));
-        }
-
-        Rule rule = serving.routes().stream().filter(Rule::catchAll).findFirst()
-                .orElse(serving.routes().isEmpty() ? null : serving.routes().get(0));
-        if (rule == null) {
-            links.add(new com.kubo.ui.Chain.Link("THE RULE", "everything", serving.purpose(),
-                    com.kubo.ui.Chain.State.UNKNOWN, null));
-            chain.setLinks(links);
-            return;
-        }
-        links.add(new com.kubo.ui.Chain.Link("THE RULE", rule.path() + "  " + rule.sentence(), "",
-                rule.kind() == Rule.Kind.UNSET ? com.kubo.ui.Chain.State.UNKNOWN : com.kubo.ui.Chain.State.WORKS,
-                null));
-
-        int port = rule.localPort();
-        if (port > 0) {
-            addPortLinks(links, port);
-        } else if (rule.kind() == Rule.Kind.FILES) {
-            String folder = rule.target();
-            links.add(new com.kubo.ui.Chain.Link("THE FOLDER", folder, "Open it to see what Nginx will serve.",
-                    com.kubo.ui.Chain.State.UNKNOWN, () -> hands.browse(folder)));
-        } else if (rule.kind() == Rule.Kind.PROXY) {
-            addPoolLink(links, rule.target());
-        }
-        chain.setLinks(links);
-    }
-
-    private com.kubo.ui.Chain.Link certificateLink(String file) {
-        Certificate certificate = certificates.stream().filter(one -> one.file().equals(file))
-                .findFirst().orElse(null);
-        if (certificate == null || !certificate.readable()) {
-            return new com.kubo.ui.Chain.Link("THE CERTIFICATE", file,
-                    certificate == null ? "Not read yet." : "Could not be read: " + certificate.problem(),
-                    com.kubo.ui.Chain.State.UNKNOWN, null);
-        }
-        Instant now = Instant.now();
-        if (certificate.expired(now)) {
-            return new com.kubo.ui.Chain.Link("THE CERTIFICATE", "expired " + -certificate.daysLeft(now)
-                    + " days ago", "Browsers refuse the site until it is renewed.",
-                    com.kubo.ui.Chain.State.BROKEN, null);
-        }
-        long days = certificate.daysLeft(now);
-        String note = certificate.expiringSoon(now) ? "Renewal is late. It usually happens at 30 days."
-                : certificate.caveat();
-        return new com.kubo.ui.Chain.Link("THE CERTIFICATE", days + (days == 1 ? " day left" : " days left"),
-                note, note.isEmpty() ? com.kubo.ui.Chain.State.WORKS : com.kubo.ui.Chain.State.WARNS, null);
-    }
-
-    /** The port a rule forwards to, and whatever is holding it, or the fact that nothing is. */
-    private void addPortLinks(List<com.kubo.ui.Chain.Link> links, int port) {
-        com.kubo.model.network.Endpoint found = listening.stream()
-                .filter(endpoint -> endpoint.socket().port() == port).findFirst().orElse(null);
-        if (found == null) {
-            links.add(new com.kubo.ui.Chain.Link("THE PORT", String.valueOf(port),
-                    "Nothing is listening on " + port + ". Nginx will answer 502 Bad Gateway to every visitor.",
-                    com.kubo.ui.Chain.State.BROKEN, null));
-            return;
-        }
-        links.add(new com.kubo.ui.Chain.Link("THE PORT", String.valueOf(port), "",
-                com.kubo.ui.Chain.State.WORKS, () -> hands.showPort(port)));
-        com.kubo.model.network.ServiceOwner owner = found.owner();
-        boolean named = owner.kind() != com.kubo.model.network.ServiceOwner.Kind.UNKNOWN;
-        links.add(new com.kubo.ui.Chain.Link("THE PROGRAM", owner.label(), owner.detail(),
-                named ? com.kubo.ui.Chain.State.WORKS : com.kubo.ui.Chain.State.UNKNOWN,
-                () -> hands.showPort(port)));
-    }
-
-    /** A rule forwarding to a name: the pool, and how many of its servers are taking requests. */
-    private void addPoolLink(List<com.kubo.ui.Chain.Link> links, String target) {
-        for (Upstream upstream : upstreams) {
-            if (target.contains("//" + upstream.name())) {
-                long working = upstream.working();
-                links.add(new com.kubo.ui.Chain.Link("THE POOL", upstream.name(),
-                        working + " of " + upstream.servers().size() + " taking requests, " + upstream.sharing()
-                                + ".", working == 0 ? com.kubo.ui.Chain.State.BROKEN
-                                : com.kubo.ui.Chain.State.WORKS, null));
-                return;
-            }
-        }
-        links.add(new com.kubo.ui.Chain.Link("WHERE IT GOES", target, "Not a port on this server.",
-                com.kubo.ui.Chain.State.UNKNOWN, null));
-    }
-
-    private String subtitleFor(List<Vhost> blocks, boolean on) {
-        List<String> parts = new ArrayList<>();
-        parts.add(on ? "answering" : "switched off");
-        boolean secure = blocks.stream().anyMatch(Vhost::ssl);
-        parts.add(secure ? "https" : "http only");
-        parts.add("file " + selected);
-        return String.join("  ·  ", parts);
-    }
-
-    private void drawRules(List<Vhost> blocks, boolean on) {
-        if (blocks.isEmpty()) {
-            rules.getChildren().add(note(on
-                    ? "Nginx did not report a server block from this file. Turn on ROOT and re-read: without it "
-                            + "Kubo can only see the files it is allowed to open."
-                    : "This site is switched off, so Nginx is not reading it. Its file is below."));
-            return;
-        }
+        int index = 0;
         for (Vhost block : blocks) {
             if (block.forcesHttps()) {
-                rules.getChildren().add(ruleRow("everything", "sends visitors to the secure address", false,
-                        "card-note"));
                 continue;
             }
             if (block.routes().isEmpty()) {
-                rules.getChildren().add(ruleRow("everything", block.purpose(), false, "card-note"));
+                String key = "path " + index++;
+                addPath(graph, front, key, "everything", false, wholeBlock(graph, key, block));
                 continue;
             }
             for (Rule rule : block.routes()) {
-                rules.getChildren().add(ruleRow(rule.path(), rule.sentence(), rule.websocket(),
-                        rule.kind() == Rule.Kind.UNSET ? "card-note" : "mono-muted"));
+                String key = "path " + index++;
+                addPath(graph, front, key, rule.path(), rule.websocket(), follow(graph, key, rule, block));
             }
         }
+        String note = blocks.isEmpty()
+                ? "no server block was read from this file. with root on, kubo reads it the way nginx does"
+                : "every request is sent on to the secure address";
+        route.show(graph.build(on, broken, note));
     }
 
-    private HBox ruleRow(String path, String what, boolean websocket, String style) {
-        Label left = label(path, "mono");
-        left.setMinWidth(150);
-        left.setPrefWidth(150);
-        left.setWrapText(true);
-
-        Label right = label(what, style);
-        right.setWrapText(true);
-        HBox.setHgrow(right, Priority.ALWAYS);
-
-        HBox row = new HBox(14, left, right);
-        row.setAlignment(Pos.TOP_LEFT);
-        row.setPadding(new Insets(8, 12, 9, 12));
-        row.getStyleClass().add("tool-row");
-        if (websocket) {
-            Label mark = label("WEBSOCKET", "net-chip");
-            mark.getStyleClass().add("net-chip-docker");
-            row.getChildren().add(mark);
+    private List<String> domainsOf(List<Vhost> blocks) {
+        List<String> domains = new ArrayList<>();
+        for (String name : sites.namesOf(selected)) {
+            add(domains, name);
         }
-        return row;
-    }
-
-    /**
-     * The pool behind this site, when one of its rules forwards to a name rather than to a port.
-     */
-    private void drawPool(List<Vhost> blocks) {
-        List<Upstream> used = new ArrayList<>();
         for (Vhost block : blocks) {
-            for (Rule rule : block.routes()) {
-                for (Upstream upstream : upstreams) {
-                    if (rule.target().contains("//" + upstream.name()) && !used.contains(upstream)) {
-                        used.add(upstream);
-                    }
-                }
-            }
+            block.serverNames().forEach(name -> add(domains, name));
         }
-        if (used.isEmpty()) {
-            return;
+        if (domains.isEmpty()) {
+            domains.add(selected);
         }
-        pool.getChildren().add(label("THE POOL IT FORWARDS TO", "series"));
-        for (Upstream upstream : used) {
-            Label name = label(upstream.name(), "mono");
-            Label how = label(upstream.working() + " of " + upstream.servers().size()
-                    + " taking requests  ·  " + upstream.sharing(), "card-note");
-            how.setWrapText(true);
-            how.setMinHeight(Region.USE_PREF_SIZE);
-            pool.getChildren().addAll(new VBox(2, name, how));
-            for (Upstream.Member member : upstream.servers()) {
-                Label address = label(member.address(), "mono-muted");
-                address.setMinWidth(0);
-                HBox.setHgrow(address, Priority.ALWAYS);
-                Region spacer = new Region();
-                HBox.setHgrow(spacer, Priority.ALWAYS);
-                Label state = label(member.state(), member.down() ? "card-problem" : "mono-muted");
-                HBox row = new HBox(12, address, spacer,
-                        label(member.weight() == 1 ? "" : "×" + member.weight(), "mono-muted"), state);
-                row.setAlignment(Pos.CENTER_LEFT);
-                row.setPadding(new Insets(6, 12, 6, 12));
-                row.getStyleClass().add("tool-row");
-                pool.getChildren().add(row);
-            }
+        return domains;
+    }
+
+    private static void add(List<String> names, String name) {
+        if (!name.isBlank() && !name.equals("_") && !names.contains(name)) {
+            names.add(name);
         }
     }
 
-    private void drawFacts(List<Vhost> blocks, boolean on) {
-        facts.getChildren().add(fact("FILE", "/etc/nginx/sites-available/" + selected));
-        facts.getChildren().add(fact("STATE", on
-                ? "linked into sites-enabled, so Nginx reads it"
-                : "not linked, so Nginx never sees it"));
-
-        List<String> names = new ArrayList<>(sites.namesOf(selected));
-        for (Vhost block : blocks) {
-            for (String name : block.serverNames()) {
-                if (!names.contains(name)) {
-                    names.add(name);
-                }
-            }
-        }
-        facts.getChildren().add(fact("ANSWERS TO", names.isEmpty() ? "nothing this file names" : String.join("  ", names)));
-
+    /** Nginx as this site sees it: the ports, the way plain http is sent on, the certificate. */
+    private SiteRoute.Node nginxNode(List<Vhost> blocks, boolean on, boolean broken) {
         List<Integer> ports = new ArrayList<>();
         for (Vhost block : blocks) {
             for (int port : block.listenPorts()) {
@@ -679,107 +499,349 @@ final class NginxScreen extends BorderPane {
                 }
             }
         }
-        if (!ports.isEmpty()) {
-            facts.getChildren().add(fact("LISTENS ON", ports.stream().map(String::valueOf)
-                    .reduce((a, b) -> a + "  " + b).orElse("")));
+        boolean https = blocks.stream().anyMatch(Vhost::ssl);
+        boolean redirects = blocks.stream().anyMatch(Vhost::forcesHttps);
+        String listens;
+        if (redirects && ports.contains(80) && ports.contains(443)) {
+            List<String> others = ports.stream().filter(port -> port != 80 && port != 443)
+                    .map(port -> ":" + port).toList();
+            listens = ":80 \u2192 :443" + (others.isEmpty() ? "" : "  " + String.join("  ", others));
+        } else {
+            listens = String.join("  ", ports.stream().map(port -> ":" + port).toList());
         }
-        drawCertificate(blocks);
+        String name = broken ? "nginx \u00b7 broken" : on ? "nginx" : "nginx \u00b7 off";
+        SiteRoute.State state = broken ? SiteRoute.State.BROKEN : on ? SiteRoute.State.WORKS
+                : SiteRoute.State.UNKNOWN;
+        SiteRoute.Node node = new SiteRoute.Node("nginx", SiteRoute.Layer.NGINX, SiteRoute.Kind.NGINX, name,
+                listens, state);
+        if (https) {
+            return node.badge(certificate[0].isEmpty() ? "https" : certificate[0],
+                    SiteRoute.State.valueOf(certificate[1]));
+        }
+        return blocks.isEmpty() ? node : node.badge("http only", SiteRoute.State.UNKNOWN);
     }
 
-    private void drawCertificate(List<Vhost> blocks) {
+    /** One path, coloured by where it ends: a path is as good as what answers it. */
+    private static void addPath(SiteRoute.Builder graph, String front, String key, String path, boolean websocket,
+                                SiteRoute.State end) {
+        SiteRoute.Node node = new SiteRoute.Node(key, SiteRoute.Layer.PATHS, SiteRoute.Kind.PATH, path, "", end);
+        graph.add(websocket ? node.badge("ws", SiteRoute.State.FILES) : node);
+        graph.link(front, key);
+    }
+
+    /** A block with no location of its own: one path, everything, and what the block does with it. */
+    private SiteRoute.State wholeBlock(SiteRoute.Builder graph, String from, Vhost block) {
+        if (block.forwards()) {
+            Vhost.ProxyTarget target = block.proxyTargets().get(0);
+            if (target.isLocalPort()) {
+                return port(graph, from, target.port());
+            }
+            Upstream upstream = poolOf(target.raw());
+            return upstream != null ? pool(graph, from, upstream) : elsewhere(graph, from, target.raw());
+        }
+        if (!block.root().isEmpty()) {
+            return folder(graph, from, block.root());
+        }
+        return end(graph, from, SiteRoute.Kind.ANSWER, "nothing named", "the block sends it nowhere");
+    }
+
+    /** One location, followed as far as Kubo can follow it. */
+    private SiteRoute.State follow(SiteRoute.Builder graph, String from, Rule rule, Vhost block) {
+        return switch (rule.kind()) {
+            case PROXY -> {
+                int port = rule.localPort();
+                if (port > 0) {
+                    yield port(graph, from, port);
+                }
+                Upstream upstream = poolOf(rule.target());
+                yield upstream != null ? pool(graph, from, upstream) : elsewhere(graph, from, rule.target());
+            }
+            case FILES -> folder(graph, from, rule.target());
+            case REDIRECT -> end(graph, from, SiteRoute.Kind.REDIRECT, rule.target(), "redirect");
+            case ANSWER -> end(graph, from, SiteRoute.Kind.ANSWER, "answers " + rule.target(), "nginx itself");
+            case UNSET -> block.root().isEmpty()
+                    ? end(graph, from, SiteRoute.Kind.ANSWER, "same as the block", "")
+                    : folder(graph, from, block.root());
+        };
+    }
+
+    /** A local port, and whatever holds it, or the fact that nothing does and every visitor gets a 502. */
+    private SiteRoute.State port(SiteRoute.Builder graph, String from, int port) {
+        String key = "port " + port;
+        Endpoint found = listeningOn(port);
+        if (found == null) {
+            graph.add(new SiteRoute.Node(key, SiteRoute.Layer.TARGETS, SiteRoute.Kind.PORT, "port " + port,
+                    "nothing listens \u00b7 502", SiteRoute.State.BROKEN));
+            graph.link(from, key);
+            return SiteRoute.State.BROKEN;
+        }
+        graph.add(new SiteRoute.Node(key, SiteRoute.Layer.TARGETS, SiteRoute.Kind.PORT, "port " + port, "",
+                SiteRoute.State.WORKS).opens(() -> hands.showPort(port)));
+        graph.link(from, key);
+        graph.link(key, program(graph, found));
+        return SiteRoute.State.WORKS;
+    }
+
+    /**
+     * A pool, each server in it followed to what answers there. A server marked down is drawn hollow; one on
+     * this machine that nothing listens on is drawn red, because Nginx will try it and fail.
+     */
+    private SiteRoute.State pool(SiteRoute.Builder graph, String from, Upstream upstream) {
+        String key = "pool " + upstream.name();
+        List<SiteRoute.State> members = new ArrayList<>();
+        int active = 0;
+        int answering = 0;
+        for (int i = 0; i < upstream.servers().size(); i++) {
+            Upstream.Member member = upstream.servers().get(i);
+            if (member.down()) {
+                members.add(SiteRoute.State.UNKNOWN);
+                continue;
+            }
+            active++;
+            int port = localPortOf(member.address());
+            Endpoint found = port > 0 ? listeningOn(port) : null;
+            if (port > 0 && found == null) {
+                members.add(SiteRoute.State.BROKEN);
+                continue;
+            }
+            members.add(SiteRoute.State.WORKS);
+            answering++;
+            if (found != null) {
+                graph.link(key, program(graph, found), i);
+            }
+        }
+        SiteRoute.State state = answering == 0 ? SiteRoute.State.BROKEN
+                : answering < active ? SiteRoute.State.WARNS : SiteRoute.State.WORKS;
+        graph.add(new SiteRoute.Node(key, SiteRoute.Layer.TARGETS, SiteRoute.Kind.POOL, upstream.name(),
+                answering + " of " + upstream.servers().size() + " up", state).members(members));
+        graph.link(from, key);
+        return state;
+    }
+
+    /** What holds a port: the PM2 app, the container, the daemon, or a program only root can name. */
+    private String program(SiteRoute.Builder graph, Endpoint endpoint) {
+        ServiceOwner owner = endpoint.owner();
+        int port = endpoint.socket().port();
+        boolean named = owner.kind() != ServiceOwner.Kind.UNKNOWN;
+        String key = named ? "program " + owner.kind() + " " + owner.label() + " " + owner.pid()
+                : "program on " + port;
+        String detail = switch (owner.kind()) {
+            case PM2 -> "pm2";
+            case DOCKER -> "docker";
+            case SYSTEM -> owner.pid() > 0 ? "pid " + owner.pid() : "system";
+            case UNKNOWN -> "root can name it";
+        };
+        graph.add(new SiteRoute.Node(key, SiteRoute.Layer.PROGRAMS, SiteRoute.Kind.PROGRAM,
+                named ? owner.label() : "a program", detail,
+                named ? SiteRoute.State.WORKS : SiteRoute.State.UNKNOWN).opens(() -> hands.showPort(port)));
+        graph.link(key, machine(graph));
+        return key;
+    }
+
+    private String machine(SiteRoute.Builder graph) {
+        return graph.add(new SiteRoute.Node(MACHINE, SiteRoute.Layer.MACHINE, SiteRoute.Kind.MACHINE, machineName,
+                "", SiteRoute.State.WORKS));
+    }
+
+    private SiteRoute.State folder(SiteRoute.Builder graph, String from, String path) {
+        String key = graph.add(new SiteRoute.Node("folder " + path, SiteRoute.Layer.TARGETS, SiteRoute.Kind.FOLDER,
+                path, "files", SiteRoute.State.FILES).opens(() -> hands.browse(path)));
+        graph.link(from, key);
+        graph.link(key, machine(graph));
+        return SiteRoute.State.FILES;
+    }
+
+    private static SiteRoute.State elsewhere(SiteRoute.Builder graph, String from, String raw) {
+        String key = graph.add(new SiteRoute.Node("remote " + raw, SiteRoute.Layer.TARGETS, SiteRoute.Kind.REMOTE,
+                raw.replaceFirst("^[a-z]+://", ""), "another machine", SiteRoute.State.UNKNOWN));
+        graph.link(from, key);
+        return SiteRoute.State.UNKNOWN;
+    }
+
+    /** Where the way stops inside Nginx: a redirect, an answer written in the file. */
+    private static SiteRoute.State end(SiteRoute.Builder graph, String from, SiteRoute.Kind kind, String name,
+                                       String detail) {
+        String key = graph.add(new SiteRoute.Node(kind + " " + name, SiteRoute.Layer.TARGETS, kind, name, detail,
+                SiteRoute.State.UNKNOWN));
+        graph.link(from, key);
+        return SiteRoute.State.UNKNOWN;
+    }
+
+    private Endpoint listeningOn(int port) {
+        return listening.stream().filter(endpoint -> endpoint.socket().port() == port).findFirst().orElse(null);
+    }
+
+    /** The pool a proxy_pass names, or null when it names an address. */
+    private Upstream poolOf(String target) {
+        String host = com.kubo.network.NetworkCommands.target(target).host();
+        for (Upstream upstream : upstreams) {
+            if (upstream.name().equals(host)) {
+                return upstream;
+            }
+        }
+        return null;
+    }
+
+    /** The port a pool member is on when it is on this machine, -1 otherwise. */
+    private static int localPortOf(String address) {
+        Vhost.ProxyTarget target = com.kubo.network.NetworkCommands.target("http://" + address);
+        return target.isLocalPort() ? target.port() : -1;
+    }
+
+    /** Whether a pool member takes requests: not marked down, and something listens there when it is local. */
+    private boolean answers(Upstream.Member member) {
+        if (member.down()) {
+            return false;
+        }
+        int port = localPortOf(member.address());
+        return port < 0 || listeningOn(port) != null;
+    }
+
+    /** The certificate in a few words, and how it holds. */
+    private String[] certificateWords(List<Vhost> blocks) {
         String wanted = blocks.stream().map(Vhost::certificate).filter(name -> !name.isEmpty())
                 .findFirst().orElse("");
         if (wanted.isEmpty()) {
-            facts.getChildren().add(fact("CERTIFICATE", "none, so this site answers in plain HTTP"));
-            return;
+            return new String[]{"", "UNKNOWN"};
         }
         Certificate certificate = certificates.stream().filter(one -> one.file().equals(wanted))
                 .findFirst().orElse(null);
         if (certificate == null) {
-            facts.getChildren().add(fact("CERTIFICATE", wanted));
-            return;
+            return new String[]{"https", "UNKNOWN"};
+        }
+        if (!certificate.readable()) {
+            return new String[]{"certificate unreadable", "WARNS"};
         }
         Instant now = Instant.now();
-        String text;
-        String style = "mono";
-        if (!certificate.readable()) {
-            text = "could not be read: " + certificate.problem();
-            style = "card-problem";
-        } else if (certificate.expired(now)) {
-            text = "expired " + -certificate.daysLeft(now) + " days ago";
-            style = "card-problem";
-        } else {
-            long days = certificate.daysLeft(now);
-            text = days + (days == 1 ? " day left" : " days left");
-            style = switch (certificate.urgency(now)) {
-                case URGENT -> "card-problem";
-                case SOON -> "card-warning";
-                default -> "card-success";
+        if (certificate.expired(now)) {
+            return new String[]{"cert expired " + -certificate.daysLeft(now) + "d ago", "BROKEN"};
+        }
+        long days = certificate.daysLeft(now);
+        return new String[]{"cert " + days + "d left", switch (certificate.urgency(now)) {
+            case URGENT -> "BROKEN";
+            case SOON -> "WARNS";
+            default -> "WORKS";
+        }};
+    }
+
+    // The right-hand frame
+
+    private void drawFacts(List<Vhost> blocks, boolean on) {
+        boolean broken = sites.dangling().contains(selected);
+        facts.getChildren().add(fact("file", "sites-available/" + selected, "fetch-value"));
+        facts.getChildren().add(fact("state", broken ? "link to a missing file" : on ? "answering" : "switched off",
+                broken ? "port-alert" : on ? "journal-ok" : "port-what"));
+        List<String> names = new ArrayList<>(sites.namesOf(selected));
+        for (Vhost block : blocks) {
+            block.serverNames().forEach(name -> add(names, name));
+        }
+        facts.getChildren().add(fact("answers", names.isEmpty() ? "—" : String.join("  ", names),
+                "fetch-value"));
+        List<String> ports = new ArrayList<>();
+        for (Vhost block : blocks) {
+            for (int port : block.listenPorts()) {
+                if (!ports.contains(String.valueOf(port))) {
+                    ports.add(String.valueOf(port));
+                }
+            }
+        }
+        if (!ports.isEmpty()) {
+            facts.getChildren().add(fact("listens", String.join("  ", ports), "fetch-value"));
+        }
+        if (blocks.stream().anyMatch(Vhost::ssl)) {
+            String style = switch (certificate[1]) {
+                case "BROKEN" -> "port-alert";
+                case "WARNS" -> "fetch-note";
+                case "WORKS" -> "journal-ok";
+                default -> "fetch-value";
             };
+            facts.getChildren().add(fact("https", certificate[0].replace("cert ", "certificate, "), style));
+        } else if (!blocks.isEmpty()) {
+            facts.getChildren().add(fact("https", "no, plain http", "port-what"));
         }
-        VBox box = new VBox(1, label("CERTIFICATE", "metric-label"), label(text, style),
-                label(wanted, "tool-caveat"));
-        if (!certificate.caveat().isEmpty()) {
-            Label caveat = label(certificate.caveat(), "card-warning");
-            caveat.setWrapText(true);
-            caveat.setMinHeight(Region.USE_PREF_SIZE);
-            box.getChildren().add(caveat);
+        String log = accessLogOf(selected);
+        facts.getChildren().add(fact("log", log, "port-quiet"));
+    }
+
+    /** The pools this site forwards to, and every server in each. */
+    private void drawPool(List<Vhost> blocks) {
+        List<Upstream> used = new ArrayList<>();
+        for (Vhost block : blocks) {
+            for (Rule rule : block.routes()) {
+                Upstream upstream = rule.kind() == Rule.Kind.PROXY ? poolOf(rule.target()) : null;
+                if (upstream != null && !used.contains(upstream)) {
+                    used.add(upstream);
+                }
+            }
         }
-        facts.getChildren().add(box);
+        for (Upstream upstream : used) {
+            long up = upstream.servers().stream().filter(this::answers).count();
+            pool.getChildren().add(fact("pool", upstream.name() + "  ·  " + up + " of "
+                    + upstream.servers().size() + " up", "fetch-value"));
+            for (Upstream.Member member : upstream.servers()) {
+                Label address = new Label(member.address());
+                address.getStyleClass().add("port-what");
+                address.setMinWidth(0);
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, Priority.ALWAYS);
+                Label weight = new Label(member.weight() == 1 ? "" : "×" + member.weight());
+                weight.getStyleClass().add("port-quiet");
+                boolean silent = !member.down() && !answers(member);
+                Label state = new Label(silent ? "nothing listens" : member.state().toLowerCase(Locale.ROOT));
+                state.getStyleClass().add(silent ? "port-alert" : "port-quiet");
+                HBox row = new HBox(10, address, spacer, weight, state);
+                row.setAlignment(Pos.CENTER_LEFT);
+                row.setPadding(new Insets(0, 0, 0, 72));
+                pool.getChildren().add(row);
+            }
+        }
     }
 
     private void drawActions(boolean on) {
         if (on) {
-            Button off = new Button("SWITCH OFF");
-            off.getStyleClass().addAll("danger-button", "compact-button");
-            off.setFocusTraversable(false);
-            off.setOnAction(event -> {
+            Button off = bar("switch off", event -> {
+                working.setText("unlinking " + selected + " and reloading");
                 working.setRunning(true);
-                hands.disable(selected, trouble -> report(trouble,
-                        selected + " is switched off and Nginx reloaded."));
+                hands.disable(selected, trouble -> report(trouble, selected + " is off, nginx reloaded"));
             });
+            off.getStyleClass().add("port-danger");
             actions.getChildren().add(off);
-            actions.getChildren().add(note("Switching off removes the link and reloads. The file stays where "
-                    + "it is, so nothing is lost."));
         } else {
-            Button turnOn = new Button("SWITCH ON");
-            turnOn.getStyleClass().addAll("rail-button", "compact-button");
-            turnOn.setFocusTraversable(false);
-            turnOn.setOnAction(event -> {
+            actions.getChildren().add(bar("switch on", event -> {
+                working.setText("linking " + selected + ", testing, reloading");
                 working.setRunning(true);
-                hands.enable(selected, trouble -> report(trouble,
-                        selected + " is switched on and Nginx reloaded."));
-            });
-            actions.getChildren().add(turnOn);
-            actions.getChildren().add(note("The link is made, the configuration is tested, and the link is "
-                    + "removed again if Nginx refuses it. A bad site never survives the click."));
+                hands.enable(selected, trouble -> report(trouble, selected + " is on, nginx reloaded"));
+            }));
         }
+        actions.getChildren().add(bar("read the file", event -> {
+            below = Below.FILE;
+            paintTabs();
+            loadBelow();
+        }));
     }
 
-    // The bottom of the middle column
+    // The frame at the bottom
 
-    private void drawBelowTabs() {
-        belowTabs.getChildren().clear();
-        belowTabs.getChildren().addAll(
-                tab("WHAT IT IS ANSWERING", Below.LOG),
-                tab("THE FILE", Below.FILE));
-        boolean showingLog = below == Below.LOG;
-        logLines.setVisible(showingLog);
-        logLines.setManaged(showingLog);
+    private void paintTabs() {
+        for (Button tab : List.of(requestsTab, fileTab)) {
+            tab.getStyleClass().remove("tab-on");
+        }
+        (below == Below.REQUESTS ? requestsTab : fileTab).getStyleClass().add("tab-on");
+        boolean showingLog = below == Below.REQUESTS;
+        logScroll.setVisible(showingLog);
+        logScroll.setManaged(showingLog);
         file.setVisible(!showingLog);
         file.setManaged(!showingLog);
     }
 
     private Button tab(String text, Below which) {
         Button button = new Button(text);
-        button.getStyleClass().add("service-chip");
-        if (below == which) {
-            button.getStyleClass().add("service-chip-active");
-        }
+        button.getStyleClass().add("ghost-button");
         button.setFocusTraversable(false);
+        button.setMinWidth(Region.USE_PREF_SIZE);
         button.setOnAction(event -> {
             below = which;
-            drawBelowTabs();
+            paintTabs();
             loadBelow();
         });
         return button;
@@ -788,21 +850,34 @@ final class NginxScreen extends BorderPane {
     /** Asks for whichever of the two the reader is looking at, and only that one. */
     private void loadBelow() {
         if (selected.isEmpty()) {
+            logLines.getChildren().clear();
+            file.setText("");
+            belowSource.setText("");
             return;
         }
+        belowPulse.setText(below == Below.FILE ? "reading the file" : "reading the log");
         belowPulse.setRunning(true);
+        String asked = selected;
         if (below == Below.FILE) {
+            String path = "/etc/nginx/sites-available/" + selected;
+            belowSource.setText(path);
             file.setText("");
-            hands.readFile("/etc/nginx/sites-available/" + selected, text -> {
-                belowPulse.setRunning(false);
-                file.setText(text);
+            hands.readFile(path, text -> {
+                if (asked.equals(selected)) {
+                    belowPulse.setRunning(false);
+                    file.setText(text);
+                }
             });
             return;
         }
+        String log = accessLogOf(selected);
+        belowSource.setText(log);
         logLines.getChildren().clear();
-        hands.readLog(accessLogOf(selected), text -> {
-            belowPulse.setRunning(false);
-            showLog(text);
+        hands.readLog(log, text -> {
+            if (asked.equals(selected)) {
+                belowPulse.setRunning(false);
+                showLog(text);
+            }
         });
     }
 
@@ -818,22 +893,19 @@ final class NginxScreen extends BorderPane {
 
     private void showLog(String text) {
         logLines.getChildren().clear();
-        String log = accessLogOf(selected);
-        logLines.getChildren().add(label(log, "tool-caveat"));
         if (text == null || text.isBlank()) {
-            logLines.getChildren().add(note("Nothing came back. Either nobody has asked this site for anything "
-                    + "yet, or reading this file needs root."));
+            logLines.getChildren().add(muted("nothing yet, or the log needs root"));
             return;
         }
         String[] raw = text.split("\\R");
-        int from = Math.max(0, raw.length - 60);
+        int from = Math.max(0, raw.length - 80);
         for (int i = raw.length - 1; i >= from; i--) {
             if (raw[i].isBlank()) {
                 continue;
             }
             AccessLine line = AccessLine.of(raw[i]);
-            Label row = label(line.sentence(), "install-line");
-            row.getStyleClass().add(switch (line.level()) {
+            Label row = new Label(line.sentence());
+            row.getStyleClass().addAll("install-line", switch (line.level()) {
                 case OK -> "access-ok";
                 case MOVED -> "access-moved";
                 case REFUSED -> "access-refused";
@@ -844,66 +916,68 @@ final class NginxScreen extends BorderPane {
             row.setTextOverrun(javafx.scene.control.OverrunStyle.CENTER_ELLIPSIS);
             logLines.getChildren().add(row);
         }
-        if (logLines.getChildren().size() == 1) {
-            logLines.getChildren().add(note("The file is there and has nothing in it."));
+        if (logLines.getChildren().isEmpty()) {
+            logLines.getChildren().add(muted("the log is there and empty"));
         }
     }
 
     // Small pieces
 
-    private static VBox fact(String name, String value) {
-        Label label = label(value, "mono");
-        label.setWrapText(true);
-        return new VBox(1, label(name, "metric-label"), label);
+    /** One fact, the way the machine block reads one: a key in colour, its value beside it. */
+    private static HBox fact(String key, String value, String style) {
+        Label name = new Label(key);
+        name.getStyleClass().add("fetch-key");
+        name.setMinWidth(62);
+        Label text = new Label(value);
+        text.getStyleClass().add(style);
+        text.setWrapText(true);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
+        HBox row = new HBox(10, name, text);
+        row.setAlignment(Pos.TOP_LEFT);
+        return row;
     }
 
-    private Button rail(String text, javafx.event.EventHandler<javafx.event.ActionEvent> action) {
+    private static Button bar(String text, javafx.event.EventHandler<javafx.event.ActionEvent> action) {
         Button button = new Button(text);
-        button.getStyleClass().add("rail-button");
+        button.getStyleClass().add("ghost-button");
         button.setFocusTraversable(false);
+        button.setMinWidth(Region.USE_PREF_SIZE);
         button.setOnAction(action);
         return button;
     }
 
-    private static Region separator() {
-        Region line = new Region();
-        line.getStyleClass().add("rail-separator");
-        line.setMinWidth(1);
-        line.setPrefWidth(1);
-        return line;
+    private static ScrollPane scroll(javafx.scene.Node content) {
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("track-scroll");
+        return scroll;
     }
 
     /**
-     * One of the others: what it is, where to look, and the command that checks it. Enough to carry on by hand,
-     * and no pretence that Kubo is managing it.
+     * One of the others: what it is, where its configuration lives, and the command that checks it.
      */
-    private static VBox otherServer(com.kubo.model.network.WebServer server) {
-        Label name = label(server.label().toUpperCase(java.util.Locale.ROOT), "spine-kicker");
-        Label state = label(server.running() ? "RUNNING" : "INSTALLED, NOT RUNNING",
-                server.running() ? "card-success" : "card-note");
+    private static VBox otherServer(WebServer server) {
+        Label name = new Label(server.label().toLowerCase(Locale.ROOT));
+        name.getStyleClass().add("port-owner");
+        name.setMinWidth(Region.USE_PREF_SIZE);
+        Label state = new Label(server.running() ? "running" : "installed, not running");
+        state.getStyleClass().add(server.running() ? "journal-ok" : "port-what");
+        state.setWrapText(true);
+        state.setMinWidth(0);
         HBox head = new HBox(10, name, state);
         head.setAlignment(Pos.CENTER_LEFT);
-
-        VBox box = new VBox(4, head, note(server.kind().what()),
-                note("Its configuration: " + server.kind().configHome()),
-                note("To check it yourself: " + server.kind().check()));
-        box.getStyleClass().add("server-card");
-        box.setPadding(new Insets(10, 12, 10, 12));
-        box.setMaxWidth(560);
+        VBox box = new VBox(3, head, muted(server.kind().configHome()), muted("$ " + server.kind().check()));
+        box.setPadding(new Insets(6, 8, 8, 6));
         return box;
     }
 
-    private static Label note(String text) {
-        Label label = label(text, "card-note");
-        label.setWrapText(true);
-        label.setMaxWidth(560);
-        label.setMinHeight(Region.USE_PREF_SIZE);
-        return label;
-    }
-
-    private static Label label(String text, String styleClass) {
+    private static Label muted(String text) {
         Label label = new Label(text);
-        label.getStyleClass().add(styleClass);
+        label.getStyleClass().add("home-muted");
+        label.setWrapText(true);
+        label.setMinHeight(Region.USE_PREF_SIZE);
         return label;
     }
 }

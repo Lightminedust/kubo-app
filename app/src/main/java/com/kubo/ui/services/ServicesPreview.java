@@ -2,7 +2,6 @@ package com.kubo.ui.services;
 
 import com.kubo.model.services.BootState;
 import com.kubo.model.services.Dependencies;
-import com.kubo.model.files.RemoteEntry;
 import com.kubo.model.services.ServiceUnit;
 import com.kubo.model.services.ServicesReport;
 import com.kubo.model.services.Standing;
@@ -23,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Consumer;
 
 /**
  * Renders the services screen against a sample server to PNG files, without a connection.
@@ -42,20 +42,35 @@ public final class ServicesPreview {
         CountDownLatch done = new CountDownLatch(1);
         Platform.startup(() -> {
             try {
-                tree(output, "services", report(), Standing.RUNNING);
-                tree(output, "services-idle", report(), Standing.IDLE);
-                tree(output, "services-large", large(), Standing.RUNNING);
-                tree(output, "services-large-idle", large(), Standing.IDLE);
-                grown(output, "services-grown", large(), "nginx.service");
-                renderScope(output);
-                renderBuilder(output);
-                renderCard(output, "services-help", new ServicesHelp(() -> { }));
-                renderCard(output, "services-new-help", new BuilderHelp(() -> { }));
-                renderCard(output, "services-sheet", sheet(false));
-                // The foot of the card, where the things that take away live. Twice: for a unit a package
-                // installed, and for one written by hand, which is the only kind Kubo will delete.
-                renderCard(output, "services-sheet-foot", sheet(false), 700, true);
-                renderCard(output, "services-sheet-foot-local", sheet(true), 700, true);
+                scope(output, "services", 1400, 860, report(), "nginx.service", SHOW, "", scope -> { });
+                scope(output, "services-failed", 1400, 860, report(), "redis-server.service", FAILED_SHOW, "",
+                        scope -> scope.linesForPreview(FAILED_JOURNAL, false));
+                scope(output, "services-file", 1400, 860, report(), "nginx.service", SHOW, DROP_IN,
+                        scope -> scope.linesForPreview(UNIT_FILE, true));
+                scope(output, "services-find", 1400, 860, report(), "postgresql@16-main.service", POSTGRES_SHOW, "",
+                        scope -> scope.filterForPreview("postgres"));
+                scope(output, "services-large", 1400, 860, large(), "nginx.service", SHOW, "", scope -> { });
+                scope(output, "services-large-idle", 1400, 860, large(), "nginx.service", SHOW, "",
+                        scope -> scope.openForPreview(Standing.IDLE));
+                scope(output, "services-tree", 1400, 860, report(), "nginx.service", SHOW, "",
+                        scope -> scope.board().followForPreview("php8.2-fpm.service"));
+                scope(output, "services-new", 1400, 860, report(), "nginx.service", SHOW, "",
+                        scope -> scope.newServiceForPreview("/opt/backup/run.sh", "/opt/backup"));
+                scope(output, "services-new-empty", 1400, 860, report(), "nginx.service", SHOW, "",
+                        scope -> scope.newServiceForPreview("", ""));
+                scope(output, "services-narrow", 1100, 760, report(), "docker.service", DOCKER_SHOW, "",
+                        scope -> { });
+                scope(output, "services-limits", 1400, 860, report(), "nginx.service", SHOW, "",
+                        ServicesScope::limitsForPreview);
+                scope(output, "services-settings", 1400, 860, report(), "nginx.service", SHOW, DROP_IN,
+                        ServicesScope::settingsForPreview);
+                scope(output, "services-confirm", 1400, 860, report(), "nginx.service", SHOW, "",
+                        ServicesScope::confirmForPreview);
+                scope(output, "services-help", 1400, 860, report(), "nginx.service", SHOW, "",
+                        scope -> scope.showForPreview(new ServicesHelp(() -> { })));
+                scope(output, "services-journal-closed", 1400, 860, report(), "nginx.service", SHOW, "",
+                        scope -> scope.linesForPreview(CLOSED_JOURNAL, false));
+                reading(output);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
@@ -66,168 +81,42 @@ public final class ServicesPreview {
         Platform.exit();
     }
 
-    /** The new-service screen, with nothing behind it: no browser, no server. */
-    private static void renderBuilder(Path output) throws IOException {
-        renderBuilder(output, "services-new", null);
-        // And the same screen once a script that cannot be run has been picked, which is the one warning
-        // that stands between a unit that starts and a unit that fails at every start.
-        renderBuilder(output, "services-new-warning", new RemoteEntry("heartbeat.sh",
-                "/opt/kubo-test/heartbeat.sh", RemoteEntry.Type.FILE, 220, java.time.Instant.EPOCH,
-                "-rw-r--r--", "root", "root", "", RemoteEntry.UNKNOWN, true));
-    }
-
-    private static void renderBuilder(Path output, String name, RemoteEntry picked) throws IOException {
-        ServiceBuilder builder = new ServiceBuilder(null, null, (draft, text, done) -> { }, () -> { },
-                card -> { }, () -> { });
-        if (picked != null) {
-            builder.take(picked);
-        }
-        StackPane holder = new StackPane(builder);
-        Scene scene = new Scene(holder, 1400, 900, Color.web("#050508"));
-        scene.getStylesheets().add(com.kubo.KuboApp.STYLESHEET);
-        holder.applyCss();
-        holder.layout();
-        write(scene, output, name);
-        builder.stop();
-    }
-
-    /** The tree carried one step further, as a click on a service carries it. */
-    private static void grown(Path output, String name, ServicesReport report, String on) throws IOException {
-        ServicesTree tree = new ServicesTree();
-        StackPane holder = new StackPane(tree);
-        Scene scene = new Scene(holder, 1400, 860, Color.web("#050508"));
-        holder.applyCss();
-        holder.layout();
-        tree.setReport(report);
-        tree.setDependencies(links());
-        tree.freeze(0.1);
-        tree.freezeOn(on, 2.4);
-        write(scene, output, name);
-        tree.stop();
-    }
-
-    /** The tree: the five standings, and the services of whichever one is open. */
-    private static void tree(Path output, String name, ServicesReport report, Standing open) throws IOException {
-        ServicesTree tree = new ServicesTree();
-        StackPane holder = new StackPane(tree);
-        Scene scene = new Scene(holder, 1400, 860, Color.web("#050508"));
-        holder.applyCss();
-        holder.layout();
-        tree.setReport(report);
-        tree.setOpen(open);
-        tree.freeze(2.4);
-        holder.applyCss();
-        holder.layout();
-        tree.freeze(2.4);
-        write(scene, output, name);
-        tree.stop();
-    }
-
-    /** The whole screen: masthead, map and console, filled from the sample without a server. */
-    private static void renderScope(Path output) throws IOException {
+    /** The whole screen, filled from the sample, one service picked and its journal read. */
+    private static void scope(Path output, String name, int width, int height, ServicesReport report, String pick,
+                              String show, String dropIn, Consumer<ServicesScope> then) throws IOException {
         ServicesScope scope = new ServicesScope(null, null, null, null, null);
         StackPane holder = new StackPane(scope);
-        // Shorter than the other screens: twenty running services do not fill a 900-pixel window, and a
-        // picture that is half empty says less about the screen than a picture the list fills.
-        Scene scene = new Scene(holder, 1400, 720, Color.web("#050508"));
+        Scene scene = new Scene(holder, width, height, Color.web("#050508"));
         scene.getStylesheets().add(com.kubo.KuboApp.STYLESHEET);
         holder.applyCss();
         holder.layout();
-        scope.preview(report(), links());
+        scope.preview(report, links());
+        scope.pickForPreview(pick, ServiceCommands.parseShow(show), dropIn);
+        scope.linesForPreview(JOURNAL, false);
+        then.accept(scope);
         holder.applyCss();
         holder.layout();
-        scope.tree().freeze(0.1);
-        scope.tree().freezeOn("nginx.service", 2.4);
+        scope.board().freezeForPreview(2.4);
         holder.applyCss();
         holder.layout();
-        scope.tree().freeze(2.4);
-        write(scene, output, "services-scope");
+        scope.board().freezeForPreview(2.4);
+        write(scene, output, name);
         scope.shutdown();
     }
 
-    /** One of the cards on its own, over the background it floats on. */
-    private static void renderCard(Path output, String name, javafx.scene.layout.Region card) throws IOException {
-        renderCard(output, name, card, 700);
-    }
-
-    private static void renderCard(Path output, String name, javafx.scene.layout.Region card, int height)
-            throws IOException {
-        renderCard(output, name, card, height, false);
-    }
-
-    /**
-     * @param atFoot scrolls the card to its end before the picture is taken, for the blocks that sit below
-     *               a journal two hundred lines long
-     */
-    private static void renderCard(Path output, String name, javafx.scene.layout.Region card, int height,
-                                   boolean atFoot) throws IOException {
-        StackPane holder = new StackPane(card);
-        holder.getStyleClass().add("scope-view");
-        Scene scene = new Scene(holder, 800, height, Color.web("#050508"));
+    /** The screen as it opens: the journal of what systemd is being asked, over the board it will fill. */
+    private static void reading(Path output) throws IOException {
+        ServicesScope scope = new ServicesScope(null, null, null, null, null);
+        StackPane holder = new StackPane(scope);
+        Scene scene = new Scene(holder, 1400, 860, Color.web("#050508"));
         scene.getStylesheets().add(com.kubo.KuboApp.STYLESHEET);
         holder.applyCss();
         holder.layout();
-        if (atFoot) {
-            for (javafx.scene.Node node : card.lookupAll(".plain-scroll")) {
-                if (node instanceof javafx.scene.control.ScrollPane pane) {
-                    pane.setVvalue(1);
-                }
-            }
-            holder.layout();
-        }
-        write(scene, output, name);
-    }
-
-    /** A card that asks for nothing, for the previews: there is no server behind them. */
-    private static ServiceSheet.Hands idleHands() {
-        return new ServiceSheet.Hands() {
-            @Override
-            public void act(com.kubo.model.services.Action action) {
-            }
-
-            @Override
-            public void limit(com.kubo.model.services.Resource resource, String value,
-                              java.util.function.Consumer<String> done) {
-            }
-
-            @Override
-            public void signal(com.kubo.model.services.Signal signal, boolean everything,
-                               java.util.function.Consumer<String> done) {
-            }
-
-            @Override
-            public void saveSettings(String content, java.util.function.Consumer<String> done) {
-            }
-
-            @Override
-            public void clearSettings(java.util.function.Consumer<String> done) {
-            }
-
-            @Override
-            public void remove(String filePath) {
-            }
-
-            @Override
-            public void readSettings(java.util.function.Consumer<String> back) {
-                back.accept("[Service]" + System.lineSeparator() + "MemoryMax=512M");
-            }
-        };
-    }
-
-    /**
-     * @param local whether the unit file sits in /etc/systemd/system, which is what decides whether the card
-     *              offers to delete it or says why it will not
-     */
-    private static ServiceSheet sheet(boolean local) {
-        ServiceUnit nginx = report().units().stream()
-                .filter(unit -> unit.name().equals("nginx.service")).findFirst().orElseThrow();
-        ServiceSheet sheet = new ServiceSheet(nginx, links(), true, idleHands(), () -> { });
-        String show = local
-                ? SHOW.replace("/lib/systemd/system/nginx.service", "/etc/systemd/system/nginx.service")
-                : SHOW;
-        sheet.setDetail(ServiceCommands.parseShow(show), UNIT_FILE);
-        sheet.setJournal(JOURNAL);
-        return sheet;
+        scope.readingForPreview();
+        holder.applyCss();
+        holder.layout();
+        write(scene, output, "services-reading");
+        scope.shutdown();
     }
 
     private static void write(Scene scene, Path output, String name) throws IOException {
@@ -236,6 +125,73 @@ public final class ServicesPreview {
         ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
         System.out.println("Wrote " + file.toAbsolutePath());
     }
+
+    private static final String CLOSED_JOURNAL = """
+            Hint: You are currently not seeing messages from other users and the system.
+                  Users in groups 'adm', 'systemd-journal' can see all messages.
+                  Pass -q to turn off this notice.
+            -- No entries --
+            """;
+
+    private static final String DROP_IN = """
+            [Service]
+            Restart=always
+            MemoryMax=512M
+            """;
+
+    private static final String FAILED_SHOW = """
+            Id=redis-server.service
+            Description=Advanced key-value store
+            Type=notify
+            ExecStart={ path=/usr/bin/redis-server ; argv[]=/usr/bin/redis-server /etc/redis/redis.conf ; ignore_errors=no }
+            FragmentPath=/lib/systemd/system/redis-server.service
+            MainPID=0
+            NRestarts=5
+            Restart=always
+            Result=exit-code
+            """;
+
+    private static final String FAILED_JOURNAL = """
+            2026-11-12T08:41:02+0000 vps systemd[1]: Starting redis-server.service - Advanced key-value store...
+            2026-11-12T08:41:02+0000 vps redis-server[30211]: *** FATAL CONFIG FILE ERROR (Redis 7.0.15) ***
+            2026-11-12T08:41:02+0000 vps redis-server[30211]: >>> 'maxmemory 2gb hard'
+            2026-11-12T08:41:02+0000 vps redis-server[30211]: wrong number of arguments
+            2026-11-12T08:41:02+0000 vps systemd[1]: redis-server.service: Main process exited, code=exited, status=1/FAILURE
+            2026-11-12T08:41:02+0000 vps systemd[1]: redis-server.service: Failed with result 'exit-code'.
+            2026-11-12T08:41:02+0000 vps systemd[1]: Failed to start redis-server.service - Advanced key-value store.
+            2026-11-12T08:41:03+0000 vps systemd[1]: redis-server.service: Scheduled restart job, restart counter is at 5.
+            2026-11-12T08:41:03+0000 vps systemd[1]: redis-server.service: Start request repeated too quickly.
+            """;
+
+    private static final String POSTGRES_SHOW = """
+            Id=postgresql@16-main.service
+            Description=PostgreSQL Cluster 16-main
+            Type=forking
+            ExecStart={ path=/usr/bin/pg_ctlcluster ; argv[]=/usr/bin/pg_ctlcluster --skip-systemctl-redirect 16-main start ; ignore_errors=no }
+            FragmentPath=/lib/systemd/system/postgresql@.service
+            MainPID=1043
+            MemoryCurrent=91226112
+            TasksCurrent=8
+            ActiveEnterTimestamp=Fri 2026-09-18 04:12:16 UTC
+            NRestarts=0
+            Restart=on-failure
+            Result=success
+            """;
+
+    private static final String DOCKER_SHOW = """
+            Id=docker.service
+            Description=Docker Application Container Engine
+            Type=notify
+            ExecStart={ path=/usr/bin/dockerd ; argv[]=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock ; ignore_errors=no }
+            FragmentPath=/lib/systemd/system/docker.service
+            MainPID=977
+            MemoryCurrent=78118912
+            TasksCurrent=14
+            ActiveEnterTimestamp=Fri 2026-09-18 04:12:11 UTC
+            NRestarts=0
+            Restart=always
+            Result=success
+            """;
 
     static Dependencies links() {
         return ServiceCommands.parseRelations(RELATIONS + SMALL_RELATIONS);
@@ -254,7 +210,7 @@ public final class ServicesPreview {
             String name = RUNNING[i] + ".service";
             units.append(name).append(" loaded active running ").append(RUNNING[i]).append(" service\n");
             files.append(name).append(" enabled enabled\n");
-            blame.append(String.format("%12.3fs %s%n", 13.7 / (i + 1), name));
+            blame.append(String.format(java.util.Locale.ROOT, "%12.3fs %s%n", 13.7 / (i + 1), name));
         }
         for (String idle : IDLE) {
             String name = idle + ".service";

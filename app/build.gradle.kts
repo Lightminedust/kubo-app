@@ -28,6 +28,7 @@ version = appVersion
 dependencies {
     implementation(libs.sshj)
     implementation(libs.jackson.databind)
+    implementation(libs.commons.compress)
     runtimeOnly(libs.slf4j.simple)
 }
 
@@ -83,6 +84,21 @@ sourceSets {
         resources.srcDir(rootProject.file("assets"))
     }
 }
+
+// The running version is available in development and survives obfuscation. Package type is stamped by
+// jpackage below, separately for EXE, MSI, DEB, RPM and each portable archive.
+val buildInfo = tasks.register("buildInfo") {
+    val output = layout.buildDirectory.dir("generated/build-info")
+    inputs.property("appVersion", appVersion)
+    outputs.dir(output)
+    doLast {
+        output.get().file("com/kubo/update/build.properties").asFile.apply {
+            parentFile.mkdirs()
+            writeText("version=$appVersion\n")
+        }
+    }
+}
+sourceSets.main { resources.srcDir(buildInfo) }
 
 // Coverage
 
@@ -210,6 +226,7 @@ val packageLib = tasks.register<Sync>("packageLib") {
 // to stamp a release.
 
 val onWindows = System.getProperty("os.name").lowercase().startsWith("windows")
+val onMac = System.getProperty("os.name").lowercase().startsWith("mac")
 val packageLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
 
 /**
@@ -220,7 +237,11 @@ fun jpackageCommand(type: String, destination: File): List<String> {
     val binary = if (onWindows) "bin/jpackage.exe" else "bin/jpackage"
     val jpackage = packageLauncher.get().metadata.installationPath.file(binary).asFile.absolutePath
     // Windows wants an .ico; every other system wants a plain PNG.
-    val icon = if (onWindows) "assets/kubo.ico" else "assets/kubo.png"
+    val icon = when {
+        onWindows -> "assets/kubo.ico"
+        onMac -> "assets/kubo.icns"
+        else -> "assets/kubo.png"
+    }
     val arguments = mutableListOf(
         jpackage,
         "--type", type,
@@ -235,6 +256,9 @@ fun jpackageCommand(type: String, destination: File): List<String> {
         "--main-jar", tasks.jar.get().archiveFileName.get(),
         "--main-class", "com.kubo.Launcher",
         "--java-options", "-Dfile.encoding=UTF-8",
+        "--java-options", "-Dkubo.package=" + if (type == "app-image") {
+            if (onWindows) "portable-zip" else "portable-tar"
+        } else type,
         "--dest", destination.absolutePath,
     )
     // The app-image is just a folder; a licence screen, a home page, a menu entry and an upgrade rule only
@@ -255,7 +279,7 @@ fun jpackageCommand(type: String, destination: File): List<String> {
             // A fixed id so a new version REPLACES the old install instead of stacking a second Kubo beside it.
             // This value must never change once released.
             "--win-upgrade-uuid", "0ef6eab5-fefa-4d5c-8eb4-5abd3e462b86",
-        ) else listOf(
+        ) else if (onMac) emptyList() else listOf(
             // Package names are lower-case on Linux by convention, and required to be by dpkg.
             "--linux-package-name", "kubo",
             // The desktop entry, and the freedesktop category the menu files it under.
@@ -425,5 +449,13 @@ tasks.register<JavaExec>("previewRedis") {
     description = "Renders the Redis screen with a sample keyspace to PNG files in build/previews."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.kubo.ui.redis.RedisPreview"
+    args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("previewApps") {
+    group = "application"
+    description = "Renders the apps screen against a sample server to PNG files in build/previews."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.kubo.ui.apps.AppsPreview"
     args(layout.buildDirectory.dir("previews").get().asFile.absolutePath)
 }

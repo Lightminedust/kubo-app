@@ -45,7 +45,6 @@ import static com.kubo.ui.files.BranchStyle.HEADER_FONT;
 import static com.kubo.ui.files.BranchStyle.LINK;
 import static com.kubo.ui.files.BranchStyle.LOCAL;
 import static com.kubo.ui.files.BranchStyle.MUTED;
-import static com.kubo.ui.files.BranchStyle.PROBE_COLORS;
 import static com.kubo.ui.files.BranchStyle.SMALL_FONT;
 import static com.kubo.ui.files.BranchStyle.TAU;
 import static com.kubo.ui.files.BranchStyle.TEXT;
@@ -203,6 +202,10 @@ final class BranchPainter {
         List<Column> columns = tree.columns();
         for (int k = 0; k < columns.size(); k++) {
             Column column = columns.get(k);
+            if (column.loading) {
+                // The reading stands where the column will: no ruler under it yet.
+                continue;
+            }
             double x = Math.floor(sx(columnX(k))) + 0.5;
             double top = clamp(sy(column.top - ROW), HEADER_HEIGHT, height);
             double bottom = sy(column.top + Math.max(1, column.visible.size()) * ROW);
@@ -366,7 +369,8 @@ final class BranchPainter {
         double scale = clamp(camera.zoom, 0.45, 1.3);
 
         if (column.loading) {
-            drawLoading(gc, px, py, cx, clock - column.loadingStart, scale);
+            drawLoading(gc, px, py, cx, clock - column.loadingStart, scale,
+                    column.directory == null ? "" : column.directory.path());
             return;
         }
         if (!column.error.isEmpty() || column.visible.isEmpty()) {
@@ -574,42 +578,70 @@ final class BranchPainter {
     }
 
     /**
-     * The loading animation stays on the folder being read: pulses, orbiting sparks and fibers probing
-     * toward the column that is about to appear.
+     * A folder being read, the way Kubo shows every reading: a ring breathing on the folder, one fiber reaching to
+     * where its column will stand with light running along it, and there a red block with what is read, a braille
+     * spinner and the time it has taken. A folder read quicker than the eye shows only the fiber.
      */
-    private void drawLoading(GraphicsContext gc, double px, double py, double nextX, double t, double scale) {
-        double gap = nextX - px;
+    private void drawLoading(GraphicsContext gc, double px, double py, double nextX, double t, double scale,
+                             String path) {
+        double phase = (t * 0.8) % 1;
+        double ring = (8 + phase * 18) * scale;
         gc.setLineWidth(1);
-        for (int ring = 0; ring < 2; ring++) {
-            double phase = (t * 0.9 + ring * 0.5) % 1;
-            double radius = (8 + phase * 28) * scale;
-            gc.setStroke(FOLDER);
-            gc.setGlobalAlpha((1 - phase) * 0.55);
-            gc.strokeOval(px - radius, py - radius, radius * 2, radius * 2);
+        gc.setStroke(FOLDER);
+        gc.setGlobalAlpha((1 - phase) * 0.5);
+        gc.strokeOval(px - ring, py - ring, ring * 2, ring * 2);
+
+        double reach = clamp(t / 0.35, 0, 1);
+        double reached = 1 - Math.pow(1 - reach, 3);
+        double from = px + 9 * scale;
+        double endX = from + (nextX - from) * reached;
+        gc.setGlobalAlpha(0.32);
+        gc.setStroke(FOLDER);
+        gc.strokeLine(from, py, endX, py);
+        for (int k = 0; k < 2; k++) {
+            double run = (t * 0.9 + k * 0.5) % 1;
+            double x = from + (endX - from) * run;
+            gc.setFill(FOLDER);
+            gc.setGlobalAlpha(0.2 * Math.sin(Math.PI * run));
+            gc.fillOval(x - 5, py - 5, 10, 10);
+            gc.setGlobalAlpha(Math.sin(Math.PI * run));
+            gc.fillOval(x - 1.8, py - 1.8, 3.6, 3.6);
         }
-        for (int j = 0; j < 9; j++) {
-            double wave = 0.5 + 0.5 * Math.sin(t * 2.4 + j * 1.3);
-            double reach = gap * (0.2 + 0.55 * wave);
-            double targetY = py + (j - 4) * 22 * scale * (0.7 + 0.3 * Math.sin(t * 1.3 + j));
-            Color color = PROBE_COLORS[j % PROBE_COLORS.length];
-            fiber(gc, px, py, px + reach, targetY, 0, 1, color, 0.15 + 0.4 * wave, 0.8);
-            gc.setFill(color);
-            gc.setGlobalAlpha(0.45 + 0.55 * wave);
-            gc.fillOval(px + reach - 2, targetY - 2, 4, 4);
+        if (t < 0.14 || reach < 1) {
+            return;
         }
-        for (int i = 0; i < 12; i++) {
-            double angle = t * 3.2 + i * TAU / 12;
-            double radius = (14 + 2.5 * Math.sin(t * 5 + i)) * scale;
-            gc.setFill(i % 2 == 0 ? FOLDER : CODE);
-            gc.setGlobalAlpha(0.25 + 0.75 * i / 12.0);
-            gc.fillOval(px + Math.cos(angle) * radius - 1.3, py + Math.sin(angle) * radius - 1.3, 2.6, 2.6);
-        }
-        gc.setGlobalAlpha(0.55 + 0.45 * Math.sin(t * 4));
-        gc.setFill(MUTED);
-        gc.setFont(SMALL_FONT);
-        gc.setTextAlign(TextAlignment.CENTER);
+
+        double size = clamp(11.5 * scale, 9, 13);
+        Font plain = Font.font("Consolas", size);
+        Font bold = Font.font("Consolas", javafx.scene.text.FontWeight.BOLD, size);
+        double x = nextX + 4;
+        double first = py;
+        double second = py + size * 1.9;
+        gc.setGlobalAlpha(1);
+        gc.setFill(ALERT);
+        gc.fillRect(x, first - size * 0.62, size * 0.52, size * 1.24);
+        double wordX = x + size * 1.25;
+        gc.setTextAlign(TextAlignment.LEFT);
         gc.setTextBaseline(VPos.CENTER);
-        gc.fillText("READING", px, py + 38 * scale);
+        gc.setFont(bold);
+        gc.setFill(TEXT);
+        gc.fillText("reading", wordX, first);
+        gc.setFont(plain);
+        gc.setFill(FOLDER_TEXT);
+        gc.fillText(path, wordX + textWidth("reading", bold) + size * 0.9, first);
+        gc.setFill(Color.web("#e8c35a"));
+        gc.fillText(com.kubo.ui.Spinner.glyph(t), x, second);
+        gc.setFill(MUTED);
+        gc.fillText("waiting for the server", wordX, second);
+        gc.setFill(FOLDER_TEXT);
+        gc.fillText(String.format(Locale.ROOT, "%.1f s", t),
+                wordX + textWidth("waiting for the server", plain) + size, second);
+    }
+
+    private static double textWidth(String text, Font font) {
+        javafx.scene.text.Text probe = new javafx.scene.text.Text(text);
+        probe.setFont(font);
+        return probe.getLayoutBounds().getWidth();
     }
 
     /**

@@ -32,8 +32,12 @@ import java.util.function.IntConsumer;
  * keyboard.
  *
  * <p>Drawn on a canvas because a list of five thousand rows as nodes is five thousand nodes, and this draws only
- * the ones on screen. It draws only while something moves: rows growing in, a scroll settling, the light on the
- * spine while a folder is read. Left open and still, it costs nothing.
+ * the ones on screen. It draws only while something moves: rows growing in, a scroll settling, the reading of a
+ * folder. Left open and still, it costs nothing.
+ *
+ * <p>A folder being read is shown the way Kubo shows every reading: a red block, what is read, a braille spinner
+ * with the time it has taken, then {@code [  OK  ]} and the count before the rows grow in. A reading quicker than
+ * the eye shows none of that, only the rows.
  *
  * <p>The keyboard: up and down move, Home and End jump, a letter goes to the next row starting with it, Enter
  * opens or takes a row, Backspace goes back up, and Ctrl+A picks everything when several rows can be picked.
@@ -75,6 +79,17 @@ public final class SpineList extends Pane {
     private static final Font NAME_FONT = Font.font("Segoe UI", 12);
     private static final Font BOLD_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12);
     private static final Font SMALL_FONT = Font.font("Consolas", 10);
+    private static final Font JOURNAL_FONT = Font.font("Consolas", 11.5);
+    private static final Font JOURNAL_BOLD = Font.font("Consolas", FontWeight.BOLD, 11.5);
+    private static final Color KUBO = Color.web("#ff2d55");
+    private static final Color OK = Color.web("#35e0a1");
+    private static final Color WAITING = Color.web("#e8c35a");
+    /** A reading quicker than this shows nothing of itself: the rows simply grow in. */
+    private static final double SHOW_AFTER = 0.14;
+    /** How long the answer line stays before the rows come in. */
+    private static final double HOLD = 0.24;
+    private static final double FADE = 0.2;
+    private static final double JOURNAL_TOP = 20;
 
     private final Canvas canvas = new Canvas();
     private final Color accent;
@@ -90,7 +105,14 @@ public final class SpineList extends Pane {
     private double targetScroll;
     private double revealStart = -1;
     private boolean loading;
-    private String loadingText = "READING…";
+    private double loadingStart = -1;
+    /** What is being read, written after the red block: a path. */
+    private String loadingText = "";
+    private String waitingText = "waiting for the server";
+    /** When the answer to a reading that was shown came back, or -1. */
+    private double finishStart = -1;
+    private String finishText = "";
+    private final java.util.Map<String, Double> widths = new java.util.HashMap<>();
     private String message = "";
     private boolean problem;
 
@@ -146,9 +168,19 @@ public final class SpineList extends Pane {
         hovered = -1;
         scroll = 0;
         targetScroll = 0;
+        boolean shown = loading && loadingStart >= 0 && now() - loadingStart >= SHOW_AFTER;
         loading = false;
         boolean flashing = flashName != null && this.rows.stream().anyMatch(row -> row.name().equals(flashName));
-        revealStart = flashName != null ? -1 : now();
+        if (shown && flashName == null && !this.rows.isEmpty()) {
+            // The reading was on screen: it ends the way it began, with its answer, and the rows come in after.
+            finishStart = now();
+            long millis = Math.round((finishStart - loadingStart) * 1000);
+            finishText = this.rows.size() + (this.rows.size() == 1 ? " entry" : " entries") + "  " + millis + " ms";
+            revealStart = finishStart + HOLD;
+        } else {
+            finishStart = -1;
+            revealStart = flashName != null ? -1 : now();
+        }
         flashStart = flashing ? now() : -1;
         if (!flashing) {
             flashName = null;
@@ -167,15 +199,24 @@ public final class SpineList extends Pane {
         paint();
     }
 
-    /** While true, light runs down the spine and the rows are not drawn. */
+    /** While true, the reading is shown in place of the rows. Each call with true starts its clock again. */
     public void setLoading(boolean loading) {
+        if (loading) {
+            loadingStart = now();
+            finishStart = -1;
+        }
         this.loading = loading;
         wake();
     }
 
-    /** What is written beside the spine while it is loading. */
+    /** What is being read, written after the red block: the folder's path. */
     public void setLoadingText(String text) {
         loadingText = text == null ? "" : text;
+    }
+
+    /** What the wait is for, beside the spinner: "waiting for the server", "reading this computer". */
+    public void setWaitingText(String text) {
+        waitingText = text == null ? "" : text;
     }
 
     /**
@@ -276,6 +317,15 @@ public final class SpineList extends Pane {
     /** Takes the keyboard, so the arrows work without a click first. */
     public void focus() {
         canvas.requestFocus();
+    }
+
+    /** Only for the previews: the reading as it looks this long after it began, held still. */
+    public void loadingForPreview(double seconds) {
+        loading = true;
+        loadingStart = now() - seconds;
+        finishStart = -1;
+        stop();
+        paint();
     }
 
     /** Stops drawing for good, for a card that is closing. */
@@ -462,7 +512,8 @@ public final class SpineList extends Pane {
         boolean revealing = revealStart >= 0 && t - revealStart < REVEAL + Math.min(rows.size(), 40) * 0.015;
         boolean flashing = flashStart >= 0 && t - flashStart < FLASH;
         boolean scrolling = Math.abs(targetScroll - scroll) > 0.3;
-        return loading || revealing || flashing || scrolling;
+        boolean answering = finishStart >= 0 && t - finishStart < HOLD + FADE;
+        return loading || revealing || flashing || scrolling || answering;
     }
 
     private void frame() {
@@ -496,24 +547,22 @@ public final class SpineList extends Pane {
         gc.setTextBaseline(VPos.CENTER);
 
         gc.setStroke(accent);
-        gc.setGlobalAlpha(0.35);
+        gc.setGlobalAlpha(loading ? 0.18 : 0.35);
         gc.setLineWidth(1);
         gc.strokeLine(SPINE + 0.5, 0, SPINE + 0.5, height);
 
         if (loading) {
-            // Light running down the spine: the list is being read, and it is this list that is.
-            for (int i = 0; i < 14; i++) {
-                double phase = (t * 0.8 + i / 14.0) % 1;
-                gc.setFill(accent);
-                gc.setGlobalAlpha(Math.sin(Math.PI * phase) * 0.9);
-                gc.fillOval(SPINE - 2, phase * height - 2, 4, 4);
+            double since = t - loadingStart;
+            if (since >= SHOW_AFTER) {
+                drawScan(gc, height, since - SHOW_AFTER);
+                drawJournal(gc, width, since, 1, null, false);
             }
-            text(gc, loadingText, SPINE + 20, 24, MUTED, SMALL_FONT, TextAlignment.LEFT, 1);
             return;
         }
         if (rows.isEmpty()) {
-            text(gc, message.isEmpty() ? "NOTHING HERE" : message, SPINE + 20, 24, problem ? PROBLEM : MUTED,
-                    SMALL_FONT, TextAlignment.LEFT, 1);
+            // Nothing to grow: the reading's own last line says why, and stays.
+            boolean empty = message.isEmpty() || !problem;
+            drawJournal(gc, width, 0, 1, empty ? (message.isEmpty() ? "nothing here" : message) : message, !empty);
             drawDrop(gc, width, height);
             return;
         }
@@ -533,7 +582,105 @@ public final class SpineList extends Pane {
         }
         gc.setStroke(FAINT);
         gc.strokeLine(0, height - 0.5, width, height - 0.5);
+        if (finishStart >= 0 && t - finishStart < HOLD + FADE) {
+            double fade = t - finishStart <= HOLD ? 1 : 1 - (t - finishStart - HOLD) / FADE;
+            drawJournal(gc, width, 0, Math.max(0, fade), finishText, false);
+        }
         drawDrop(gc, width, height);
+    }
+
+    /**
+     * A light running down the spine while the folder is read: a bright head with a tail, the way a cursor runs
+     * down a listing.
+     */
+    private void drawScan(GraphicsContext gc, double height, double since) {
+        double travel = height + 90;
+        double head = (since * 300) % travel - 30;
+        double tail = 70;
+        gc.setLineWidth(1.6);
+        gc.setStroke(new javafx.scene.paint.LinearGradient(0, head - tail, 0, head, false,
+                javafx.scene.paint.CycleMethod.NO_CYCLE, new javafx.scene.paint.Stop(0, Color.TRANSPARENT),
+                new javafx.scene.paint.Stop(1, accent)));
+        gc.setGlobalAlpha(0.9);
+        gc.strokeLine(SPINE + 0.5, Math.max(0, head - tail), SPINE + 0.5, Math.min(height, head));
+        gc.setLineWidth(1);
+        if (head > 0 && head < height) {
+            gc.setFill(accent);
+            gc.setGlobalAlpha(0.22);
+            gc.fillOval(SPINE + 0.5 - 6, head - 6, 12, 12);
+            gc.setGlobalAlpha(1);
+            gc.fillOval(SPINE + 0.5 - 2.2, head - 2.2, 4.4, 4.4);
+        }
+    }
+
+    /**
+     * The reading, the way Kubo writes every reading: a red block and what is read, then a braille spinner and
+     * the time it has taken, or the answer.
+     *
+     * @param end    the answer, or null while it is still awaited
+     * @param failed true to write the answer as a failure
+     */
+    private void drawJournal(GraphicsContext gc, double width, double since, double alpha, String end,
+                             boolean failed) {
+        if (alpha <= 0) {
+            return;
+        }
+        double x = SPINE + 16;
+        double first = JOURNAL_TOP;
+        double second = JOURNAL_TOP + 22;
+        // Hung off the spine, like a row.
+        gc.setGlobalAlpha(alpha * 0.35);
+        gc.setStroke(accent);
+        gc.setLineWidth(1);
+        gc.strokeLine(SPINE, first, x - 5, first);
+        gc.setGlobalAlpha(alpha);
+        gc.setFill(KUBO);
+        gc.fillRect(x, first - 7, 6, 14);
+        double wordX = x + 14;
+        text(gc, "reading", wordX, first, TEXT, JOURNAL_BOLD, TextAlignment.LEFT, alpha);
+        double pathX = wordX + measure("reading", JOURNAL_BOLD) + 10;
+        text(gc, clip(loadingText, width - pathX - 12), pathX, first, SOFT, JOURNAL_FONT, TextAlignment.LEFT,
+                alpha);
+
+        if (end == null) {
+            text(gc, com.kubo.ui.Spinner.glyph(since), x, second, WAITING, JOURNAL_FONT, TextAlignment.LEFT, alpha);
+            String waited = String.format(Locale.ROOT, "%.1f s", since);
+            text(gc, waitingText, wordX, second, MUTED, JOURNAL_FONT, TextAlignment.LEFT, alpha);
+            text(gc, waited, wordX + measure(waitingText, JOURNAL_FONT) + 12, second, SOFT, JOURNAL_FONT,
+                    TextAlignment.LEFT, alpha);
+            return;
+        }
+        String mark = failed ? "[FAILED]" : "[  OK  ]";
+        text(gc, mark, x, second, failed ? PROBLEM : OK, JOURNAL_FONT, TextAlignment.LEFT, alpha);
+        double answerX = x + measure(mark, JOURNAL_FONT) + 10;
+        text(gc, clip(end, width - answerX - 12), answerX, second, failed ? PROBLEM : SOFT, JOURNAL_FONT,
+                TextAlignment.LEFT, alpha);
+    }
+
+    private double measure(String text, Font font) {
+        if (widths.size() > 400) {
+            widths.clear();
+        }
+        return widths.computeIfAbsent(font.getName() + font.getSize() + "|" + text, key -> {
+            javafx.scene.text.Text probe = new javafx.scene.text.Text(text);
+            probe.setFont(font);
+            return probe.getLayoutBounds().getWidth();
+        });
+    }
+
+    private String clip(String text, double room) {
+        if (room < 20 || text.isEmpty()) {
+            return room < 20 ? "" : text;
+        }
+        if (measure(text, JOURNAL_FONT) <= room) {
+            return text;
+        }
+        // A path is cut from its start: the end of it is the part that says where.
+        String cut = text;
+        while (cut.length() > 2 && measure("\u2026" + cut, JOURNAL_FONT) > room) {
+            cut = cut.substring(1);
+        }
+        return "\u2026" + cut;
     }
 
     private void drawRow(GraphicsContext gc, Row row, int i, double width, double t) {

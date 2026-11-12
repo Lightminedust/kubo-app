@@ -31,7 +31,9 @@ public class CommandService {
         /** Packages: what apt and dpkg report, and the installs, removals and upgrades asked for. */
         PACKAGES,
         /** Services: what systemd reports about its units and the last boot. */
-        SERVICES
+        SERVICES,
+        /** Apps: what PM2 and supervisor keep running, and the starts, stops and scales asked of them. */
+        APPS
     }
 
     /**

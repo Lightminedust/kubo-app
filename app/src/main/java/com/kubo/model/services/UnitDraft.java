@@ -15,8 +15,12 @@ import java.util.regex.Pattern;
  * never sees any of it. What still has to be right is the name, because that becomes a path, and the quoting
  * of a path inside {@code ExecStart}, because systemd splits that line on spaces itself.
  */
-public record UnitDraft(String name, String description, String command, String workingDirectory,
-                        String user, String restart, int restartSeconds, boolean atBoot) {
+public record UnitDraft(String name, String description, String command, String arguments,
+                        String workingDirectory, String user, String restart, int restartSeconds,
+                        boolean atBoot) {
+
+    /** A user name systemd and the system both take, the only kind written into User=. */
+    private static final Pattern USER = Pattern.compile("^[a-z_][a-z0-9_-]{0,31}\\$?$");
 
     /** What systemd allows in a unit name, and what may therefore become a file name under /etc. */
     private static final Pattern NAME = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}$");
@@ -28,10 +32,17 @@ public record UnitDraft(String name, String description, String command, String 
         name = name == null ? "" : name.trim();
         description = description == null ? "" : description.trim();
         command = command == null ? "" : command.trim();
+        arguments = arguments == null ? "" : arguments.trim();
         workingDirectory = workingDirectory == null ? "" : workingDirectory.trim();
         user = user == null ? "" : user.trim();
         restart = restart == null || restart.isBlank() ? "on-failure" : restart.trim();
         restartSeconds = Math.max(0, Math.min(restartSeconds, 3600));
+    }
+
+    /** A draft whose command takes no arguments, or has them written into it. */
+    public UnitDraft(String name, String description, String command, String workingDirectory, String user,
+                     String restart, int restartSeconds, boolean atBoot) {
+        this(name, description, command, "", workingDirectory, user, restart, restartSeconds, atBoot);
     }
 
     /** An empty draft, which is where the screen starts. */
@@ -54,18 +65,27 @@ public record UnitDraft(String name, String description, String command, String 
     public List<String> problems() {
         List<String> found = new ArrayList<>();
         if (name.isEmpty()) {
-            found.add("It needs a name.");
+            found.add("it needs a name");
         } else if (!validName(name)) {
-            found.add("A name may hold letters, digits, and _ . @ - only, and Kubo adds .service itself.");
+            found.add("a name holds letters, digits and _ . @ - only, and kubo adds .service itself");
         }
         if (command.isEmpty()) {
-            found.add("It needs something to run. Pick a file in the tree, or type a command.");
+            found.add("it needs something to run");
         } else if (!command.startsWith("/")) {
-            found.add("systemd runs a service with no PATH of its own, so the command has to be a full path "
-                    + "starting with /.");
+            found.add("what it runs needs its full path, starting with /: systemd gives a service no PATH");
         }
         if (!workingDirectory.isEmpty() && !workingDirectory.startsWith("/")) {
-            found.add("The working directory has to be a full path starting with /.");
+            found.add("where it runs needs its full path, starting with /");
+        }
+        if (!user.isEmpty() && !USER.matcher(user).matches()) {
+            found.add("that is not a user name the system takes");
+        }
+        // Each of these becomes one line of the file: a line break would write a second setting into it.
+        for (String field : new String[]{description, command, arguments, workingDirectory}) {
+            if (field.contains("\n") || field.contains("\r")) {
+                found.add("each field stays on one line");
+                break;
+            }
         }
         return found;
     }
@@ -86,7 +106,8 @@ public record UnitDraft(String name, String description, String command, String 
 
         unit.append("[Service]\n");
         unit.append("Type=simple\n");
-        unit.append("ExecStart=").append(quoted(command)).append('\n');
+        unit.append("ExecStart=").append(quoted(command))
+                .append(arguments.isEmpty() ? "" : " " + arguments).append('\n');
         if (!workingDirectory.isEmpty()) {
             unit.append("WorkingDirectory=").append(quoted(workingDirectory)).append('\n');
         }

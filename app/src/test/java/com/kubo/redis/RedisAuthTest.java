@@ -214,7 +214,7 @@ class RedisAuthTest {
 
         IOException refused = assertThrows(IOException.class,
                 () -> RedisJson.readEntries(RedisType.STREAM, "[]"));
-        assertTrue(refused.getMessage().contains("REDIS CLI"), refused.getMessage());
+        assertTrue(refused.getMessage().contains("redis-cli"), refused.getMessage());
     }
 
     @Test

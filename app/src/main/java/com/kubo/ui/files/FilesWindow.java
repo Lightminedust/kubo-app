@@ -48,7 +48,7 @@ public final class FilesWindow {
         stage.setMinWidth(Math.min(1000, screen.getWidth() - 32));
         stage.setMinHeight(Math.min(640, screen.getHeight() - 48));
         stage.setScene(scene);
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnCloseRequest(event -> {
             // Editors close with this window: unsaved work is shown first instead of being lost.
             if (view.hasUnsavedEditors()) {

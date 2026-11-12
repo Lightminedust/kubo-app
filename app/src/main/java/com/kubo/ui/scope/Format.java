@@ -9,7 +9,6 @@ public final class Format {
 
     private static final String[] UNITS = {"B", "KB", "MB", "GB", "TB"};
     // Network full scale: 100 Mbit/s.
-    private static final double RATE_FULL_SCALE = 12_500_000;
 
     private Format() {
     }
@@ -28,7 +27,7 @@ public final class Format {
     }
 
     static String rate(long bytesPerSecond) {
-        return bytes(bytesPerSecond) + "/S";
+        return bytes(bytesPerSecond) + "/s";
     }
 
     static String percent(double value) {
@@ -40,18 +39,12 @@ public final class Format {
         long hours = seconds % 86_400 / 3_600;
         long minutes = seconds % 3_600 / 60;
         if (days > 0) {
-            return days + " D " + hours + " H";
+            return days + "d " + hours + "h";
         }
         if (hours > 0) {
-            return hours + " H " + minutes + " M";
+            return hours + "h " + minutes + "m";
         }
-        return minutes + " M";
+        return minutes + "m";
     }
 
-    /**
-     * Throughput on a logarithmic 0..1 scale, so a few kilobytes are already visible.
-     */
-    static double rateLevel(long bytesPerSecond) {
-        return Math.min(1, Math.log10(1 + Math.max(0, bytesPerSecond)) / Math.log10(1 + RATE_FULL_SCALE));
-    }
 }

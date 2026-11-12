@@ -3,11 +3,9 @@ package com.kubo.ui.network;
 import com.kubo.command.CommandEntry;
 import com.kubo.model.network.Endpoint;
 import com.kubo.model.network.Firewall;
-import com.kubo.model.network.FirewallRule;
 import com.kubo.model.network.NetworkMap;
 import com.kubo.model.network.NginxSites;
 import com.kubo.network.NetworkCommands;
-import com.kubo.model.network.PmApp;
 import com.kubo.model.network.Risk;
 import com.kubo.model.network.ServiceOwner;
 import com.kubo.model.network.Vhost;
@@ -23,7 +21,6 @@ import com.kubo.ui.docker.SudoPrompt;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -47,16 +44,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * The network screen: a masthead stating how exposed the server is, one rail of actions, the flow map from the
- * internet to each process, and an inspector that acts on whichever port is selected — open or close it at the
- * firewall, restart or stop the application behind it, or end the process outright.
+ * The network screen, in the same tiles as the others: the machine on the left, every listening port in the
+ * middle grouped by how far it can be reached, and on the right the chosen port, what stands in front of it
+ * and what can be done to it. The log is out of the way until somebody asks for it.
  */
 public final class NetworkScope extends StackPane {
-
-    private static final Color ALERT = Color.web("#ff2d55");
-    private static final Color OPEN = Color.web("#ffb347");
-    private static final Color SAFE = Color.web("#35e0a1");
-    private static final Color CYAN = Color.web("#35e8ff");
 
     /** The name this screen answers to in {@link com.kubo.command.Attention}. */
     public static final String ATTENTION = "NETWORK";
@@ -65,13 +57,6 @@ public final class NetworkScope extends StackPane {
     /** The map or the nginx screen, whichever the operator asked for. */
     private final javafx.scene.layout.StackPane screens = new javafx.scene.layout.StackPane();
     private javafx.scene.Node mapView;
-    /**
-     * The wordmark, TOOLS and ROOT. Kept apart from the rest of the masthead because it belongs to the window
-     * and not to the map: reading a log needs root whichever screen is asking.
-     */
-    private HBox identityRow;
-    /** The zoom controls, which move the map and mean nothing on any other screen. */
-    private HBox cameraBar;
     private NginxScreen nginx;
     private final VBox masthead = new VBox();
     /** Only for the tools card: what this server already has, and what could install the rest. */
@@ -86,6 +71,7 @@ public final class NetworkScope extends StackPane {
     private final String target;
     /** Only to show what is being asked while a screen waits. Null in the previews. */
     private final CommandService commands;
+    private final SshConnection connection;
     private final ServerConsole console;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "kubo-network");
@@ -93,31 +79,49 @@ public final class NetworkScope extends StackPane {
         return thread;
     });
 
-    private final NetworkTree flow = new NetworkTree();
-    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(12), event -> refresh(false)));
+    private final NetworkTree ports = new NetworkTree();
+    /**
+     * The quiet re-reading, so a port opened or closed outside Kubo shows up. It shows nothing while it runs:
+     * nothing is happening that anybody needs to watch.
+     */
+    private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(20), event -> refresh(false)));
+    /** True while a reading is on its way back. A poll that finds one in flight does not queue a second. */
+    private boolean reading;
+    /** Somebody asked for a fresh reading while one was in flight: it starts as soon as that one lands. */
+    private boolean readAgain;
+    /** Re-reads the moment root is turned on or off, since that changes what can be read at all. */
+    private final javafx.beans.value.ChangeListener<Boolean> onRoot = (observable, before, now) ->
+            Platform.runLater(() -> rootChanged(now));
+    /** The journal of a reading somebody asked for, over the map. */
+    private final com.kubo.ui.Journal readingOverlay = new com.kubo.ui.Journal(NetworkScope::words);
+    /** The same journal over the Nginx and blocked screens, which have no map to lay it on. */
+    private final com.kubo.ui.Journal screenJournal = new com.kubo.ui.Journal(NetworkScope::words);
+    /** True while a reading somebody asked for is out, and so is shown. */
+    private boolean watched;
+    /** Why the next shown reading happens, when there is something to say about it. */
+    private String readingNote = "";
+    private Runnable stopWatching = () -> { };
 
-    // Masthead
-    private final Label headline = label("NETWORK", "sheet-title");
-    private final Label caption = label("", "sheet-caption");
-    private final HBox tagRow = new HBox(6);
-    private final Label exposedValue = label("—", "readout-value");
-    private final Label firewallValue = label("—", "readout-value");
-    private final Label alertsValue = label("—", "readout-value");
-    private final Button isolatedToggle = new Button("HIDE LOOPBACK");
+    // The bar, the actions and the status line
+    private HBox actionsBar;
+    private final Label statusMode = label("network", "status-mode");
+    private final Label statusMessage = label("", "status-message");
+    private final Label firewallFact = label("", "status-fact");
+    private final Label listeningFact = label("", "status-fact");
+    private final Label readFact = label("", "status-fact");
+    private com.kubo.ui.Tile consoleTile;
 
-    // Inspector
-    private final Label portTitle = label("NO PORT SELECTED", "inspector-key");
-    private final Label reachBadge = label("", "badge");
-    private final VBox chain = new VBox(6);
-    private final VBox riskBox = new VBox(6);
-    private final FlowPane actions = new FlowPane(8, 8);
+    // The chosen port
+    private final VBox portBox = new VBox(10);
+    private final FlowPane actions = new FlowPane(16, 8);
     private final Label status = label("", "card-note");
-    private final VBox notesBox = new VBox(4);
 
     private static final System.Logger LOG = System.getLogger(NetworkScope.class.getName());
 
     private NetworkMap map = NetworkMap.empty();
     private final MachinePanel machine = new MachinePanel();
+    private static final java.time.format.DateTimeFormatter CLOCK =
+            java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").withZone(java.time.ZoneId.systemDefault());
     /** The edge card while it is open, so a ban can report into the card it was clicked in. */
     private GuardCard guard;
     private FirewallCard firewallCard;
@@ -143,30 +147,74 @@ public final class NetworkScope extends StackPane {
         this.tools = connection == null || root == null ? null
                 : new com.kubo.tools.ToolService(connection, commands, root.privilege());
         this.commands = commands;
+        this.connection = connection;
         this.console = new ServerConsole(connection, commands, root, "NETWORK",
                 CommandService.Origin.NETWORK, java.util.Set.of());
         getStyleClass().add("scope-view");
 
-        flow.setOnSelect(this::showEndpoint);
-        flow.setOnMenu(request -> showMenu(request.endpoint(), request.screenX(), request.screenY()));
+        ports.setOnSelect(this::showEndpoint);
+        ports.setOnMenu(request -> showMenu(request.endpoint(), request.screenX(), request.screenY()));
+        ports.setOnSpaceMenu(request -> showSpaceMenu(request.screenX(), request.screenY()));
         if (connection != null) {
-            flow.setHostname(hostOf(String.valueOf(connection.target())));
+            ports.setHostname(hostOf(String.valueOf(connection.target())));
         }
 
-        BorderPane body = new BorderPane(flow);
-        body.setLeft(machine);
-        body.setRight(buildInspector());
+        com.kubo.ui.Tile machineTile = new com.kubo.ui.Tile("machine", machine).accent("tile-cyan");
+        // The map's own camera, small, in its corner: the wheel and a drag do the same, this is for finding it.
+        HBox camera = new HBox(12, bar("−", event -> ports.zoomOut()), bar("fit", event -> ports.fit()),
+                bar("+", event -> ports.zoomIn()));
+        camera.getStyleClass().add("map-camera");
+        camera.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+        StackPane.setAlignment(camera, Pos.BOTTOM_RIGHT);
+        com.kubo.ui.Tile portsTile = new com.kubo.ui.Tile("map", new StackPane(ports, camera, readingOverlay))
+                .accent("tile-amber");
+        com.kubo.ui.Tile portTile = new com.kubo.ui.Tile("port", buildInspector());
+        machineTile.setMinWidth(230);
+        machineTile.setPrefWidth(280);
+        machineTile.setMaxWidth(300);
+        portsTile.setMinWidth(380);
+        portsTile.setPrefWidth(500);
+        HBox.setHgrow(portsTile, Priority.ALWAYS);
+        portTile.setMinWidth(290);
+        portTile.setPrefWidth(340);
+        portTile.setMaxWidth(360);
+        HBox frames = new HBox(18, machineTile, portsTile, portTile);
+        VBox.setVgrow(frames, Priority.ALWAYS);
+
+        // The log and the shell: there when asked for, not before. Most visits never need either.
+        console.setFramed();
+        consoleTile = new com.kubo.ui.Tile("log", console).accent("tile-green");
+        consoleTile.setMinHeight(160);
+        consoleTile.setPrefHeight(200);
+        consoleTile.setMaxHeight(240);
+        consoleTile.setVisible(false);
+        consoleTile.setManaged(false);
+
+        VBox body = new VBox(22, frames, consoleTile);
+        body.getStyleClass().add("tiles");
         mapView = body;
 
-        // The map and the nginx screen take turns in the same place. Nginx is not a card over the map: it is a
-        // screen of its own, with its own rail, and it needs the whole window to say anything useful.
+        // The ports and the nginx screen take turns in the same place. Nginx is not a card over the ports: it
+        // is a screen of its own, with its own rail, and it needs the whole window to say anything useful.
         screens.getChildren().add(body);
 
         masthead.getChildren().setAll(buildMasthead());
-        BorderPane layout = new BorderPane(screens);
+        BorderPane layout = new BorderPane(new StackPane(screens, screenJournal));
         layout.setTop(masthead);
-        layout.setBottom(console);
+        layout.setBottom(buildStatus());
         getChildren().add(layout);
+
+        // While a reading somebody asked for is out, each answer is shown as it comes back: what was asked, and
+        // that something is being asked at all.
+        if (commands != null) {
+            stopWatching = commands.addLoggedListener(logged -> {
+                if (logged.origin() == CommandService.Origin.NETWORK) {
+                    CommandEntry answer = logged.entry();
+                    Platform.runLater(() -> answered(answer));
+                }
+            });
+        }
+        RootSession.elevatedProperty().addListener(onRoot);
 
         showEndpoint(null);
         poll.setCycleCount(Timeline.INDEFINITE);
@@ -238,7 +286,7 @@ public final class NetworkScope extends StackPane {
      * outside Kubo reaches the screen.
      */
     private void reread() {
-        reread(false);
+        reread(true);
     }
 
     private void reread(boolean announce) {
@@ -248,7 +296,9 @@ public final class NetworkScope extends StackPane {
 
     public void shutdown() {
         poll.stop();
-        flow.stop();
+        ports.stop();
+        stopWatching.run();
+        RootSession.elevatedProperty().removeListener(onRoot);
         console.shutdown();
         worker.shutdownNow();
     }
@@ -261,53 +311,122 @@ public final class NetworkScope extends StackPane {
         if (!announce && !com.kubo.command.Attention.holds(ATTENTION)) {
             return;
         }
-        if (network == null || onNginx()) {
-            // Nothing on the map is on screen, so re-reading it would only take the connection from the screen
+        if (network == null || !onMap()) {
+            // Nothing of the map is on screen, so re-reading it would only take the connection from the screen
             // that is.
             return;
         }
-        if (announce) {
-            flow.setLoading(true);
-            machine.setReading(true);
+        // One reading at a time. The poll used to queue a new one every twelve seconds whether the last had
+        // come back or not; with root, a reading takes longer than that, so they piled up behind each other
+        // and a click waited for every one queued before it. Now a poll that finds one out does nothing, and a
+        // click asks for one more as soon as it lands.
+        if (announce && !watched) {
+            // Somebody is waiting on this one: it is shown, answer by answer, until the last lands.
+            watched = true;
+            readingOverlay.start("reading", who(), readingNote);
+            readingNote = "";
+            showReading();
         }
+        if (reading) {
+            readAgain |= announce;
+            return;
+        }
+        reading = true;
         worker.execute(() -> {
             NetworkMap read;
             try {
                 read = network.read();
             } catch (RuntimeException e) {
-                // Anything unexpected is shown, not swallowed: a screen stuck on "listening to the server" tells
-                // the user nothing, and the stack trace goes to a terminal they may never see.
+                // Anything unexpected is shown, not swallowed: a screen stuck reading tells the user nothing,
+                // and the stack trace goes to a terminal they may never see.
                 LOG.log(System.Logger.Level.ERROR, "Reading the network failed", e);
                 Platform.runLater(() -> {
-                    flow.setLoading(false);
-                    machine.setReading(false);
+                    reading = false;
                     showReadFailure(e);
+                    if (!readAgain && watched) {
+                        watched = false;
+                        readingOverlay.finish("read", "the reading stopped part way");
+                    }
+                    again();
                 });
                 return;
             }
             Platform.runLater(() -> {
-                flow.setLoading(false);
-                machine.setReading(false);
+                reading = false;
                 apply(read);
+                if (!readAgain && watched) {
+                    watched = false;
+                    readingOverlay.finish("read", null);
+                }
+                again();
             });
         });
     }
 
+    private void again() {
+        if (readAgain) {
+            readAgain = false;
+            refresh(true);
+        }
+    }
+
     /**
-     * The read could not be finished at all. The map stays as it was; the reason is written where the other
-     * unreadable things are.
+     * Root was turned on or off. What only root may read becomes readable, or stops being, so everything kept
+     * from the last reading is thrown away and the server is read now rather than on the next tick.
+     */
+    private void rootChanged(boolean elevated) {
+        if (network == null) {
+            return;
+        }
+        readingNote = elevated ? "root is on: reading what only root can see"
+                : "root is off: reading again as " + who();
+        network.forget();
+        // Whichever screen is in front is the one read again. The map used to be the only one, so turning
+        // root on from the Nginx screen changed nothing on it until somebody went back to the map.
+        if (nginx != null && screens.getChildren().contains(nginx)) {
+            String note = readingNote;
+            readingNote = "";
+            readNginx(note);
+            return;
+        }
+        if (blockedScreen != null && screens.getChildren().contains(blockedScreen)) {
+            readingNote = "";
+            readBlocked();
+            return;
+        }
+        refresh(true);
+    }
+
+    /** Who is reading what, the way a prompt writes it. */
+    private String who() {
+        return "?".equals(target) ? "you@server" : target.replaceFirst(":\\d+$", "");
+    }
+
+    private void showReading() {
+        statusMode.setText("reading");
+        statusMode.getStyleClass().setAll("label", "status-mode", "status-mode-busy");
+        statusMessage.setText("asking the server\u2026");
+    }
+
+    /** One answer came back. Shown only while somebody is watching the reading. */
+    private void answered(CommandEntry entry) {
+        if (!watched) {
+            return;
+        }
+        String shown = entry.command().replaceAll("echo '?@@\\w+'?;\\s*", "").replaceAll("\\s+", " ").strip();
+        statusMessage.setText("$ " + (shown.length() > 90 ? shown.substring(0, 89) + "\u2026" : shown));
+        readingOverlay.answered(entry);
+    }
+
+    /**
+     * The read could not be finished at all. The ports stay as they were; the reason is in the status line.
      */
     private void showReadFailure(RuntimeException problem) {
         String reason = problem.getMessage() == null || problem.getMessage().isBlank()
                 ? problem.getClass().getSimpleName() : problem.getMessage();
-        headline.setText("COULD NOT READ");
-        headline.setStyle("-fx-text-fill: " + web(ALERT) + ";");
-        caption.setText("THE NETWORK READING STOPPED PART WAY THROUGH");
-        Label line = label("▸ " + reason, "card-problem");
-        line.setWrapText(true);
-        notesBox.getChildren().setAll(line);
-        notesBox.setVisible(true);
-        notesBox.setManaged(true);
+        statusMode.setText("failed");
+        statusMode.getStyleClass().setAll("label", "status-mode", "status-mode-error");
+        statusMessage.setText("the reading stopped part way: " + reason);
     }
 
     private void apply(NetworkMap read) {
@@ -320,42 +439,31 @@ public final class NetworkScope extends StackPane {
                 firewallNote = "";
             }
         }
-        flow.setMap(read);
-        long exposed = read.openToTheWorld();
+        ports.setMap(read);
+        long open = read.endpoints().stream().filter(Endpoint::isOpenToTheWorld)
+                .map(Endpoint::port).distinct().count();
         long alerts = read.alerts();
 
-        headline.setText(alerts > 0 ? "EXPOSED" : exposed > 0 ? "REACHABLE" : "CLOSED");
-        headline.setStyle("-fx-text-fill: " + web(alerts > 0 ? ALERT : exposed > 0 ? OPEN : SAFE) + ";");
-        caption.setText((read.endpoints().size() + " LISTENING PORTS   ·   " + read.vhosts().size()
-                + " NGINX SERVER BLOCKS   ·   " + read.pm2().size() + " PM2 APPS").toUpperCase(Locale.ROOT));
+        statusMode.setText(alerts > 0 ? "exposed" : "network");
+        statusMode.getStyleClass().setAll("label", "status-mode",
+                alerts > 0 ? "status-mode-error" : "status-mode-live");
+        statusMessage.setText(alerts > 0
+                ? alerts + (alerts == 1 ? " port needs" : " ports need") + " attention, open to the internet"
+                : open == 0 ? "nothing is open to the internet"
+                : open + (open == 1 ? " port is" : " ports are") + " open to the internet");
+        firewallFact.setText(read.firewall().title().toLowerCase(Locale.ROOT) + " "
+                + read.firewall().shortState().toLowerCase(Locale.ROOT));
+        firewallFact.setStyle("-fx-text-fill: " + web(NetworkTree.colourOfFirewall(read.firewall())) + ";");
+        long listening = read.endpoints().stream().map(Endpoint::port).distinct().count();
+        listeningFact.setText(listening + " listening");
+        readFact.setText("read " + CLOCK.format(java.time.Instant.now()));
 
         machine.show(read.identity(), read.rates(), read.naming());
+        machine.setNotes(read.notes());
 
-        exposedValue.setText(String.valueOf(exposed));
-        exposedValue.setStyle("-fx-text-fill: " + web(exposed > 0 ? OPEN : SAFE) + ";");
-        alertsValue.setText(String.valueOf(alerts));
-        alertsValue.setStyle("-fx-text-fill: " + web(alerts > 0 ? ALERT : SAFE) + ";");
-        firewallValue.setText(read.firewall().shortState());
-        firewallValue.setStyle("-fx-text-fill: " + web(NetworkTree.colourOfFirewall(read.firewall())) + ";");
-
-        tagRow.getChildren().setAll(
-                tag(read.firewall().isEnforcing()
-                        ? (read.openPorts().isEmpty() ? "NO PORT OPENED BY " + read.firewall().title()
-                                : read.firewall().title() + " OPENS " + join(read.openPorts()))
-                        : read.firewall().title() + " " + read.firewall().shortState()),
-                tag(read.pm2().stream().filter(PmApp::isOnline).count() + " PM2 APPS ONLINE"),
-                tag(read.endpoints().stream().filter(Endpoint::isBehindNginx).count() + " PORTS BEHIND NGINX"));
-
-        notesBox.getChildren().clear();
-        for (String note : read.notes()) {
-            Label line = label("▸ " + note, "card-note");
-            line.setWrapText(true);
-            notesBox.getChildren().add(line);
-        }
-        notesBox.setVisible(!read.notes().isEmpty());
-        notesBox.setManaged(!read.notes().isEmpty());
-
-        if (selected != null) {
+        if (selected == null) {
+            showEndpoint(null);
+        } else {
             read.endpoints().stream()
                     .filter(endpoint -> endpoint.port() == selected.port()
                             && endpoint.socket().bindAddress().equals(selected.socket().bindAddress()))
@@ -364,55 +472,60 @@ public final class NetworkScope extends StackPane {
         }
     }
 
-    private static String join(List<Integer> ports) {
-        return ports.stream().limit(6).map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))
-                + (ports.size() > 6 ? "…" : "");
-    }
-
     // Inspector
 
     private void showEndpoint(Endpoint endpoint) {
         selected = endpoint;
-        flow.select(endpoint);
+        ports.select(endpoint);
         status.setText("");
-        chain.getChildren().clear();
-        riskBox.getChildren().clear();
         actions.getChildren().clear();
+        portBox.getChildren().clear();
         if (endpoint == null) {
-            portTitle.setText("NO PORT SELECTED");
-            reachBadge.setVisible(false);
-            reachBadge.setManaged(false);
-            chain.getChildren().add(label("PICK A ROW ON THE MAP TO SEE ITS WHOLE PATH AND ACT ON IT.",
-                    "metric-label"));
+            Label hint = label("click a port to see who holds it and what stands in front of it", "home-muted");
+            hint.setWrapText(true);
+            portBox.getChildren().add(hint);
+            if (canChangeFirewall()) {
+                actions.getChildren().addAll(
+                        action("open a port", "ghost-button", event -> showPortCard(true, -1, Protocol.TCP)),
+                        action("block a port", "ghost-button", event -> showPortCard(false, -1, Protocol.TCP)));
+            }
             return;
         }
-        portTitle.setText("PORT " + endpoint.port());
         Color colour = NetworkTree.colourOf(endpoint);
-        reachBadge.setVisible(true);
-        reachBadge.setManaged(true);
-        reachBadge.setText(switch (endpoint.reach()) {
-            case OPEN -> "OPEN TO THE INTERNET";
-            case SHIELDED -> "BEHIND THE FIREWALL";
-            case PRIVATE -> "PRIVATE NETWORK";
-            case ISOLATED -> "LOOPBACK ONLY";
-        });
-        reachBadge.setStyle("-fx-text-fill: " + web(colour) + "; -fx-border-color: " + web(colour) + ";");
+        Label title = label(endpoint.port() + "/" + endpoint.socket().protocol().name().toLowerCase(Locale.ROOT),
+                "fetch-host");
+        title.setStyle("-fx-text-fill: " + web(colour) + ";");
+        Label reach = label(switch (endpoint.reach()) {
+            case OPEN -> "open to the internet";
+            case SHIELDED -> "behind the firewall";
+            case PRIVATE -> "private network";
+            case ISOLATED -> "this machine only";
+        }, "fetch-value");
+        reach.setStyle("-fx-text-fill: " + web(colour) + ";");
+        HBox head = new HBox(12, title, reach);
+        head.setAlignment(Pos.BASELINE_LEFT);
+        Region rule = new Region();
+        rule.getStyleClass().add("fetch-rule");
+        rule.setMinHeight(1);
+        rule.setMaxHeight(1);
 
-        chain.getChildren().addAll(
-                step("BINDS", endpoint.socket().bindAddress() + ":" + endpoint.port()
-                        + "  " + endpoint.socket().protocol()),
-                step("FIREWALL", firewallLine(endpoint)),
-                step("NGINX", endpoint.isBehindNginx()
-                        ? endpoint.servedBy().stream().map(Vhost::url).collect(java.util.stream.Collectors.joining(", "))
-                        : "no server block forwards to this port"),
-                step("PROCESS", endpoint.owner().label() + "   " + endpoint.owner().detail()));
+        VBox facts = new VBox(6,
+                step("process", endpoint.owner().kind() == ServiceOwner.Kind.UNKNOWN
+                        ? "unknown, root can name it" : endpoint.owner().label()
+                        + (endpoint.socket().hasPid() ? "  pid " + endpoint.socket().pid() : "")),
+                step("binds", endpoint.socket().bindAddress()),
+                step("firewall", firewallLine(endpoint)),
+                step("nginx", endpoint.isBehindNginx()
+                        ? endpoint.servedBy().stream().map(Vhost::url).collect(java.util.stream.Collectors.joining("  "))
+                        : "\u2014"));
+        portBox.getChildren().addAll(head, rule, facts);
 
         Risk.of(endpoint).ifPresent(risk -> {
-            Label title = label(risk.label() + "  ·  " + risk.title(), "card-problem");
-            title.setWrapText(true);
-            Label detail = label(risk.detail(), "card-note");
-            detail.setWrapText(true);
-            riskBox.getChildren().addAll(title, detail);
+            Label said = label(risk.title() + ". " + risk.detail(),
+                    risk.level() == Risk.Level.ALERT ? "port-alert" : "home-muted");
+            said.setWrapText(true);
+            said.setMinHeight(Region.USE_PREF_SIZE);
+            portBox.getChildren().add(said);
         });
 
         buildActions(endpoint);
@@ -429,11 +542,12 @@ public final class NetworkScope extends StackPane {
     private String firewallLine(Endpoint endpoint) {
         Firewall firewall = map.firewall();
         if (!firewall.isEnforcing()) {
-            return firewall.problem();
+            return firewall.title().toLowerCase(Locale.ROOT) + " " + firewall.shortState().toLowerCase(Locale.ROOT);
         }
         return firewall.ruleFor(endpoint.port())
-                .map(rule -> "rule [" + rule.index() + "] " + rule.action() + " from " + rule.from())
-                .orElse("no rule names this port, so " + firewall.title() + "'s default denies it");
+                .map(rule -> rule.action().toString().toLowerCase(Locale.ROOT) + " from " + rule.from()
+                        + "  (rule " + rule.index() + ")")
+                .orElse("no rule, the default denies it");
     }
 
     private void buildActions(Endpoint endpoint) {
@@ -442,35 +556,37 @@ public final class NetworkScope extends StackPane {
         // what it finds, but offering a button that would run the wrong tool is worse than offering none.
         if (canChangeFirewall()) {
             if (endpoint.isOpenToTheWorld()) {
-                actions.getChildren().add(action("CLOSE PORT " + endpoint.port(), "danger-button",
+                actions.getChildren().add(action("close port", "port-danger",
                         event -> confirmClose(endpoint)));
             } else if (endpoint.reach() == Endpoint.Reach.SHIELDED) {
-                actions.getChildren().add(action("OPEN PORT " + endpoint.port(), "rail-button",
+                actions.getChildren().add(action("open port", "ghost-button",
                         event -> confirmOpen(endpoint)));
             }
         }
         if (owner.kind() == ServiceOwner.Kind.PM2) {
             actions.getChildren().addAll(
-                    action("RESTART APP", "primary-button", event -> act("RESTARTED",
+                    action("restart", "ghost-button", event -> act("restarted",
                             () -> network.restartApp(owner.handle()))),
-                    action("STOP APP", "rail-button", event -> act("STOPPED",
+                    action("stop", "ghost-button", event -> act("stopped",
                             () -> network.stopApp(owner.handle()))),
-                    action("APP LOGS", "rail-button", event -> showAppLogs(owner.handle())));
+                    action("app logs", "ghost-button", event -> showAppLogs(owner.handle())),
+                    action("in apps", "ghost-button", event -> showApps(owner.handle())));
         }
         if (endpoint.isBehindNginx()) {
-            actions.getChildren().add(action("TEST & RELOAD NGINX", "rail-button", event -> reloadNginx()));
+            actions.getChildren().add(action("test & reload nginx", "ghost-button", event -> reloadNginx()));
         }
         if (endpoint.socket().hasPid() && owner.kind() != ServiceOwner.Kind.PM2) {
-            actions.getChildren().add(action("KILL PID " + endpoint.socket().pid(), "danger-button",
+            actions.getChildren().add(action("kill " + endpoint.socket().pid(), "port-danger",
                     event -> confirmKill(endpoint)));
         }
     }
 
     private HBox step(String name, String value) {
-        Label caption = label(name, "rail-label");
-        caption.setMinWidth(72);
-        Label text = label(value, "redis-row-name");
+        Label caption = label(name, "fetch-key");
+        caption.setMinWidth(70);
+        Label text = label(value, "fetch-value");
         text.setWrapText(true);
+        text.setMinWidth(0);
         HBox.setHgrow(text, Priority.ALWAYS);
         HBox row = new HBox(10, caption, text);
         row.setAlignment(Pos.TOP_LEFT);
@@ -490,7 +606,7 @@ public final class NetworkScope extends StackPane {
             }
             runWithRoot(() -> worker.execute(() -> {
                 CommandEntry result = network.allow(endpoint.port(), endpoint.socket().protocol());
-                Platform.runLater(() -> finish(result, "PORT " + expected + " OPENED", done));
+                Platform.runLater(() -> finish(result, "port " + expected + " opened", done));
             }));
         }, this::hideOverlay));
     }
@@ -508,7 +624,7 @@ public final class NetworkScope extends StackPane {
             }
             runWithRoot(() -> worker.execute(() -> {
                 CommandEntry result = network.closePort(endpoint.port(), endpoint.socket().protocol());
-                Platform.runLater(() -> finish(result, "PORT " + expected + " CLOSED", done));
+                Platform.runLater(() -> finish(result, "port " + expected + " closed", done));
             }));
         }, this::hideOverlay));
     }
@@ -526,7 +642,7 @@ public final class NetworkScope extends StackPane {
             }
             runWithRoot(() -> worker.execute(() -> {
                 CommandEntry result = network.kill(pid);
-                Platform.runLater(() -> finish(result, "PID " + pid + " KILLED", done));
+                Platform.runLater(() -> finish(result, "pid " + pid + " killed", done));
             }));
         }, this::hideOverlay));
     }
@@ -534,18 +650,18 @@ public final class NetworkScope extends StackPane {
     private void reloadNginx() {
         runWithRoot(() -> {
             status.getStyleClass().setAll("label", "card-note");
-            status.setText("TESTING THE CONFIGURATION…");
+            status.setText("testing the configuration\u2026");
             worker.execute(() -> {
                 CommandEntry result = network.reloadNginx();
                 Platform.runLater(() -> {
                     String text = result.output().isBlank() ? result.error() : result.output();
                     if (result.success()) {
                         status.getStyleClass().setAll("label", "card-success");
-                        status.setText("CONFIGURATION VALID  ·  NGINX RELOADED");
+                        status.setText("configuration valid, nginx reloaded");
                         reread();
                     } else {
                         status.getStyleClass().setAll("label", "card-problem");
-                        status.setText("NOT RELOADED  ·  " + firstLine(text));
+                        status.setText("not reloaded: " + firstLine(text));
                         showOverlay(PromptCard.output("NETWORK", "NGINX -T", text, this::hideOverlay));
                     }
                 });
@@ -556,7 +672,7 @@ public final class NetworkScope extends StackPane {
     private void showAppLogs(String app) {
         runWithRoot(() -> {
             status.getStyleClass().setAll("label", "card-note");
-            status.setText("READING LOGS…");
+            status.setText("reading logs\u2026");
             worker.execute(() -> {
                 CommandEntry result = network.appLogs(app, 200);
                 String text = result.output().isBlank() ? result.error() : result.output();
@@ -572,7 +688,7 @@ public final class NetworkScope extends StackPane {
     private void act(String done, java.util.function.Supplier<CommandEntry> action) {
         runWithRoot(() -> {
             status.getStyleClass().setAll("label", "card-note");
-            status.setText("WORKING…");
+            status.setText("working\u2026");
             worker.execute(() -> {
                 CommandEntry result = action.get();
                 Platform.runLater(() -> {
@@ -601,7 +717,7 @@ public final class NetworkScope extends StackPane {
     }
 
     private static String firstLine(String text) {
-        return text == null ? "FAILED" : text.strip().lines().findFirst().orElse("FAILED").toUpperCase(Locale.ROOT);
+        return text == null ? "failed" : text.strip().lines().findFirst().orElse("failed");
     }
 
     private void showMenu(Endpoint endpoint, double screenX, double screenY) {
@@ -609,31 +725,81 @@ public final class NetworkScope extends StackPane {
             menu.hide();
         }
         List<MenuItem> items = new java.util.ArrayList<>();
-        items.add(item("INSPECT THIS PORT", event -> showEndpoint(endpoint)));
+        items.add(item("open", event -> showEndpoint(endpoint)));
         if (canChangeFirewall()) {
             if (endpoint.isOpenToTheWorld()) {
-                items.add(item("CLOSE PORT AT THE FIREWALL", event -> confirmClose(endpoint)));
+                items.add(item("close port", event -> confirmClose(endpoint)));
             } else if (endpoint.reach() == Endpoint.Reach.SHIELDED) {
-                items.add(item("OPEN PORT AT THE FIREWALL", event -> confirmOpen(endpoint)));
+                items.add(item("open port", event -> confirmOpen(endpoint)));
             }
+        }
+        if (canChangeFirewall()) {
+            items.add(item("a rule for this port\u2026", event -> showPortCard(!endpoint.isOpenToTheWorld(),
+                    endpoint.port(), endpoint.socket().protocol())));
         }
         if (endpoint.owner().kind() == ServiceOwner.Kind.PM2) {
             items.add(new SeparatorMenuItem());
-            items.add(item("RESTART " + endpoint.owner().label(),
-                    event -> act("RESTARTED", () -> network.restartApp(endpoint.owner().handle()))));
-            items.add(item("STOP " + endpoint.owner().label(),
-                    event -> act("STOPPED", () -> network.stopApp(endpoint.owner().handle()))));
-            items.add(item("LOGS", event -> showAppLogs(endpoint.owner().handle())));
+            items.add(item("restart " + endpoint.owner().label(),
+                    event -> act("restarted", () -> network.restartApp(endpoint.owner().handle()))));
+            items.add(item("stop " + endpoint.owner().label(),
+                    event -> act("stopped", () -> network.stopApp(endpoint.owner().handle()))));
+            items.add(item("app logs", event -> showAppLogs(endpoint.owner().handle())));
         }
         if (endpoint.socket().hasPid() && endpoint.owner().kind() != ServiceOwner.Kind.PM2) {
             items.add(new SeparatorMenuItem());
-            MenuItem kill = item("KILL PID " + endpoint.socket().pid(), event -> confirmKill(endpoint));
+            MenuItem kill = item("kill " + endpoint.socket().pid(), event -> confirmKill(endpoint));
             kill.getStyleClass().add("redis-menu-danger");
             items.add(kill);
         }
         menu = new ContextMenu(items.toArray(new MenuItem[0]));
         menu.getStyleClass().add("redis-context-menu");
         menu.show(this, screenX, screenY);
+    }
+
+    /**
+     * A right-click anywhere on the map that is not a port: what can be done to the firewall from here.
+     */
+    private void showSpaceMenu(double screenX, double screenY) {
+        if (menu != null) {
+            menu.hide();
+        }
+        boolean writable = canChangeFirewall();
+        MenuItem open = item("open a port\u2026", event -> showPortCard(true, -1, Protocol.TCP));
+        MenuItem block = item("block a port\u2026", event -> showPortCard(false, -1, Protocol.TCP));
+        open.setDisable(!writable);
+        block.setDisable(!writable);
+        List<MenuItem> items = new java.util.ArrayList<>(List.of(open, block));
+        if (!writable) {
+            MenuItem why = new MenuItem(map.firewall().isEnforcing()
+                    ? "only ufw rules are written from here" : "the firewall is not on");
+            why.setDisable(true);
+            items.add(why);
+        }
+        items.add(new SeparatorMenuItem());
+        items.add(item("firewall rules", event -> showFirewall()));
+        items.add(item("re-read", event -> reread(true)));
+        menu = new ContextMenu(items.toArray(MenuItem[]::new));
+        menu.getStyleClass().add("redis-context-menu");
+        menu.show(this, screenX, screenY);
+    }
+
+    /**
+     * The form that opens or blocks a port. What it sends is one of the firewall's fixed commands, with the port
+     * and the address checked before anything leaves.
+     */
+    private void showPortCard(boolean open, int port, Protocol protocol) {
+        showOverlay(new PortCard(open, port, protocol, sshPort, (opening, number, proto, source, done) ->
+                send(trouble -> {
+                    done.accept(trouble);
+                    if (trouble == null) {
+                        hideOverlay();
+                        status.getStyleClass().setAll("label", "card-success");
+                        status.setText((opening ? "opened " : "blocked ") + number + "/"
+                                + proto.name().toLowerCase(Locale.ROOT) + (source.isEmpty() ? "" : " for " + source));
+                    }
+                }, () -> opening
+                        ? (source.isEmpty() ? network.allow(number, proto) : network.allowFrom(source, number, proto))
+                        : network.denyFrom(source, number, proto)), this::hideOverlay));
     }
 
     private static MenuItem item(String text, javafx.event.EventHandler<javafx.event.ActionEvent> action) {
@@ -683,6 +849,13 @@ public final class NetworkScope extends StackPane {
             CommandEntry entry = network.verify(command);
             Platform.runLater(() -> done.accept(entry.success()));
         });
+    }
+
+    /** The apps screen as a card over this one: what PM2 runs, without leaving the map. */
+    private void showApps(String app) {
+        if (connection != null) {
+            showOverlay(com.kubo.ui.apps.AppsMini.open(connection, commands, root, app, this::hideOverlay));
+        }
     }
 
     private void showOverlay(Region card) {
@@ -787,9 +960,7 @@ public final class NetworkScope extends StackPane {
             }, java.time.Instant.now());
         }
         screens.getChildren().setAll(blockedScreen);
-        masthead.getChildren().setAll(identityRow);
-        cameraBar.setVisible(false);
-        cameraBar.setManaged(false);
+        showActions(false);
         readBlocked();
     }
 
@@ -798,14 +969,11 @@ public final class NetworkScope extends StackPane {
             return;
         }
         BlockedScreen screen = blockedScreen;
-        // The commands themselves while it reads: the jails, the database, the firewall rules. A blank table
-        // for four seconds looks exactly like a server with nothing to show.
+        // The answers as they come back: the jails, the database, the firewall rules. A blank table for four
+        // seconds looks exactly like a server with nothing to show.
         screen.reading(true);
-        Runnable stopWatching = commands == null ? () -> { } : commands.addLoggedListener(logged -> {
-            if (logged.origin() == CommandService.Origin.NETWORK) {
-                javafx.application.Platform.runLater(() -> screen.asking(logged.entry().command()));
-            }
-        });
+        screenJournal.start("reading", who(), "what this server has shut out");
+        Runnable stopWatching = screenJournal.follow(commands, CommandService.Origin.NETWORK);
         runWithRoot(() -> worker.execute(() -> {
             java.util.List<String> notes = new java.util.ArrayList<>();
             java.util.List<com.kubo.model.network.BlockedAddress> blocked;
@@ -821,6 +989,7 @@ public final class NetworkScope extends StackPane {
             javafx.application.Platform.runLater(() -> {
                 stopWatching.run();
                 screen.reading(false);
+                screenJournal.finish("read", null);
                 screen.show(found, problem);
             });
         }));
@@ -1077,12 +1246,12 @@ public final class NetworkScope extends StackPane {
                 }
             });
         }
+        if (!"?".equals(target)) {
+            nginx.setMachine(hostOf(target));
+        }
         screens.getChildren().setAll(nginx);
-        // The map's own rail goes with the map. What stays is the part that belongs to the window, less the
-        // zoom, which moves a map that is no longer there.
-        masthead.getChildren().setAll(identityRow);
-        cameraBar.setVisible(false);
-        cameraBar.setManaged(false);
+        // The ports' own actions go with the ports. What stays is the bar, which belongs to the window.
+        showActions(false);
         readNginx();
     }
 
@@ -1142,6 +1311,8 @@ public final class NetworkScope extends StackPane {
                     case CERTIFICATE -> "Pick the certificate";
                     case PRIVATE_KEY -> "Pick its private key";
                     case SOCKET -> "Pick the PHP-FPM socket";
+                    case SCRIPT -> "Pick the script";
+                    case PROGRAM -> "Pick the program";
                 }, kind, start, chosen);
             }
         }, nginx.pools(), map.endpoints(), this::readNginx, this::hideOverlay));
@@ -1218,7 +1389,6 @@ public final class NetworkScope extends StackPane {
         showMap();
         for (com.kubo.model.network.Endpoint endpoint : map.endpoints()) {
             if (endpoint.socket().port() == port) {
-                flow.select(endpoint);
                 showEndpoint(endpoint);
                 return;
             }
@@ -1228,13 +1398,19 @@ public final class NetworkScope extends StackPane {
     /** Puts the map back, with its own masthead. */
     private void showMap() {
         screens.getChildren().setAll(mapView);
-        masthead.getChildren().setAll(buildMasthead());
+        screenJournal.dismiss();
+        showActions(true);
         refresh(true);
     }
 
-    /** True while the operator is on the Nginx screen rather than the map. */
-    private boolean onNginx() {
-        return !screens.getChildren().isEmpty() && screens.getChildren().get(0) == nginx;
+    /** True while the ports are on screen rather than the Nginx or the blocked screen. */
+    private boolean onMap() {
+        return !screens.getChildren().isEmpty() && screens.getChildren().get(0) == mapView;
+    }
+
+    private void showActions(boolean shown) {
+        actionsBar.setVisible(shown);
+        actionsBar.setManaged(shown);
     }
 
     /**
@@ -1242,19 +1418,34 @@ public final class NetworkScope extends StackPane {
      * the certificates it points at.
      */
     private void readNginx() {
+        readNginx("");
+    }
+
+    /**
+     * Reads everything the Nginx screen shows, in one go on the worker: the machine afresh, so the ports and
+     * the programs behind them are today's; what Nginx reads; and every site file as it is written, so a site
+     * that is switched off still shows what it would do.
+     *
+     * @param note why it is being read, for the journal, or empty
+     */
+    private void readNginx(String note) {
         if (network == null || nginx == null) {
             return;
         }
         NginxScreen screen = nginx;
-        // The commands themselves, as they go out, instead of a line saying READING that looks the same as a
-        // command that has hung. They arrive on the thread that sent them, so they come back to this one.
         screen.reading(true);
-        Runnable stopWatching = commands == null ? () -> { } : commands.addLoggedListener(logged -> {
-            if (logged.origin() == com.kubo.command.CommandService.Origin.NETWORK) {
-                javafx.application.Platform.runLater(() -> screen.asking(logged.entry().command()));
+        screenJournal.start("reading", who(), note.isEmpty()
+                ? "the sites nginx serves, where they send traffic, their certificates" : note);
+        Runnable stopWatching = screenJournal.follow(commands, CommandService.Origin.NETWORK);
+        Runnable work = () -> {
+            NetworkMap fresh;
+            try {
+                fresh = network.read();
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the network for Nginx failed", e);
+                fresh = null;
             }
-        });
-        runWithRoot(() -> worker.execute(() -> {
+            NetworkMap base = fresh == null ? map : fresh;
             NginxSites read;
             try {
                 read = NetworkCommands.parseSites(network.nginxSites().output());
@@ -1262,8 +1453,28 @@ public final class NetworkScope extends StackPane {
                 LOG.log(System.Logger.Level.ERROR, "Reading the Nginx sites failed", e);
                 read = NginxSites.none();
             }
-            java.util.List<com.kubo.model.network.Vhost> blocks = map.vhosts();
-            java.util.List<com.kubo.model.network.Upstream> pools = network.upstreams();
+            // What Nginx reads first, then the files it does not: a switched-off site is only in its file.
+            java.util.List<com.kubo.model.network.Vhost> blocks = new java.util.ArrayList<>(base.vhosts());
+            java.util.List<com.kubo.model.network.Upstream> pools = new java.util.ArrayList<>(network.upstreams());
+            try {
+                String files = network.nginxSiteFiles().output();
+                java.util.Set<String> known = new java.util.HashSet<>();
+                for (com.kubo.model.network.Vhost block : blocks) {
+                    known.add(block.fileName());
+                }
+                for (com.kubo.model.network.Vhost block : NetworkCommands.parseNginx(files)) {
+                    if (!known.contains(block.fileName())) {
+                        blocks.add(block);
+                    }
+                }
+                for (com.kubo.model.network.Upstream upstream : NetworkCommands.parseUpstreams(files)) {
+                    if (pools.stream().noneMatch(other -> other.name().equals(upstream.name()))) {
+                        pools.add(upstream);
+                    }
+                }
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.WARNING, "Reading the site files failed", e);
+            }
             java.util.List<com.kubo.model.network.Certificate> certs;
             try {
                 certs = network.certificates(blocks);
@@ -1273,16 +1484,23 @@ public final class NetworkScope extends StackPane {
             }
             NginxSites sites = read;
             java.util.List<com.kubo.model.network.Certificate> found = certs;
-            java.util.List<com.kubo.model.network.Endpoint> listening = map.endpoints();
+            java.util.List<com.kubo.model.network.Endpoint> listening = base.endpoints();
             // What else serves the web here, so a screen with no sites on it can say why rather than look broken.
             java.util.List<com.kubo.model.network.WebServer> servers = network.webServers();
+            NetworkMap answered = fresh;
             javafx.application.Platform.runLater(() -> {
                 stopWatching.run();
+                if (answered != null) {
+                    apply(answered);
+                }
                 screen.reading(false);
+                screenJournal.finish("read", null);
                 screen.setServers(servers);
                 screen.show(sites, blocks, pools, found, listening);
             });
-        }));
+        };
+        // Without root, what can be read is still read: the files are usually anybody's to open.
+        runWithRoot(() -> worker.execute(work), () -> worker.execute(work));
     }
 
     /**
@@ -1493,133 +1711,98 @@ public final class NetworkScope extends StackPane {
 
     // Building
 
+    /**
+     * The bar every screen has, then the actions. On the Nginx and blocked screens only the bar stays.
+     */
     private VBox buildMasthead() {
         Label wordmark = RootButton.wordmark();
-        Label mark = label("N", "sheet-mark");
-        Label kicker = label("NETWORK.SCOPE", "series");
+        Label window = label("network", "term-window");
+        Label host = label("?".equals(target) ? "" : target, "term-window-quiet");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        Button zoomOut = rail("−", event -> flow.zoomOut());
-        Button fit = rail("FIT", event -> flow.fit());
-        Button zoomIn = rail("+", event -> flow.zoomIn());
-        HBox camera = new HBox(2, zoomOut, fit, zoomIn);
-        camera.getStyleClass().add("zoom-bar");
-        cameraBar = camera;
         RootButton rootButton = new RootButton(root,
                 network == null ? RootButton.noVerification() : verification(), this::showOverlay, this::hideOverlay);
-        // Beside ROOT, because installing needs root and the two questions are asked in the same breath.
-        Button toolbox = rail("TOOLS", event -> showTools());
-        HBox identity = new HBox(12, wordmark, mark, kicker, spacer, toolbox, rootButton, camera);
+        // Beside root, because installing needs root and the two questions are asked in the same breath.
+        Button toolbox = bar("tools", event -> showTools());
+        Button help = bar("help", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
+        HBox identity = new HBox(14, wordmark, window, host, spacer, toolbox, help, rootButton);
         identity.setAlignment(Pos.CENTER_LEFT);
-        identity.setPadding(new Insets(16, 34, 0, 26));
-        identityRow = identity;
+        identity.getStyleClass().add("term-bar");
 
-        VBox naming = new VBox(2, headline, caption);
-        tagRow.setAlignment(Pos.CENTER_LEFT);
-        Region titleSpacer = new Region();
-        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
-        HBox readout = new HBox(0, readout("OPEN TO THE WORLD", exposedValue),
-                rule(), readout("ALERTS", alertsValue), rule(), readout("FIREWALL", firewallValue));
-        readout.getStyleClass().add("readout-bar");
-        readout.setAlignment(Pos.CENTER_LEFT);
-        HBox title = new HBox(26, naming, tagRow, titleSpacer, readout);
-        title.setAlignment(Pos.CENTER_LEFT);
-
-        VBox masthead = new VBox(12, identity, title, buildRail());
-        masthead.getStyleClass().add("sheet-masthead");
-        masthead.setPadding(new Insets(16, 34, 0, 26));
-        return masthead;
+        actionsBar = buildRail();
+        return new VBox(identity, actionsBar);
     }
 
     private HBox buildRail() {
-        Button refresh = rail("↻ RE-READ", event -> reread(true));
-        isolatedToggle.getStyleClass().add("rail-button");
-        isolatedToggle.setFocusTraversable(false);
-        isolatedToggle.setOnAction(event -> {
-            flow.setShowIsolated(!flow.showsIsolated());
-            isolatedToggle.setText(flow.showsIsolated() ? "HIDE LOOPBACK" : "SHOW LOOPBACK");
-        });
-        Button connections = rail("CONNECTIONS", event -> showConnections());
-        Button edge = rail("THE EDGE", event -> showEdge());
-        Button blocked = rail("BLOCKED", event -> showBlocked());
-        Button rules = rail("FIREWALL RULES", event -> showFirewall());
-        Button sites = rail("NGINX", event -> showNginx());
-        Button diagnose = rail("DIAGNOSE", event -> showDiagnostics());
-        Button shell = rail("SHELL", event -> console.showShell());
-        Button help = rail("?", event -> showOverlay(new NetworkHelp(this::hideOverlay)));
+        Button refresh = bar("re-read", event -> reread(true));
+        Button connections = bar("connections", event -> showConnections());
+        Button blocked = bar("blocked", event -> showBlocked());
+        Button rules = bar("firewall", event -> showFirewall());
+        Button sites = bar("nginx", event -> showNginx());
+        Button apps = bar("apps", event -> showApps(null));
+        Button edge = bar("bans & certificates", event -> showEdge());
+        Button diagnose = bar("diagnose", event -> showDiagnostics());
+        Button log = bar("log", event -> toggleConsole(false));
+        Button shell = bar("shell", event -> toggleConsole(true));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox rail = new HBox(8, refresh, isolatedToggle, separator(), connections, edge, blocked, rules, sites,
-                separator(), diagnose, shell, spacer, help);
+        HBox rail = new HBox(18, refresh, connections, blocked, rules, sites, apps, edge, diagnose, spacer, log, shell);
         rail.setAlignment(Pos.CENTER_LEFT);
-        rail.setPadding(new Insets(0, 0, 10, 0));
+        rail.getStyleClass().addAll("home-nav", "redis-actions");
         return rail;
     }
 
+    /**
+     * Shows the log, or the shell, under the other frames; the same button again puts it away.
+     */
+    private void toggleConsole(boolean shell) {
+        boolean shown = consoleTile.isVisible();
+        boolean onShell = console.showingShell();
+        if (shown && onShell == shell) {
+            consoleTile.setVisible(false);
+            consoleTile.setManaged(false);
+            return;
+        }
+        if (shell) {
+            console.showShell();
+        } else {
+            console.showLogs();
+        }
+        consoleTile.setVisible(true);
+        consoleTile.setManaged(true);
+    }
+
     private VBox buildInspector() {
-        portTitle.setWrapText(true);
-        HBox head = new HBox(10, label("INSPECTOR", "series"), reachBadge);
-        head.setAlignment(Pos.CENTER_LEFT);
         actions.setAlignment(Pos.CENTER_LEFT);
+        actions.setHgap(16);
+        actions.setVgap(8);
         status.setWrapText(true);
         status.setMinHeight(Region.USE_PREF_SIZE);
-        notesBox.setVisible(false);
-        notesBox.setManaged(false);
-
-        VBox column = new VBox(10, head, portTitle,
-                label("THE PATH IN", "series"), chain,
-                riskBox,
-                label("ACTIONS", "series"), actions, status,
-                label("WHAT KUBO COULD NOT READ", "series"), notesBox);
-        column.setPadding(new Insets(16, 26, 16, 20));
+        VBox column = new VBox(16, portBox, actions, status);
         ScrollPane scroll = new ScrollPane(column);
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.getStyleClass().add("redis-inspector");
+        scroll.getStyleClass().add("track-scroll");
         VBox holder = new VBox(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        holder.getStyleClass().add("redis-inspector");
-        holder.setPrefWidth(410);
-        holder.setMinWidth(340);
         return holder;
     }
 
-    private VBox readout(String caption, Label value) {
-        VBox box = new VBox(0, label(caption, "readout-caption"), value);
-        box.setPadding(new Insets(0, 20, 0, 20));
-        box.setAlignment(Pos.CENTER_LEFT);
-        return box;
+    private HBox buildStatus() {
+        statusMode.getStyleClass().add("status-mode-live");
+        statusMessage.setMinWidth(0);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox line = new HBox(14, statusMode, statusMessage, spacer, firewallFact, listeningFact, readFact);
+        line.setAlignment(Pos.CENTER_LEFT);
+        line.getStyleClass().add("status-line");
+        return line;
     }
 
-    private static Region rule() {
-        Region rule = new Region();
-        rule.getStyleClass().add("readout-rule");
-        rule.setMinWidth(1);
-        rule.setPrefWidth(1);
-        rule.setMinHeight(30);
-        return rule;
-    }
-
-    private static Region separator() {
-        Region separator = new Region();
-        separator.getStyleClass().add("rail-separator");
-        separator.setMinWidth(1);
-        separator.setPrefWidth(1);
-        separator.setMinHeight(18);
-        return separator;
-    }
-
-    private static Label tag(String text) {
-        Label label = new Label("▸" + text);
-        label.getStyleClass().add("sheet-tag");
-        return label;
-    }
-
-    private static Button rail(String text, javafx.event.EventHandler<javafx.event.ActionEvent> action) {
+    private static Button bar(String text, javafx.event.EventHandler<javafx.event.ActionEvent> action) {
         Button button = new Button(text);
-        button.getStyleClass().add("rail-button");
+        button.getStyleClass().add("ghost-button");
         button.setFocusTraversable(false);
         button.setMinWidth(Region.USE_PREF_SIZE);
         button.setOnAction(action);
@@ -1630,8 +1813,8 @@ public final class NetworkScope extends StackPane {
                                  javafx.event.EventHandler<javafx.event.ActionEvent> handler) {
         Button button = new Button(text);
         button.getStyleClass().add(styleClass);
-        if (styleClass.equals("primary-button") || styleClass.equals("danger-button")) {
-            button.getStyleClass().add("compact-button");
+        if (styleClass.equals("port-danger")) {
+            button.getStyleClass().add("ghost-button");
         }
         button.setFocusTraversable(false);
         button.setMinWidth(Region.USE_PREF_SIZE);
@@ -1652,13 +1835,33 @@ public final class NetworkScope extends StackPane {
 
     // Previews reach in through these.
 
-    /** For the previews: the panel down the left, so a still picture can show it mid-read. */
-    MachinePanel machine() {
-        return machine;
+    NetworkTree ports() {
+        return ports;
     }
 
-    NetworkTree flow() {
-        return flow;
+    /** Only for the previews: a reading somebody asked for, part way through. */
+    void readingForPreview(String note, List<CommandEntry> answered) {
+        watched = true;
+        showReading();
+        readingOverlay.showForPreview("reading", who(), note, answered);
+        if (!answered.isEmpty()) {
+            statusMessage.setText("$ " + answered.getLast().command());
+        }
+    }
+
+    /** Only for the previews: the Nginx screen part way through its reading. */
+    void screenReadingForPreview(String reason, List<CommandEntry> answered) {
+        screenJournal.showForPreview("reading", who(), reason, answered);
+    }
+
+    /** Only for the previews: the card that opens a port. */
+    void portCardForPreview() {
+        showPortCard(true, 8080, Protocol.TCP);
+    }
+
+    /** Only for the previews: the log open under the frames. */
+    void showLogForPreview() {
+        toggleConsole(false);
     }
 
     void showForPreview(NetworkMap read, int selectRow) {
@@ -1672,8 +1875,78 @@ public final class NetworkScope extends StackPane {
     void showNginxForPreview(NginxScreen screen) {
         nginx = screen;
         screens.getChildren().setAll(screen);
-        masthead.getChildren().setAll(identityRow);
-        cameraBar.setVisible(false);
-        cameraBar.setManaged(false);
+        showActions(false);
+    }
+
+    /** What a command reads, in a few words, for somebody who did not write it. */
+    static String words(String command) {
+        String text = command == null ? "" : command;
+        if (text.startsWith("echo '@@links'")) {
+            return "interfaces, routes and sockets";
+        }
+        if (text.contains("@@present")) {
+            return "fail2ban";
+        }
+        if (text.contains("fail2ban.sqlite3")) {
+            return "ban history";
+        }
+        if (text.startsWith("for T in ufw")) {
+            return "which firewall";
+        }
+        if (text.contains("ufw status")) {
+            return "ufw rules";
+        }
+        if (text.contains("firewall-cmd")) {
+            return "firewalld rules";
+        }
+        if (text.contains("nft list")) {
+            return "nftables rules";
+        }
+        if (text.contains("iptables")) {
+            return "iptables rules";
+        }
+        if (text.contains("is-active")) {
+            return "firewall state";
+        }
+        if (text.contains("nginx -T")) {
+            return "nginx configuration";
+        }
+        if (text.contains("sites-enabled") || text.contains("/etc/nginx")) {
+            return "nginx files";
+        }
+        if (text.contains("caddy") || text.contains("apache2")) {
+            return "web servers";
+        }
+        if (text.contains("pm2")) {
+            return "pm2 apps";
+        }
+        if (text.contains("state established")) {
+            return "open connections";
+        }
+        if (text.contains("docker")) {
+            return "containers";
+        }
+        if (text.contains("openssl")) {
+            return "certificates";
+        }
+        if (text.contains("ss -") && text.contains("l")) {
+            return "listening sockets";
+        }
+        if (text.contains("ip -j -o addr") || text.contains("ip -j addr") || text.contains("ip addr")) {
+            return "addresses";
+        }
+        if (text.contains("ip -j route") || text.contains("ip route")) {
+            return "routes";
+        }
+        if (text.contains("resolv.conf") || text.contains("resolvectl")) {
+            return "dns resolvers";
+        }
+        // Otherwise the program's own name, past any VAR=value in front of it.
+        for (String part : text.strip().split("\\s+")) {
+            if (!part.contains("=") && !part.equals("sudo")) {
+                return part;
+            }
+        }
+        return "command";
     }
 }

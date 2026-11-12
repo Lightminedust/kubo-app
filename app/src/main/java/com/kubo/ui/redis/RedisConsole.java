@@ -48,10 +48,10 @@ public final class RedisConsole extends VBox {
     private final TextField input = new TextField();
     private final Label sign = label("R›", "prompt-sign");
     private final HBox inputRow;
-    private final Button logsTab = tab("LOGS");
-    private final Button cliTab = tab("REDIS CLI");
-    private final Button localTab = tab(LocalShell.name());
-    private final Label title = label("REDIS ACTIVITY", "series");
+    private final Button logsTab = tab("activity");
+    private final Button cliTab = tab("redis-cli");
+    private final Button localTab = tab(LocalShell.name().toLowerCase(java.util.Locale.ROOT));
+    private final Label title = label("", "series");
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "kubo-local-shell");
         thread.setDaemon(true);
@@ -79,8 +79,8 @@ public final class RedisConsole extends VBox {
         logsTab.setOnAction(event -> show(Page.LOGS));
         cliTab.setOnAction(event -> show(Page.REDIS));
         localTab.setOnAction(event -> show(Page.LOCAL));
-        Label location = label("REDIS RUNS ON THE SERVER  ·  " + LocalShell.name() + " STAYS ON THIS PC",
-                "metric-label");
+        Label location = label("redis-cli runs on the server  \u00b7  " + LocalShell.name().toLowerCase(java.util.Locale.ROOT)
+                + " runs on this pc", "home-muted");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox header = new HBox(10, title, logsTab, cliTab, localTab, spacer, location);
@@ -107,10 +107,10 @@ public final class RedisConsole extends VBox {
 
         VBox.setVgrow(pages, Priority.ALWAYS);
         getChildren().addAll(header, pages, inputRow);
-        append(logOutput, "REDIS COMMANDS SENT BY KUBO APPEAR HERE IN REAL TIME.", "prompt-meta");
-        append(cliOutput, "INTERACTIVE REDIS CONSOLE  ·  ACTIVE SERVICE AND DATABASE.", "prompt-meta");
-        append(localOutput, "LOCAL " + LocalShell.name()
-                + "  ·  EACH ENTRY IS A SEPARATE COMMAND  ·  60 S LIMIT", "prompt-meta");
+        append(logOutput, "every redis command Kubo sends appears here as it happens", "prompt-meta");
+        append(cliOutput, "type a redis command, it runs on the service and database chosen above", "prompt-meta");
+        append(localOutput, LocalShell.name().toLowerCase(java.util.Locale.ROOT)
+                + " on this pc, each line runs on its own and stops after 60 s", "prompt-meta");
 
         stopListening = localOnly || commands == null ? () -> { } : commands.addListener((entry, origin) -> {
             if (origin == CommandService.Origin.REDIS) Platform.runLater(() -> appendRedis(entry));
@@ -130,6 +130,11 @@ public final class RedisConsole extends VBox {
         onRedisCommand = handler == null ? command -> completeRedis(command, null) : handler;
     }
 
+    /** Inside a frame that already says what this is, the title in front of the tabs goes. */
+    void hideTitle() {
+        visible(title, false);
+    }
+
     void showRedisCli() {
         show(Page.REDIS);
     }
@@ -137,12 +142,12 @@ public final class RedisConsole extends VBox {
     void completeRedis(String command, CommandEntry entry) {
         Platform.runLater(() -> {
             if (entry == null) {
-                append(cliOutput, "KUBO COULD NOT EXECUTE THE COMMAND.", "prompt-error");
+                append(cliOutput, "Kubo could not run the command", "prompt-error");
             } else {
                 String answer = !entry.output().isBlank() ? entry.output().stripTrailing()
                         : !entry.error().isBlank() ? entry.error().stripTrailing() : "(nil)";
                 appendLines(cliOutput, answer, entry.success() ? "prompt-output" : "prompt-error");
-                append(cliOutput, (entry.success() ? "OK" : "FAILED") + "  ·  " + entry.duration().toMillis() + " MS",
+                append(cliOutput, (entry.success() ? "ok" : "failed") + "  \u00b7  " + entry.duration().toMillis() + " ms",
                         entry.success() ? "prompt-meta" : "prompt-error");
             }
             redisRunning = false;
@@ -166,9 +171,9 @@ public final class RedisConsole extends VBox {
         (page == Page.LOGS ? logsTab : page == Page.REDIS ? cliTab : localTab)
                 .getStyleClass().add("mode-toggle-active");
         title.setText(switch (page) {
-            case LOGS -> "REDIS ACTIVITY";
-            case REDIS -> "REDIS CLI  ·  ACTIVE DB";
-            case LOCAL -> LocalShell.name() + "  ·  LOCAL PC";
+            case LOGS -> "redis activity";
+            case REDIS -> "redis-cli";
+            case LOCAL -> LocalShell.name().toLowerCase(java.util.Locale.ROOT) + " on this pc";
         });
         visible(logOutput, page == Page.LOGS);
         visible(cliOutput, page == Page.REDIS);
@@ -187,9 +192,9 @@ public final class RedisConsole extends VBox {
     }
 
     private void appendRedis(CommandEntry entry) {
-        String state = entry.success() ? "OK" : entry.ran() ? "EXIT " + entry.exitCode() : "NOT RUN";
-        append(logOutput, CLOCK.format(entry.executedAt()) + "  ·  " + state + "  ·  "
-                        + entry.duration().toMillis() + " MS\n" + entry.command(),
+        String state = entry.success() ? "[  OK  ]" : entry.ran() ? "[FAILED]" : "[ SKIP ]";
+        append(logOutput, state + "  " + CLOCK.format(entry.executedAt()) + "  "
+                        + entry.duration().toMillis() + "ms  " + entry.command(),
                 entry.success() ? "prompt-command" : "prompt-error");
     }
 
@@ -245,16 +250,16 @@ public final class RedisConsole extends VBox {
             if (!finished) {
                 process.destroyForcibly();
                 process.waitFor(5, TimeUnit.SECONDS);
-                return new Result(-1, read(output), "STOPPED  ·  60 S LIMIT");
+                return new Result(-1, read(output), "stopped after 60 s");
             }
             int exit = process.exitValue();
             long millis = (System.nanoTime() - started) / 1_000_000;
-            return new Result(exit, read(output), "EXIT " + exit + "  ·  " + millis + " MS");
+            return new Result(exit, read(output), "exit " + exit + "  \u00b7  " + millis + " ms");
         } catch (IOException e) {
-            return new Result(-1, "", LocalShell.name() + " COULD NOT START  ·  " + message(e));
+            return new Result(-1, "", LocalShell.name() + " could not start: " + message(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new Result(-1, "", "INTERRUPTED");
+            return new Result(-1, "", "interrupted");
         } finally {
             process = null;
             if (output != null) try { Files.deleteIfExists(output); } catch (IOException ignored) { }

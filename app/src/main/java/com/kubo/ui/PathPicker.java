@@ -55,9 +55,8 @@ public final class PathPicker extends VBox {
     private final Lister lister;
     private final SpineList list = new SpineList(SERVER);
     private final Crumbs crumbs;
-    private final Label folder = label("", "files-title");
-    private final Label picked = label("", "metric-label");
-    private final Label into = label("", "mono-muted");
+    private final Label picked = label("", "fetch-value");
+    private final Label into = label("", "home-muted");
     private final Button choose = new Button();
 
     private String current = "/";
@@ -77,21 +76,22 @@ public final class PathPicker extends VBox {
         this.lister = lister;
         this.onChoose = onChoose;
         this.crumbs = new Crumbs(this::open);
-        getStyleClass().addAll("float-card", "server-card");
-        setSpacing(10);
-        setPadding(new Insets(18, 20, 16, 20));
-        setPrefWidth(440);
+        getStyleClass().addAll("float-card", "redis-help");
+        setSpacing(12);
+        setPadding(new Insets(20, 24, 18, 24));
+        setPrefWidth(460);
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button close = new Button("✕");
+        Button close = new Button("close");
         close.getStyleClass().add("ghost-button");
         close.setFocusTraversable(false);
         close.setOnAction(event -> onClose.run());
-        HBox top = new HBox(10, new VBox(2, label("SERVER.SCOPE", "spine-kicker"), label(title, "card-title")),
-                spacer, close);
-        top.setAlignment(Pos.TOP_LEFT);
+        String heading = title == null || title.isEmpty() ? ""
+                : title.substring(0, 1).toLowerCase(Locale.ROOT) + title.substring(1);
+        HBox top = new HBox(10, label(heading, "fetch-host"), spacer, close);
+        top.setAlignment(Pos.CENTER_LEFT);
 
         FlowPane shortcuts = new FlowPane(12, 4);
         for (String place : kind.places()) {
@@ -104,6 +104,7 @@ public final class PathPicker extends VBox {
 
         list.setPrefHeight(300);
         list.setMinHeight(220);
+        list.setWaitingText("waiting for the server");
         VBox.setVgrow(list, Priority.ALWAYS);
         list.setOnPick(this::picked);
         list.setOnOpen(index -> open(shown.get(index).path()));
@@ -128,17 +129,21 @@ public final class PathPicker extends VBox {
         choose.setOnAction(event -> take());
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
-        HBox bottom = new HBox(12, new VBox(2, picked, into), gap, choose);
+        picked.setMinWidth(0);
+        HBox pickedLine = new HBox(10, label("picked", "fetch-key"), picked);
+        pickedLine.setAlignment(Pos.CENTER_LEFT);
+        VBox what = new VBox(3, pickedLine, into);
+        what.setMinWidth(0);
+        HBox bottom = new HBox(12, what, gap, choose);
         bottom.setAlignment(Pos.CENTER_LEFT);
 
+        // One line. The keyboard works the way it does everywhere and needs no sentence.
         Label help = label(kind.wantsFolder()
-                ? "CLICK A FOLDER TO PICK IT  ·  DOUBLE-CLICK OR › TO GO IN  ·  THE DOTS ARE FILES, SHOWN SO YOU "
-                        + "CAN TELL IT IS THE RIGHT FOLDER  ·  ARROWS, ENTER, BACKSPACE AND ESC WORK TOO"
-                : "CLICK A FOLDER TO GO IN  ·  CLICK A GREEN DOT TO PICK IT  ·  GREY IS NOT A "
-                        + kind.label() + "  ·  ARROWS, ENTER, BACKSPACE AND ESC WORK TOO", "vertical-note");
+                ? "double-click a folder to go in. the dots are its files."
+                : "click a folder to go in, a green dot to pick it.", "home-muted");
         help.setWrapText(true);
 
-        getChildren().addAll(top, shortcuts, crumbs, folder, list, bottom, help);
+        getChildren().addAll(top, shortcuts, crumbs, list, bottom, help);
         showPicked();
         open(start == null || !start.startsWith("/") ? kind.start() : start);
     }
@@ -147,7 +152,7 @@ public final class PathPicker extends VBox {
     public void open(String path) {
         current = path;
         crumbs.show(path);
-        folder.setText(Crumbs.name(path));
+        list.setLoadingText(path);
         list.setLoading(true);
         showPicked();
         lister.list(path, listing -> {
@@ -156,15 +161,14 @@ public final class PathPicker extends VBox {
             }
             if (listing.failed()) {
                 fill(List.of());
-                list.setMessage("CANNOT OPEN THIS FOLDER: " + listing.error().toUpperCase(Locale.ROOT)
-                        + (listing.error().toLowerCase(Locale.ROOT).contains("denied")
-                        ? "  ·  TURN ON ROOT" : ""), true);
+                String error = listing.error().toLowerCase(Locale.ROOT);
+                list.setMessage(error + (error.contains("denied") ? "  \u00b7  turn root on" : ""), true);
                 return;
             }
             List<RemoteEntry> entries = new ArrayList<>(listing.entries());
             entries.removeIf(entry -> entry.name().startsWith("."));
             fill(entries);
-            list.setMessage("EMPTY FOLDER", false);
+            list.setMessage("empty folder", false);
             list.focus();
         });
     }
@@ -257,35 +261,36 @@ public final class PathPicker extends VBox {
         RemoteEntry entry = index >= 0 && index < shown.size() ? shown.get(index) : null;
         String path = chosen();
         boolean fits = entry != null && kind.accepts(entry);
+        String what = kind.label().toLowerCase(Locale.ROOT);
         if (entry == null) {
-            picked.setText("NOTHING SELECTED");
+            picked.setText(kind.wantsFolder() ? "this folder" : "nothing yet");
         } else if (fits) {
-            picked.setText("PICKED  " + entry.name());
+            picked.setText(entry.name());
         } else {
-            picked.setText(entry.name() + " IS NOT A " + kind.label());
+            picked.setText(entry.name() + " is not a " + what);
         }
         into.setText(path == null ? "" : path);
         choose.setDisable(path == null);
         // The name is already on the left. The button says what it does, and stays whole.
-        choose.setText(fits && !kind.wantsFolder() ? "CHOOSE IT"
-                : kind.wantsFolder() ? "CHOOSE THIS FOLDER" : "PICK A " + kind.label());
+        choose.setText(fits && !kind.wantsFolder() ? "choose it"
+                : kind.wantsFolder() ? "choose this folder" : "pick a " + what);
 
         // The name got it offered; its first line decides whether it can be taken.
         if (fits && peeker != null && kind.readsFirstLine()) {
             String armour = armours.get(entry.path());
             if (armour == null) {
-                picked.setText("PICKED  " + entry.name() + "  ·  READING ITS FIRST LINE…");
+                picked.setText(entry.name() + "  \u00b7  reading its first line\u2026");
                 choose.setDisable(true);
                 return;
             }
             PathKind.Verdict verdict = kind.judge(armour);
-            picked.setText(entry.name() + "  ·  " + kind.explain(verdict, armour).toUpperCase(Locale.ROOT));
+            picked.setText(entry.name() + "  \u00b7  " + kind.explain(verdict, armour));
             picked.getStyleClass().setAll("label", verdict == PathKind.Verdict.FITS ? "card-success"
-                    : verdict == PathKind.Verdict.UNKNOWN ? "metric-label" : "card-problem");
+                    : verdict == PathKind.Verdict.UNKNOWN ? "fetch-value" : "card-problem");
             choose.setDisable(verdict == PathKind.Verdict.WRONG || verdict == PathKind.Verdict.LOCKED);
             return;
         }
-        picked.getStyleClass().setAll("label", "metric-label");
+        picked.getStyleClass().setAll("label", "fetch-value");
     }
 
     /** Only for the previews: what a file's first line said, without a server. */
@@ -298,12 +303,21 @@ public final class PathPicker extends VBox {
     public void showForPreview(String path, List<RemoteEntry> entries, int pick) {
         current = path;
         crumbs.show(path);
-        folder.setText(Crumbs.name(path));
+        list.setLoadingText(path);
         fill(entries);
         list.select(pick);
         list.settle();
         showPicked();
         peeker = peeker == null ? (file, done) -> { } : peeker;
+    }
+
+    /** Only for the previews: a folder still being read, this long after it was asked for. */
+    public void readingForPreview(String path, double seconds) {
+        current = path;
+        crumbs.show(path);
+        list.setLoadingText(path);
+        list.loadingForPreview(seconds);
+        showPicked();
     }
 
     private static Label label(String text, String styleClass) {

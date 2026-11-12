@@ -19,7 +19,7 @@ import javafx.stage.StageStyle;
 import java.util.Objects;
 
 /**
- * Kubo's borderless Windows frame: branded title bar, native-like window actions and resize edges.
+ * Shared dark frame. Expansion uses explicit work-area bounds, leaving shell edges accessible.
  */
 public final class KuboWindow extends BorderPane {
 
@@ -41,13 +41,35 @@ public final class KuboWindow extends BorderPane {
     private double dragX;
     private double dragY;
     private boolean moving;
+    private boolean expanded;
+    private javafx.geometry.Rectangle2D restoreBounds;
 
     private KuboWindow(Stage stage, Node content, boolean full) {
         this.stage = stage;
         getStyleClass().add("kubo-window");
         setTop(titleBar(full));
-        setContent(content);
         installResizeEdges();
+        setContent(content);
+        stage.getProperties().put(KuboWindow.class, this);
+        stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_SHOWN, event -> {
+            if (expanded) {
+                if (restoreBounds == null) rememberBounds();
+                fitWorkArea();
+            } else {
+                rememberBounds();
+            }
+        });
+        // Windows can request native maximization through a system shortcut. Convert it
+        // into the same work-area expansion as the title-bar button.
+        stage.maximizedProperty().addListener((observable, before, now) -> {
+            if (now) javafx.application.Platform.runLater(() -> {
+                if (!stage.isMaximized()) return;
+                stage.setMaximized(false);
+                expanded = true;
+                fitWorkArea();
+                updateMaximizeButton();
+            });
+        });
     }
 
     /**
@@ -80,6 +102,13 @@ public final class KuboWindow extends BorderPane {
         setCenter(Objects.requireNonNull(content, "content"));
     }
 
+    /** Expands an installed frame, including calls made before the window is first shown. */
+    public static void maximize(Stage stage) {
+        KuboWindow frame = (KuboWindow) stage.getProperties().get(KuboWindow.class);
+        if (frame == null) throw new IllegalStateException("Install KuboWindow before expanding it");
+        if (!frame.expanded) frame.toggleMaximized();
+    }
+
     private HBox titleBar(boolean full) {
         ImageView icon = new ImageView(AppIcons.mark());
         icon.setFitWidth(16);
@@ -106,8 +135,8 @@ public final class KuboWindow extends BorderPane {
         close.getStyleClass().add("window-close");
         minimize.setOnAction(event -> stage.setIconified(true));
         maximize.setOnAction(event -> toggleMaximized());
-        close.setOnAction(event -> stage.close());
-        stage.maximizedProperty().addListener((observable, previous, value) -> maximize.setText(value ? "❐" : "□"));
+        close.setOnAction(event -> stage.fireEvent(new javafx.stage.WindowEvent(stage,
+                javafx.stage.WindowEvent.WINDOW_CLOSE_REQUEST)));
 
         HBox bar = full
                 ? new HBox(10, icon, mark, title, spacer, minimize, maximize, close)
@@ -134,7 +163,50 @@ public final class KuboWindow extends BorderPane {
     }
 
     private void toggleMaximized() {
-        stage.setMaximized(!stage.isMaximized());
+        if (expanded) {
+            expanded = false;
+            if (restoreBounds != null) place(restoreBounds);
+        } else {
+            if (stage.isShowing()) rememberBounds();
+            expanded = true;
+            if (stage.isShowing()) fitWorkArea();
+        }
+        updateMaximizeButton();
+    }
+
+    private void updateMaximizeButton() {
+        pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("expanded"), expanded);
+        maximize.setText(expanded ? "❐" : "□");
+        maximize.setAccessibleText(expanded ? "RESTORE" : "MAXIMIZE");
+    }
+
+    private void rememberBounds() {
+        restoreBounds = new javafx.geometry.Rectangle2D(stage.getX(), stage.getY(),
+                stage.getWidth(), stage.getHeight());
+    }
+
+    private javafx.stage.Screen currentScreen() {
+        if (!Double.isFinite(stage.getX()) || !Double.isFinite(stage.getY())) return javafx.stage.Screen.getPrimary();
+        javafx.geometry.Rectangle2D bounds = new javafx.geometry.Rectangle2D(stage.getX(), stage.getY(),
+                Math.max(1, stage.getWidth()), Math.max(1, stage.getHeight()));
+        return javafx.stage.Screen.getScreens().stream()
+                .max(java.util.Comparator.comparingDouble(screen -> WindowArea.overlap(bounds, screen.getBounds())))
+                .orElse(javafx.stage.Screen.getPrimary());
+    }
+
+    private void fitWorkArea() {
+        javafx.stage.Screen screen = currentScreen();
+        place(WindowArea.expanded(screen.getBounds(), screen.getVisualBounds(), com.kubo.platform.Host.isWindows()));
+    }
+
+    private void place(javafx.geometry.Rectangle2D bounds) {
+        // A monitor may be smaller than the one this window was created on.
+        stage.setMinWidth(Math.min(stage.getMinWidth(), bounds.getWidth()));
+        stage.setMinHeight(Math.min(stage.getMinHeight(), bounds.getHeight()));
+        stage.setX(bounds.getMinX());
+        stage.setY(bounds.getMinY());
+        stage.setWidth(bounds.getWidth());
+        stage.setHeight(bounds.getHeight());
     }
 
     private void installMove(HBox bar) {
@@ -150,18 +222,21 @@ public final class KuboWindow extends BorderPane {
             if (!moving || event.getButton() != MouseButton.PRIMARY) {
                 return;
             }
-            if (stage.isMaximized()) {
+            if (expanded) {
                 double ratio = event.getSceneX() / Math.max(1, stage.getWidth());
-                stage.setMaximized(false);
+                toggleMaximized();
                 stage.setX(event.getScreenX() - stage.getWidth() * ratio);
-                stage.setY(Math.max(0, event.getScreenY() - 17));
+                stage.setY(event.getScreenY() - 17);
                 dragX = event.getScreenX() - stage.getX();
                 dragY = event.getScreenY() - stage.getY();
             }
             stage.setX(event.getScreenX() - dragX);
             stage.setY(event.getScreenY() - dragY);
         });
-        bar.setOnMouseReleased(event -> moving = false);
+        bar.setOnMouseReleased(event -> {
+            moving = false;
+            if (!expanded) rememberBounds();
+        });
         bar.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2
                     && !isWindowControl(event.getTarget())) {
@@ -183,13 +258,13 @@ public final class KuboWindow extends BorderPane {
 
     private void installResizeEdges() {
         addEventFilter(MouseEvent.MOUSE_MOVED, event -> {
-            if (!stage.isMaximized() && resizing == 0) {
+            if (!expanded && resizing == 0) {
                 int edge = edgeAt(event.getSceneX(), event.getSceneY());
                 setCursor(cursorFor(edge));
             }
         });
         addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
-            if (event.getButton() != MouseButton.PRIMARY || stage.isMaximized()
+            if (event.getButton() != MouseButton.PRIMARY || expanded
                     || isWindowControl(event.getTarget())) {
                 return;
             }
@@ -212,7 +287,10 @@ public final class KuboWindow extends BorderPane {
             resizeStage(event.getScreenX() - pressedX, event.getScreenY() - pressedY);
             event.consume();
         });
-        addEventFilter(MouseEvent.MOUSE_RELEASED, event -> resizing = 0);
+        addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+            if (resizing != 0 && !expanded) rememberBounds();
+            resizing = 0;
+        });
     }
 
     private int edgeAt(double x, double y) {

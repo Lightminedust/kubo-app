@@ -31,7 +31,14 @@ public enum PathKind {
      * A PHP-FPM socket. Not a file at all: a socket is its own kind of entry, and {@code php-fpm.sock} is
      * usually a link to the one with the version in its name.
      */
-    SOCKET("SOCKET", "/run/php", List.of("/run/php", "/run", "/var/run"), List.of(".sock"));
+    SOCKET("SOCKET", "/run/php", List.of("/run/php", "/run", "/var/run"), List.of(".sock")),
+
+    /** A program a process manager keeps running: a Node, Python or shell script. */
+    SCRIPT("SCRIPT", "/srv", List.of("/srv", "/var/www", "/home", "/opt", "/"),
+            List.of(".js", ".cjs", ".mjs", ".ts", ".py", ".sh", ".rb", ".php")),
+
+    /** Anything a service could run: a program has no ending to know it by, so every file is offered. */
+    PROGRAM("PROGRAM", "/opt", List.of("/opt", "/usr/local/bin", "/srv", "/home", "/usr/bin", "/"), List.of());
 
     private final String label;
     private final String start;
@@ -85,7 +92,7 @@ public enum PathKind {
             return false;
         }
         String name = entry.name().toLowerCase(Locale.ROOT);
-        if (endings.stream().noneMatch(name::endsWith)) {
+        if (!endings.isEmpty() && endings.stream().noneMatch(name::endsWith)) {
             return false;
         }
         // A certificate and its key are both .pem more often than not. A name that says which is believed; a

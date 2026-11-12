@@ -52,6 +52,9 @@ public final class NetworkPreview {
                 render(output, "network-crowded", crowdedServer(), -1);
                 renderHelp(output);
                 renderReading(output);
+                renderFirstReading(output);
+                renderPortCard(output);
+                renderZoomed(output);
                 com.kubo.ui.ToolsCard toolsCard = new com.kubo.ui.ToolsCard((tool, report) -> { }, true, "",
                         () -> { });
                 toolsCard.show(java.util.Set.of(com.kubo.model.tools.Tool.PING,
@@ -111,6 +114,9 @@ public final class NetworkPreview {
                 // the dates or the counts, and the reason said rather than an empty table.
                 renderCard(output, "network-blocked-bare", bareBlockedScreen());
                 renderNginx(output, "network-nginx", exposedServer().endpoints());
+                renderNginxSite(output, "network-nginx-off", "old-shop");
+                // The pointer on one port: the way through it lit, from the names down to the machine.
+                renderNginxPointed(output, "network-nginx-pointed", "port 3000");
                 // The screen mid-read: the commands going out, rather than a word saying READING that looks
                 // exactly like a command that has hung.
                 renderNginx(output, "network-nginx-reading", exposedServer().endpoints(), List.of(), List.of(
@@ -130,6 +136,18 @@ public final class NetworkPreview {
                         .filter(endpoint -> endpoint.socket().port() != 3000).toList());
                 renderCard(output, "network-new-site", newSiteCard());
                 renderCard(output, "network-folder-picker", folderPicker());
+                // The same picker while the server is still answering: the reading, not a word saying READING.
+                com.kubo.ui.PathPicker reading = new com.kubo.ui.PathPicker("Pick the site's folder",
+                        com.kubo.model.files.PathKind.FOLDER, (path, answer) -> { }, "/var/www/kubo",
+                        chosen -> { }, () -> { });
+                reading.readingForPreview("/var/www/kubo", 0.74);
+                renderCard(output, "network-folder-reading", reading);
+                // A folder the server would not open, and what the reader can do about it.
+                com.kubo.ui.PathPicker refused = new com.kubo.ui.PathPicker("Pick the site's folder",
+                        com.kubo.model.files.PathKind.FOLDER, (path, answer) -> answer.accept(
+                                com.kubo.model.files.DirectoryListing.failed(path, "Permission denied")),
+                        "/root/sites", chosen -> { }, () -> { });
+                renderCard(output, "network-folder-refused", refused);
                 renderCard(output, "network-certificate-picker", certificatePicker());
                 GuardCard edge = new GuardCard(sampleJails(), java.time.Instant.now(), new GuardCard.Hands() {
                     @Override public void ban(String jail, String address) { }
@@ -161,8 +179,8 @@ public final class NetworkPreview {
         scope.applyCss();
         scope.layout();
         scope.showForPreview(map, select);
-        scope.flow().fit();
-        scope.flow().freeze(2.4);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
         write(scene, output, name);
         scope.shutdown();
     }
@@ -186,6 +204,44 @@ public final class NetworkPreview {
         renderNginx(output, name, listening, servers, List.of());
     }
 
+    /** The Nginx screen with one site picked, as if it had been clicked. */
+    private static void renderNginxSite(Path output, String name, String site) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.showForPreview(exposedServer(), -1);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
+        NginxScreen screen = nginxScreen(exposedServer().endpoints());
+        screen.selectForPreview(site);
+        scope.showNginxForPreview(screen);
+        screen.freezeForPreview();
+        write(scene, output, name);
+        scope.shutdown();
+    }
+
+    /** The Nginx screen with the pointer resting on one node of the route. */
+    private static void renderNginxPointed(Path output, String name, String key) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.showForPreview(exposedServer(), -1);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
+        NginxScreen screen = nginxScreen(exposedServer().endpoints());
+        scope.showNginxForPreview(screen);
+        screen.freezeForPreview();
+        scope.applyCss();
+        scope.layout();
+        screen.pointForPreview(key);
+        write(scene, output, name);
+        scope.shutdown();
+    }
+
     /**
      * @param asking the commands already sent, for the screen as it looks while it is still reading
      */
@@ -199,11 +255,15 @@ public final class NetworkPreview {
         scope.applyCss();
         scope.layout();
         scope.showForPreview(exposedServer(), -1);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
         NginxScreen screen = servers.isEmpty() ? nginxScreen(listening) : emptyNginxScreen(servers);
-        if (!asking.isEmpty()) {
-            screen.showTrailForPreview(asking);
-        }
         scope.showNginxForPreview(screen);
+        screen.freezeForPreview();
+        if (!asking.isEmpty()) {
+            scope.screenReadingForPreview("the sites nginx serves, where they send traffic, their certificates",
+                    asking.stream().map(command -> answer(command, 0, 40)).toList());
+        }
         write(scene, output, name);
         scope.shutdown();
     }
@@ -439,6 +499,7 @@ public final class NetworkPreview {
             @Override public void browse(String path) { }
             @Override public void back() { }
         });
+        screen.setMachine("gemmie-prod");
         String config = """
                 # configuration file /etc/nginx/nginx.conf:
                 http {
@@ -482,6 +543,21 @@ public final class NetworkPreview {
                         alias /var/www/assets;
                     }
                 }
+
+                # configuration file /etc/nginx/sites-available/old-shop:
+                server {
+                    listen 80;
+                    server_name shop.gemmi-e.com;
+                    root /var/www/old-shop;
+
+                    location / {
+                        try_files $uri $uri/ =404;
+                    }
+
+                    location /checkout {
+                        proxy_pass http://127.0.0.1:4100;
+                    }
+                }
                 """;
         com.kubo.model.network.NginxSites sites = new com.kubo.model.network.NginxSites(
                 List.of("default", "gemmie", "kubo.gemmi-e.com", "old-shop"),
@@ -508,13 +584,13 @@ public final class NetworkPreview {
         holder.applyCss();
         holder.layout();
         scope.showForPreview(exposedServer(), -1);
-        scope.flow().fit();
-        scope.flow().freeze(2.0);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
         write(scene, output, name);
         scope.shutdown();
     }
 
-    /** The map while a reading is in flight, which is a state nobody could see in a still picture before. */
+    /** The screen while a reading is in flight, with the log opened under it. */
     private static void renderReading(Path output) throws IOException {
         NetworkScope scope = new NetworkScope();
         Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
@@ -522,13 +598,67 @@ public final class NetworkPreview {
         scope.applyCss();
         scope.layout();
         scope.showForPreview(exposedServer(), -1);
-        scope.flow().fit();
-        scope.flow().setLoading(true);
-        scope.machine().setReading(true);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
+        // Just after root was turned on: a reading somebody is waiting on, answer by answer.
+        scope.readingForPreview("root is on: reading what only root can see", List.of(
+                answer(com.kubo.network.LinkCommands.MACHINE, 0, 118),
+                answer(com.kubo.network.NetworkCommands.PM2, 0, 41),
+                answer(com.kubo.network.FirewallCommands.DETECT, 0, 17),
+                answer(com.kubo.network.FirewallCommands.UFW, 0, 63),
+                answer(com.kubo.network.NetworkCommands.NGINX, 1, 212)));
         scope.layout();
-        scope.flow().freeze(1.35);
         write(scene, output, "network-reading");
         scope.shutdown();
+    }
+
+    /** The very first reading of a session, before there is any tree to show. */
+    private static void renderFirstReading(Path output) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.readingForPreview("", List.of(answer(com.kubo.network.LinkCommands.MACHINE, 0, 124),
+                answer(com.kubo.network.NetworkCommands.PM2, 0, 38)));
+        scope.ports().freeze(2.4);
+        write(scene, output, "network-loading");
+        scope.shutdown();
+    }
+
+    /** The map zoomed in, the way it reads once somebody has moved closer. */
+    private static void renderZoomed(Path output) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.showForPreview(exposedServer(), 0);
+        scope.ports().fit();
+        scope.ports().zoomIn();
+        scope.ports().zoomIn();
+        scope.ports().freeze(2.4);
+        write(scene, output, "network-zoomed");
+        scope.shutdown();
+    }
+
+    /** The form a right-click on the map opens. */
+    private static void renderPortCard(Path output) throws IOException {
+        NetworkScope scope = new NetworkScope();
+        Scene scene = new Scene(scope, 1400, 860, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        scope.applyCss();
+        scope.layout();
+        scope.showForPreview(exposedServer(), -1);
+        scope.ports().freeze(2.4);
+        scope.portCardForPreview();
+        write(scene, output, "network-port-card");
+        scope.shutdown();
+    }
+
+    private static com.kubo.command.CommandEntry answer(String command, int exit, long millis) {
+        return new com.kubo.command.CommandEntry(java.time.Instant.now(), command, true, exit, "", "",
+                java.time.Duration.ofMillis(millis));
     }
 
     private static void renderHelp(Path output) throws IOException {
@@ -540,8 +670,8 @@ public final class NetworkPreview {
         holder.applyCss();
         holder.layout();
         scope.showForPreview(exposedServer(), -1);
-        scope.flow().fit();
-        scope.flow().freeze(2.0);
+        scope.ports().fit();
+        scope.ports().freeze(2.4);
         write(scene, output, "network-help");
         scope.shutdown();
     }

@@ -29,7 +29,7 @@ public final class LocalShellWindow {
         stage.setTitle("Kubo — " + com.kubo.platform.LocalShell.title() + " — Local PC");
         stage.setMinWidth(Math.min(760, screen.getWidth()));
         stage.setMinHeight(Math.min(480, screen.getHeight()));
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnHidden(event -> console.shutdown());
     }
 

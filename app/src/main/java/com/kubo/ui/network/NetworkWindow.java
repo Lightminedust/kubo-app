@@ -38,8 +38,13 @@ public final class NetworkWindow {
         this.commands = commands;
         this.rootSession = rootSession;
         root.getStyleClass().add("scope-view");
-        root.getChildren().add(message("READING THE NETWORK…",
-                "KUBO IS ASKING THE SERVER WHAT LISTENS, WHAT THE FIREWALL ALLOWS AND WHERE NGINX SENDS TRAFFIC."));
+        // The same journal the screen shows once it is up, from the first instant, so the wait never changes
+        // its look half way through.
+        com.kubo.ui.Journal opening = new com.kubo.ui.Journal(command -> null);
+        opening.waitingFor("finding out how this account becomes root");
+        opening.start("reading", connection.target().username() + "@" + connection.target().host(),
+                "what listens, what the firewall allows, where nginx sends traffic");
+        root.getChildren().add(opening);
 
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
         Scene scene = new Scene(KuboWindow.install(stage, root),
@@ -49,7 +54,7 @@ public final class NetworkWindow {
         stage.setTitle("Kubo — Network — " + connection.target());
         stage.setMinWidth(Math.min(1040, screen.getWidth() - 32));
         stage.setMinHeight(Math.min(620, screen.getHeight() - 48));
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnHidden(event -> {
             if (scope != null) {
                 scope.shutdown();

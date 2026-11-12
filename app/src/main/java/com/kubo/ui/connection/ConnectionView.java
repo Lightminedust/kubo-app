@@ -7,18 +7,21 @@ import com.kubo.connection.ssh.SshConnection;
 import com.kubo.connection.ssh.SshConnectionException;
 import com.kubo.connection.ssh.SshCredentials;
 import com.kubo.connection.ssh.SshTarget;
+import com.kubo.ui.StatusLine;
+import com.kubo.ui.Tile;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
-import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -30,16 +33,11 @@ import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
 
-import javafx.scene.control.ScrollPane;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -52,6 +50,9 @@ import java.util.function.Consumer;
 
 /**
  * First screen: choose a server, authenticate with a password or a private key, confirm the host key.
+ *
+ * <p>On the left the connection itself, drawn: this computer, the server, and the steps between them as the
+ * attempt goes through them; under it the form. On the right the saved sessions, and what Kubo is.
  */
 public final class ConnectionView extends StackPane {
 
@@ -63,14 +64,15 @@ public final class ConnectionView extends StackPane {
     }
 
     private static final Color DOT_IDLE = Color.web("#6e6e7d");
-    private static final Color DOT_BUSY = Color.web("#ff3fd8");
+    private static final Color DOT_BUSY = Color.web("#e75879");
     private static final Color DOT_LIVE = Color.web("#35e0a1");
     private static final Color DOT_ALERT = Color.web("#ff2d55");
-    private static final double STEP_OFF = 0.18;
-    private static final DateTimeFormatter USED = DateTimeFormatter.ofPattern("dd MMM yyyy  HH:mm", Locale.ENGLISH)
-            .withZone(ZoneId.systemDefault());
+    private static final String READY = "type an address, or pick a saved session";
 
-    private final ParticleField field = new ParticleField();
+    private final ConnectionLink link = new ConnectionLink();
+    private final StudioPanel studio = new StudioPanel();
+    private final StatusLine statusLine = new StatusLine();
+    private Tile savedTile;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "kubo-ssh");
         thread.setDaemon(true);
@@ -78,37 +80,34 @@ public final class ConnectionView extends StackPane {
     });
 
     private final Circle stateDot = new Circle(3.5, DOT_IDLE);
-    private final Label portLabel = label("PORT —", "series");
-    private final Region targetStep = step("step-target");
-    private final Region credentialsStep = step("step-credentials");
-    private final Region sessionStep = step("step-session");
+    private final Label portLabel = label("port —", "series");
+    private final Label tally = label("", "home-muted");
 
     private final ToggleGroup modeGroup = new ToggleGroup();
-    private final ToggleButton passwordMode = modeToggle("PASSWORD");
-    private final ToggleButton keyMode = modeToggle("PRIVATE KEY");
+    private final ToggleButton passwordMode = chipToggle("password");
+    private final ToggleButton keyMode = chipToggle("key file");
     private final TextField targetField = new TextField();
     private final PasswordField passwordField = new PasswordField();
     private final TextField keyFileField = new TextField();
-    private final Button browseButton = new Button("BROWSE");
+    private final Button browseButton = action("browse");
     private final PasswordField passphraseField = new PasswordField();
     private final VBox passwordGroup;
     private final VBox keyGroup;
     private final VBox form;
-    private final Button connectButton = new Button("CONNECT");
-    private final Button cancelButton = new Button("CANCEL");
-    private final ProgressIndicator connectionProgress = new ProgressIndicator();
-    private final Label statusLabel = label("", "status");
+    private final Button connectButton = new Button("connect");
+    private final Button cancelButton = action("cancel");
+    private final Label statusLabel = label("", "card-problem");
 
-    private final Label hostKeyHost = label("", "host-key-host");
-    private final Label hostKeyAlgorithm = label("", "field-label");
+    private final Label hostKeyHost = label("", "fetch-host");
+    private final Label hostKeyAlgorithm = label("", "home-muted");
     private final TextField hostKeyFingerprint = new TextField();
     private final VBox hostKeyCard;
 
     private final SessionStore store;
-    private final VBox sessionList = new VBox(10);
-    private final ToggleButton saveToggle = modeToggle("SAVE THIS SESSION");
-    private final ToggleButton rememberToggle = modeToggle("REMEMBER PASSWORD");
-    private final Label rememberNote = label("", "remember-note");
+    private final VBox sessionList = new VBox(2);
+    private final ToggleButton saveToggle = chipToggle("save this session");
+    private final ToggleButton rememberToggle = chipToggle("remember the password");
+    private final Label rememberNote = label("", "home-muted");
     private final List<Button> sessionActions = new ArrayList<>();
     private Button connectingSessionButton;
     private SavedSession selectedSession;
@@ -130,6 +129,10 @@ public final class ConnectionView extends StackPane {
         this.onConnected = onConnected;
     }
 
+    public void setOnCheckUpdates(Runnable check) {
+        studio.setOnCheckUpdates(check);
+    }
+
     public ConnectionView() {
         this(SessionStore.standard());
     }
@@ -137,6 +140,8 @@ public final class ConnectionView extends StackPane {
     public ConnectionView(SessionStore store) {
         this.store = store;
         getStyleClass().add("connection-view");
+        heightProperty().addListener((observable, before, height) ->
+                pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("compact"), height.doubleValue() < 720));
 
         targetField.setPromptText("user@host:port");
         passwordField.setPromptText("password");
@@ -148,75 +153,102 @@ public final class ConnectionView extends StackPane {
         passwordMode.setToggleGroup(modeGroup);
         keyMode.setToggleGroup(modeGroup);
         passwordMode.setSelected(true);
-        HBox modes = new HBox(28, passwordMode, keyMode);
+        HBox modes = new HBox(8, passwordMode, keyMode);
+        modes.setAlignment(Pos.CENTER_LEFT);
 
-        browseButton.getStyleClass().add("ghost-button");
         browseButton.setOnAction(event -> browseKeyFile());
         HBox keyFileRow = new HBox(14, keyFileField, browseButton);
-        keyFileRow.setAlignment(Pos.BOTTOM_LEFT);
+        keyFileRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(keyFileField, Priority.ALWAYS);
 
-        passwordGroup = fieldGroup("PASSWORD", passwordField);
-        keyGroup = new VBox(22, fieldGroup("KEY FILE  ·  PPK OR OPENSSH", keyFileRow),
-                fieldGroup("PASSPHRASE", passphraseField));
+        passwordGroup = new VBox(promptRow("password", passwordField));
+        keyGroup = new VBox(4, promptRow("key", keyFileRow), promptRow("phrase", passphraseField));
 
-        connectButton.getStyleClass().add("primary-button");
+        connectButton.getStyleClass().addAll("primary-button", "compact-button");
+        connectButton.setMinWidth(Region.USE_PREF_SIZE);
         connectButton.setDefaultButton(true);
         connectButton.setOnAction(event -> onConnectPressed());
-        connectionProgress.getStyleClass().add("connection-progress");
-        connectionProgress.setPrefSize(15, 15);
-        connectionProgress.setMaxSize(15, 15);
-        connectionProgress.setVisible(false);
-        connectionProgress.setManaged(false);
-        connectButton.setGraphic(connectionProgress);
-        connectButton.setGraphicTextGap(12);
-        cancelButton.getStyleClass().add("ghost-button");
-        cancelButton.setFocusTraversable(false);
         cancelButton.setOnAction(event -> cancelAttempt());
-        cancelButton.setVisible(false);
-        cancelButton.setManaged(false);
+        showCancel(false);
         statusLabel.setWrapText(true);
         statusLabel.setMinHeight(Region.USE_PREF_SIZE);
+        statusLabel.setMinWidth(0);
+        statusLabel.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(statusLabel, Priority.ALWAYS);
 
         saveToggle.setSelected(true);
-        rememberNote.setText(store.protectionNote());
+        rememberNote.setText(store.protectionNote().toLowerCase(Locale.ROOT));
         rememberNote.setWrapText(true);
         rememberNote.setMinHeight(Region.USE_PREF_SIZE);
         saveToggle.selectedProperty().addListener((observable, previous, value) -> updateRemember());
         rememberToggle.selectedProperty().addListener((observable, previous, value) -> updateRemember());
-        VBox saving = new VBox(8, new HBox(24, saveToggle, rememberToggle), rememberNote);
+        HBox keeping = new HBox(8, saveToggle, rememberToggle);
+        keeping.setAlignment(Pos.CENTER_LEFT);
 
-        form = new VBox(20, modes, fieldGroup("TARGET", targetField), passwordGroup, keyGroup, saving,
-                new VBox(16, new HBox(12, connectButton, cancelButton), statusLabel));
-        form.setMaxWidth(340);
+        HBox actions = new HBox(16, connectButton, cancelButton, statusLabel);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        // What this form amounts to, as the command it stands in for.
+        Label command = label("", "connection-command");
+        command.textProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
+            SshTarget target = parseOrNull(targetField.getText());
+            return target == null ? "$ ssh user@host"
+                    : "$ ssh -p " + target.port() + " " + target.username() + "@" + target.host();
+        }, targetField.textProperty()));
+        form = new VBox(10, command, line("auth", modes), promptRow("ssh", targetField), passwordGroup, keyGroup,
+                line("keep", new VBox(6, keeping, rememberNote)), actions);
+        VBox.setMargin(actions, new Insets(8, 0, 0, 0));
+        form.setMaxWidth(Double.MAX_VALUE);
+        form.getStyleClass().add("connection-form");
 
         hostKeyCard = buildHostKeyCard();
+        form.managedProperty().bind(form.visibleProperty());
+        hostKeyCard.managedProperty().bind(hostKeyCard.visibleProperty());
         StackPane formArea = new StackPane(form, hostKeyCard);
         StackPane.setAlignment(form, Pos.TOP_LEFT);
         StackPane.setAlignment(hostKeyCard, Pos.TOP_LEFT);
 
-        // The particle scene is a full-bleed background. The former BorderPane center confined it to a narrow
-        // rectangle between both columns when the window was maximized.
-        BorderPane layout = new BorderPane();
-        layout.setTop(buildHeader());
-        layout.setLeft(buildColumn(formArea));
-        layout.setRight(buildSessions());
-        layout.setPickOnBounds(false);
-        field.setMouseTransparent(true);
+        // The connection drawn on top, the form under it, the whole tile scrolling when the window is short.
+        Region rule = new Region();
+        rule.getStyleClass().add("fetch-rule");
+        rule.setMinHeight(1);
+        rule.setMaxHeight(1);
+        VBox sshBody = new VBox(16, link, rule, formArea);
+        ScrollPane formScroll = new ScrollPane(sshBody);
+        formScroll.setFitToWidth(true);
+        formScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        formScroll.getStyleClass().add("track-scroll");
+        Tile ssh = new Tile("ssh", formScroll);
+        ssh.getStyleClass().add("tile-active");
 
-        VBox colorBar = new VBox(targetStep, credentialsStep, sessionStep);
-        colorBar.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
-        colorBar.setMouseTransparent(true);
-        StackPane.setAlignment(colorBar, Pos.BOTTOM_LEFT);
+        ScrollPane sessionScroll = new ScrollPane(sessionList);
+        sessionScroll.setFitToWidth(true);
+        sessionScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sessionScroll.getStyleClass().add("track-scroll");
+        savedTile = new Tile("saved", sessionScroll).accent("tile-cyan");
+        VBox.setVgrow(savedTile, Priority.ALWAYS);
 
-        Label note = label("READ ONLY  —  SSH", "vertical-note");
-        note.setRotate(-90);
-        Group noteGroup = new Group(note);
-        noteGroup.setMouseTransparent(true);
-        StackPane.setAlignment(noteGroup, Pos.BOTTOM_RIGHT);
-        StackPane.setMargin(noteGroup, new Insets(0, 26, 48, 0));
+        Tile about = new Tile("about", studio).accent("tile-violet");
+        about.setMinHeight(Region.USE_PREF_SIZE);
 
-        getChildren().addAll(field, layout, colorBar, noteGroup);
+        VBox right = new VBox(18, savedTile, about);
+        right.setMinWidth(0);
+        HBox tiles = new HBox(18, ssh, right);
+        tiles.getStyleClass().add("tiles");
+        HBox.setHgrow(ssh, Priority.ALWAYS);
+        HBox.setHgrow(right, Priority.ALWAYS);
+        // Half each. Left to their content the form would take what it asked for and the list the rest,
+        // and the split would move every time a session was saved.
+        ssh.prefWidthProperty().bind(tiles.widthProperty().multiply(0.5));
+        right.prefWidthProperty().bind(tiles.widthProperty().multiply(0.5));
+
+        statusLine.fact("ssh");
+        statusLine.fact("nothing is installed on the server");
+
+        BorderPane workspace = new BorderPane(tiles);
+        workspace.setTop(buildHeader());
+        workspace.setBottom(statusLine);
+        workspace.getStyleClass().add("connection-workspace");
+        getChildren().add(workspace);
 
         modeGroup.selectedToggleProperty().addListener((observable, previous, selected) -> {
             if (selected == null) {
@@ -232,7 +264,7 @@ public final class ConnectionView extends StackPane {
         updateMode();
         updateRemember();
         refreshSessions();
-        showStatus("READY", Tone.NEUTRAL);
+        showStatus(READY, Tone.NEUTRAL);
     }
 
     /**
@@ -240,6 +272,7 @@ public final class ConnectionView extends StackPane {
      */
     public void shutdown() {
         closed = true;
+        link.stop();
         if (connection != null) {
             connection.close();
             connection = null;
@@ -247,14 +280,13 @@ public final class ConnectionView extends StackPane {
         if (hostKeyDecision != null) {
             hostKeyDecision.complete(false);
         }
-        field.stop();
         worker.shutdownNow();
     }
 
     /**
      * Shows a given state with sample data and no server, to render previews.
      */
-    void showPreview(ParticleField.State state, boolean useKey) {
+    void showPreview(ConnectionLink.Phase phase, boolean useKey) {
         targetField.setText("deploy@203.0.113.10");
         (useKey ? keyMode : passwordMode).setSelected(true);
         if (useKey) {
@@ -263,95 +295,117 @@ public final class ConnectionView extends StackPane {
             passwordField.setText("sample");
         }
 
-        switch (state) {
+        switch (phase) {
             case CONNECTING -> {
                 showConnecting(SshTarget.parse(targetField.getText()));
+                link.reach(ConnectionLink.SIGN_IN);
+                link.timesForPreview(-1, 212, -1);
                 // The connecting preview represents a click on the remembered session at the bottom of the list.
                 sessionActions.stream()
                         .filter(button -> button.getStyleClass().contains("session-connect"))
                         .reduce((first, second) -> second)
                         .ifPresent(this::showSavedSessionProgress);
             }
-            case AWAITING_HOST_KEY -> showHostKey(new SshConnection.HostKey("203.0.113.10", "ssh-ed25519",
-                    "SHA256:q3Xw1nK8v2Lr0Tz6yHc9PbE4mJ7sA5dFgU1iOoZlRkY"), new CompletableFuture<>());
-            case CONNECTED -> showConnected(SshTarget.parse(targetField.getText()), 184);
-            case FAILED -> showFailure(new SshConnectionException(SshConnectionException.Reason.AUTH_FAILED,
-                    "Methods accepted by the server: publickey"));
+            case HOST_KEY -> {
+                showConnecting(SshTarget.parse(targetField.getText()));
+                link.reach(ConnectionLink.REACH);
+                showHostKey(new SshConnection.HostKey("203.0.113.10", "ssh-ed25519",
+                        "SHA256:q3Xw1nK8v2Lr0Tz6yHc9PbE4mJ7sA5dFgU1iOoZlRkY"), new CompletableFuture<>());
+                link.timesForPreview(6, 188, -1);
+            }
+            case CONNECTED -> {
+                showConnecting(SshTarget.parse(targetField.getText()));
+                showConnected(SshTarget.parse(targetField.getText()), 431);
+                link.timesForPreview(6, 188, 237);
+            }
+            case FAILED -> {
+                showConnecting(SshTarget.parse(targetField.getText()));
+                link.reach(ConnectionLink.SIGN_IN);
+                showFailure(new SshConnectionException(SshConnectionException.Reason.AUTH_FAILED,
+                        "Methods accepted by the server: publickey"));
+                link.timesForPreview(-1, 205, -1);
+            }
             default -> {
             }
         }
-        field.stop();
-        field.snapToState();
+        link.freezeForPreview(1.3, "workstation");
         applyCss();
         layout();
-        field.renderFrame(8);
     }
 
-    private HBox buildHeader() {
-        Label wordmark = com.kubo.ui.RootButton.wordmark();
-        HBox brand = new HBox(wordmark);
-        brand.setAlignment(Pos.BOTTOM_LEFT);
-
+    /**
+     * The bar across the top, the way tmux keeps one: the session on the left, the window you are in, and
+     * a few facts in blocks on the right. Under it the one action this screen has besides connecting.
+     */
+    private VBox buildHeader() {
+        Label session = com.kubo.ui.RootButton.wordmark();
+        Label window = label("connect", "term-window");
+        Label quiet = label("ssh, nothing installed on the server", "term-window-quiet");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Region rule = new Region();
-        rule.getStyleClass().add("series-rule");
+        portLabel.getStyleClass().setAll("label", "term-fact");
+        HBox state = new HBox(8, stateDot, portLabel);
+        state.setAlignment(Pos.CENTER_LEFT);
+        state.getStyleClass().add("term-block");
+        HBox bar = new HBox(14, session, window, quiet, spacer, state);
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getStyleClass().add("term-bar");
 
-        HBox header = new HBox(14, brand, spacer, rule, portLabel, stateDot);
-        header.setAlignment(Pos.CENTER_LEFT);
-        header.setPadding(new Insets(28, 48, 0, 36));
-        return header;
+        Button fresh = action("new connection");
+        fresh.setOnAction(event -> clearForm());
+        Region gap = new Region();
+        HBox.setHgrow(gap, Priority.ALWAYS);
+        tally.setMinWidth(Region.USE_PREF_SIZE);
+        HBox row = new HBox(18, fresh, gap, tally);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().addAll("home-nav", "redis-actions");
+        return new VBox(bar, row);
     }
 
-    private ScrollPane buildColumn(StackPane formArea) {
-        Label kicker = label("SSH.SESSION", "series");
-        Region dash = new Region();
-        dash.getStyleClass().add("dash");
-        Label title = label("CONNECT\nTO YOUR\nSERVER", "title");
-        Label lede = label("Kubo reads your server over SSH without installing anything on it. Passwords and "
-                + "passphrases are saved only if you ask, encrypted for your Windows account.", "lede");
-        lede.setWrapText(true);
-        lede.setMaxWidth(300);
-        // Never squeeze the text when the form below grows.
-        title.setMinHeight(Region.USE_PREF_SIZE);
-        lede.setMinHeight(Region.USE_PREF_SIZE);
-
-        VBox column = new VBox(kicker, dash, title, lede, formArea);
-        VBox.setMargin(dash, new Insets(22, 0, 0, 0));
-        VBox.setMargin(title, new Insets(20, 0, 16, 0));
-        VBox.setMargin(formArea, new Insets(36, 0, 0, 0));
-        column.setPadding(new Insets(40, 0, 32, 80));
-        column.setMinWidth(470);
-        column.setPrefWidth(470);
-        ScrollPane scroll = new ScrollPane(column);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.setPrefWidth(470);
-        scroll.setMinWidth(390);
-        scroll.getStyleClass().add("connection-scroll");
-        return scroll;
+    /** Empties the form for a server that is not saved yet. */
+    private void clearForm() {
+        if (busy || connection != null) {
+            return;
+        }
+        filling = true;
+        selectedSession = null;
+        targetField.clear();
+        passwordField.clear();
+        keyFileField.clear();
+        passphraseField.clear();
+        passwordMode.setSelected(true);
+        saveToggle.setSelected(true);
+        rememberToggle.setSelected(false);
+        filling = false;
+        updatePrompts();
+        refreshSessions();
+        updateSteps();
+        link.reset();
+        stateDot.setFill(DOT_IDLE);
+        showStatus(READY, Tone.NEUTRAL);
+        targetField.requestFocus();
     }
 
     private VBox buildHostKeyCard() {
-        Label kicker = label("UNKNOWN SERVER", "series");
-        Label explanation = label("Kubo has never seen this server. Compare the fingerprint with the one shown by "
-                + "PuTTY or your hosting provider before trusting it.", "lede");
+        Label kicker = label("unknown server", "fetch-note");
+        Label explanation = label("kubo has never seen this server. compare this fingerprint with the one your "
+                + "host or PuTTY shows before trusting it. once trusted, it is checked at every connection, and a "
+                + "server that changes it is refused.", "home-muted");
         explanation.setWrapText(true);
+        explanation.setMinHeight(Region.USE_PREF_SIZE);
 
-        Button trust = new Button("TRUST");
-        trust.getStyleClass().add("primary-button");
+        Button trust = new Button("trust it");
+        trust.getStyleClass().addAll("primary-button", "compact-button");
         trust.setOnAction(event -> resolveHostKey(true));
-        Button reject = new Button("REJECT");
-        reject.getStyleClass().add("ghost-button");
+        Button reject = action("reject");
         reject.setOnAction(event -> resolveHostKey(false));
-        HBox actions = new HBox(24, trust, reject);
+        HBox actions = new HBox(18, trust, reject);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        VBox card = new VBox(16, kicker, hostKeyHost, new VBox(6, hostKeyAlgorithm, hostKeyFingerprint),
+        VBox card = new VBox(12, kicker, hostKeyHost, new VBox(4, hostKeyAlgorithm, hostKeyFingerprint),
                 explanation, actions);
-        VBox.setMargin(actions, new Insets(8, 0, 0, 0));
-        card.getStyleClass().add("host-key-card");
-        card.setMaxWidth(360);
+        VBox.setMargin(actions, new Insets(6, 0, 0, 0));
+        card.setMaxWidth(Double.MAX_VALUE);
         card.setVisible(false);
         return card;
     }
@@ -371,7 +425,8 @@ public final class ConnectionView extends StackPane {
         try {
             target = SshTarget.parse(targetField.getText());
         } catch (IllegalArgumentException e) {
-            showStatus("INVALID TARGET — " + e.getMessage(), Tone.ERROR);
+            showStatus("that address does not read as user@host or user@host:port: " + lower(e.getMessage()),
+                    Tone.ERROR);
             return;
         }
         Auth auth = keyMode.isSelected() ? Auth.KEY : Auth.PASSWORD;
@@ -384,17 +439,18 @@ public final class ConnectionView extends StackPane {
         Path keyPath = null;
         if (auth == Auth.KEY) {
             if (keyFile.isEmpty()) {
-                showStatus("CHOOSE A PRIVATE KEY FILE", Tone.ERROR);
+                showStatus("choose the private key file", Tone.ERROR);
                 return;
             }
             try {
                 keyPath = Path.of(keyFile);
             } catch (InvalidPathException e) {
-                showStatus("INVALID KEY FILE PATH — " + keyFile, Tone.ERROR);
+                showStatus("that key file path is not a path: " + keyFile, Tone.ERROR);
                 return;
             }
         } else if (typed.isEmpty() && stored == null) {
-            showStatus("ENTER THE PASSWORD", Tone.ERROR);
+            showStatus("type the password", Tone.ERROR);
+            passwordField.requestFocus();
             return;
         }
 
@@ -420,8 +476,8 @@ public final class ConnectionView extends StackPane {
                 }
             } catch (IOException e) {
                 wipe(toRemember);
-                Platform.runLater(() -> showStatusIfCurrent(thisAttempt, "THE SAVED SECRET COULD NOT BE DECRYPTED — "
-                        + "TYPE IT AGAIN (" + e.getMessage() + ")"));
+                Platform.runLater(() -> showStatusIfCurrent(thisAttempt,
+                        "the saved secret could not be read, type it again (" + e.getMessage() + ")"));
                 return;
             }
             SshCredentials credentials = auth == Auth.KEY
@@ -452,7 +508,7 @@ public final class ConnectionView extends StackPane {
                 try {
                     store.remember(target, auth, keyFile, remember, toRemember);
                 } catch (IOException e) {
-                    saveProblem = "SESSION NOT SAVED: " + e.getMessage();
+                    saveProblem = "the session was not saved: " + e.getMessage();
                 }
             }
             wipe(toRemember);
@@ -466,15 +522,15 @@ public final class ConnectionView extends StackPane {
                 refreshSessions();
                 showConnected(target, handshakeMs);
                 List<String> warnings = new ArrayList<>();
-                opened.hostKeyWarning().ifPresent(warning -> warnings.add(warning.toUpperCase(Locale.ROOT)
-                        + ". YOU WILL BE ASKED TO CONFIRM IT AGAIN NEXT TIME"));
+                opened.hostKeyWarning().ifPresent(warning -> warnings.add(lower(warning)
+                        + ". you will be asked to confirm it again next time"));
                 if (problem != null) {
-                    warnings.add(problem.toUpperCase(Locale.ROOT));
+                    warnings.add(problem);
                 }
                 if (!warnings.isEmpty()) {
-                    showStatus("CONNECTED — " + target + "  ·  " + String.join("  ·  ", warnings), Tone.PENDING);
+                    showStatus("connected to " + target + "  ·  " + String.join("  ·  ", warnings), Tone.PENDING);
                 }
-                // Let the lit beam be seen before moving on; longer when there is something to read.
+                // Show the result before moving on; leave more time when there are warnings to read.
                 PauseTransition pause = new PauseTransition(Duration.millis(warnings.isEmpty() ? 1400 : 6000));
                 pause.setOnFinished(event -> handOver());
                 pause.play();
@@ -490,11 +546,10 @@ public final class ConnectionView extends StackPane {
         setFormDisabled(false);
         showConnectionProgress(false);
         showCancel(false);
-        connectButton.setText("CONNECT");
+        connectButton.setText("connect");
         setSessionActionsDisabled(false);
         connectButton.setDisable(false);
-        field.setState(ParticleField.State.FAILED);
-        field.setHandshake("FAILED");
+        link.failed(ConnectionLink.KEY, "the saved secret could not be read");
         stateDot.setFill(DOT_ALERT);
         showStatus(message, Tone.ERROR);
         updateSteps();
@@ -508,69 +563,81 @@ public final class ConnectionView extends StackPane {
 
     // Saved sessions
 
-    private VBox buildSessions() {
-        Label kicker = label("SAVED.SESSIONS", "series");
-        Label lede = label("Saved after each successful connection. Key files are remembered by their path; "
-                + "passwords and passphrases only if you tick “remember”.", "lede");
-        lede.setWrapText(true);
-        lede.setMinHeight(Region.USE_PREF_SIZE);
-        ScrollPane scroll = new ScrollPane(sessionList);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-        VBox column = new VBox(12, kicker, lede, scroll);
-        VBox.setMargin(scroll, new Insets(14, 0, 0, 0));
-        column.setPadding(new Insets(40, 48, 32, 0));
-        column.setPrefWidth(360);
-        column.setMinWidth(300);
-        return column;
-    }
-
     private void refreshSessions() {
         List<SavedSession> sessions = store.list();
+        long remembered = sessions.stream().filter(SavedSession::remembersSecret).count();
+        tally.setText(sessions.isEmpty() ? "" : sessions.size() + (sessions.size() == 1 ? " saved" : " saved")
+                + (remembered > 0 ? "  ·  " + remembered + " remembered" : ""));
+        if (savedTile != null) {
+            savedTile.setTag(sessions.isEmpty() ? "" : String.valueOf(sessions.size()));
+        }
         sessionActions.clear();
         sessionList.getChildren().clear();
         if (sessions.isEmpty()) {
-            Label none = label("NONE YET.", "field-label");
+            Label none = label("no saved session yet. connect once with save this session on, and it waits "
+                    + "here.", "home-muted");
+            none.setWrapText(true);
+            none.setPadding(new Insets(4, 0, 0, 0));
             sessionList.getChildren().add(none);
             return;
         }
         for (SavedSession session : sessions) {
-            sessionList.getChildren().add(sessionCard(session));
+            sessionList.getChildren().add(sessionRow(session));
         }
     }
 
-    private VBox sessionCard(SavedSession session) {
+    /**
+     * One saved session, as a lane: a mark for how it signs in, the address, how, and what can be done with
+     * it at the end. A key file that is not where it was has its own line, with the way to point at it again.
+     */
+    private HBox sessionRow(SavedSession session) {
         boolean key = session.auth() == Auth.KEY;
-        Label target = label(session.target().toString(), "session-target");
-        target.setMinWidth(0);
-        HBox.setHgrow(target, Priority.ALWAYS);
-        target.setMaxWidth(Double.MAX_VALUE);
-        Button delete = new Button("✕");
-        delete.getStyleClass().add("session-delete");
-        delete.setFocusTraversable(false);
-        sessionActions.add(delete);
-        delete.setOnAction(event -> {
-            event.consume();
-            runStoreChange(() -> store.delete(session.id()));
-            if (selectedSession != null && selectedSession.id().equals(session.id())) {
-                selectedSession = null;
-            }
-        });
-        HBox top = new HBox(8, target, delete);
-        top.setAlignment(Pos.CENTER_LEFT);
+        boolean selected = selectedSession != null && selectedSession.id().equals(session.id());
 
-        String keyName = key ? keyFileName(session.keyFile()) : "";
-        Label method = label(key ? "PRIVATE KEY  ·  " + keyName : "PASSWORD", "field-label");
-        VBox card = new VBox(6, top, method);
-        if (key && !keyFileExists(session.keyFile())) {
-            card.getChildren().add(label("KEY FILE NOT FOUND: " + session.keyFile(), "session-warning"));
-        }
+        Region mark = new Region();
+        mark.setMinSize(8, 8);
+        mark.setMaxSize(8, 8);
+        mark.setStyle("-fx-background-color: " + (key ? "#b58cff" : "#35e8ff") + ";");
+        VBox markBox = new VBox(mark);
+        markBox.setPadding(new Insets(5, 0, 0, 0));
+
+        Label target = label(session.target().toString(), selected ? "apps-mini-name-on" : "apps-mini-name");
+        target.setMinWidth(0);
+        String how = key ? "key · " + keyFileName(session.keyFile()) : "password";
         if (session.remembersSecret()) {
-            Button forget = new Button("FORGET");
-            forget.getStyleClass().add("session-link");
-            forget.setFocusTraversable(false);
+            how = how + " · remembered";
+        }
+        VBox details = new VBox(4, target, label(how, "home-muted"));
+        details.setMinWidth(0);
+        details.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(details, Priority.ALWAYS);
+        if (key && !keyFileExists(session.keyFile())) {
+            Label warning = label("key file not found: " + session.keyFile(), "fetch-note");
+            warning.setWrapText(true);
+            warning.setMinWidth(0);
+            warning.setTooltip(new Tooltip(session.keyFile()));
+            Button find = action("find it");
+            find.getStyleClass().addAll("apps-warn", "apps-inline");
+            sessionActions.add(find);
+            find.setOnAction(event -> {
+                event.consume();
+                relocateKey(session);
+            });
+            HBox warningRow = new HBox(10, warning, find);
+            warningRow.setAlignment(Pos.TOP_LEFT);
+            details.getChildren().add(warningRow);
+        }
+
+        HBox row = new HBox(12, markBox, details);
+        row.setAlignment(Pos.TOP_LEFT);
+        row.setPadding(new Insets(10, 10, 10, 10));
+        row.getStyleClass().add(selected ? "apps-mini-row-on" : "apps-mini-row");
+
+        if (session.remembersSecret()) {
+            Button forget = action("forget");
             sessionActions.add(forget);
+            forget.setTooltip(new Tooltip("Erases the remembered " + (key ? "passphrase" : "password")
+                    + " and keeps the session"));
             forget.setOnAction(event -> {
                 event.consume();
                 runStoreChange(() -> store.forgetSecret(session.id()));
@@ -580,15 +647,10 @@ public final class ConnectionView extends StackPane {
                     updatePrompts();
                 }
             });
-            Label badge = label(key ? "PASSPHRASE REMEMBERED" : "PASSWORD REMEMBERED", "badge");
-            badge.getStyleClass().add("badge-accent");
-            HBox remembered = new HBox(10, badge, forget);
-            remembered.setAlignment(Pos.CENTER_LEFT);
-            card.getChildren().add(remembered);
+            row.getChildren().add(forget);
         }
-        Button connect = new Button("CONNECT  →");
-        connect.getStyleClass().add("session-connect");
-        connect.setFocusTraversable(false);
+        Button connect = action("connect");
+        connect.getStyleClass().addAll("session-connect", "apps-lit");
         sessionActions.add(connect);
         connect.setOnAction(event -> {
             event.consume();
@@ -596,7 +658,7 @@ public final class ConnectionView extends StackPane {
             boolean needsTyping = !key && !session.remembersSecret();
             if (needsTyping) {
                 passwordField.requestFocus();
-                showStatus("ENTER THE PASSWORD FOR " + session.target(), Tone.PENDING);
+                showStatus("type the password for " + session.target(), Tone.PENDING);
             } else if (connection == null && !busy) {
                 onConnectPressed();
                 if (busy) {
@@ -604,23 +666,42 @@ public final class ConnectionView extends StackPane {
                 }
             }
         });
-        Label used = label("LAST USED " + USED.format(Instant.ofEpochMilli(session.lastUsedMillis())), "field-label");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox bottom = new HBox(8, used, spacer, connect);
-        bottom.setAlignment(Pos.CENTER_LEFT);
-        card.getChildren().add(bottom);
-
-        card.getStyleClass().addAll("session-card", key ? "session-card-key" : "session-card-password");
-        if (selectedSession != null && selectedSession.id().equals(session.id())) {
-            card.getStyleClass().add("session-card-selected");
-        }
-        card.setOnMouseClicked(event -> {
+        Button delete = action("×");
+        delete.getStyleClass().add("port-danger");
+        delete.setTooltip(new Tooltip("Removes this session from the list"));
+        sessionActions.add(delete);
+        delete.setOnAction(event -> {
+            event.consume();
+            runStoreChange(() -> store.delete(session.id()));
+            if (selectedSession != null && selectedSession.id().equals(session.id())) {
+                selectedSession = null;
+            }
+        });
+        row.getChildren().addAll(connect, delete);
+        row.setOnMouseClicked(event -> {
             if (!busy && connection == null) {
                 fill(session);
             }
         });
-        return card;
+        return row;
+    }
+
+    /** Points a session at its key file where it is now, keeping its remembered passphrase. */
+    private void relocateKey(SavedSession session) {
+        File file = chooseKeyFile(session.keyFile());
+        if (file == null) {
+            return;
+        }
+        runStoreChange(() -> store.relocateKey(session.id(), file.getAbsolutePath()));
+        if (selectedSession != null && selectedSession.id().equals(session.id())) {
+            filling = true;
+            keyFileField.setText(file.getAbsolutePath());
+            filling = false;
+            selectedSession = store.list().stream().filter(saved -> saved.id().equals(session.id())).findFirst()
+                    .orElse(null);
+            refreshSessions();
+        }
+        showStatus("the key of " + session.target() + " is now " + file.getAbsolutePath(), Tone.NEUTRAL);
     }
 
     /**
@@ -643,7 +724,8 @@ public final class ConnectionView extends StackPane {
         updatePrompts();
         refreshSessions();
         updateSteps();
-        showStatus("SESSION " + session.target() + " READY", Tone.NEUTRAL);
+        link.reset();
+        showStatus(session.target() + " is in the form", Tone.NEUTRAL);
     }
 
     /**
@@ -673,13 +755,14 @@ public final class ConnectionView extends StackPane {
 
     private void updateRemember() {
         boolean canRemember = store.canRememberSecrets();
-        rememberToggle.setText(keyMode.isSelected() ? "REMEMBER PASSPHRASE" : "REMEMBER PASSWORD");
+        rememberToggle.setText(keyMode.isSelected() ? "remember the passphrase" : "remember the password");
         rememberToggle.setDisable(!saveToggle.isSelected() || !canRemember || busy || connection != null);
         if (!saveToggle.isSelected()) {
             rememberToggle.setSelected(false);
         }
         boolean showNote = rememberToggle.isSelected() || !canRemember;
-        rememberNote.setText(canRemember ? rememberNote.getText() : "REMEMBERING SECRETS NEEDS WINDOWS PROTECTION.");
+        rememberNote.setText(canRemember ? store.protectionNote().toLowerCase(Locale.ROOT)
+                : "remembering a secret needs windows protection, which this account does not have");
         rememberNote.setVisible(showNote);
         rememberNote.setManaged(showNote);
     }
@@ -692,7 +775,7 @@ public final class ConnectionView extends StackPane {
         try {
             change.run();
         } catch (IOException e) {
-            showStatus("SESSIONS FILE NOT WRITTEN — " + e.getMessage(), Tone.ERROR);
+            showStatus("the sessions file was not written: " + e.getMessage(), Tone.ERROR);
         }
         refreshSessions();
     }
@@ -749,13 +832,14 @@ public final class ConnectionView extends StackPane {
     private void showHostKey(SshConnection.HostKey hostKey, CompletableFuture<Boolean> decision) {
         hostKeyDecision = decision;
         hostKeyHost.setText(hostKey.host());
-        hostKeyAlgorithm.setText(hostKey.algorithm().toUpperCase() + "  ·  KEY FINGERPRINT");
+        hostKeyAlgorithm.setText(hostKey.algorithm().toLowerCase(Locale.ROOT) + "  ·  fingerprint of its key");
         hostKeyFingerprint.setText(hostKey.fingerprint());
         form.setVisible(false);
         hostKeyCard.setVisible(true);
-        field.setState(ParticleField.State.AWAITING_HOST_KEY);
-        field.setHandshake("HOST KEY PENDING");
+        link.reach(ConnectionLink.HOST_KEY);
         stateDot.setFill(DOT_ALERT);
+        showStatus("the server answered with a key kubo has never seen: check it, then trust or reject it",
+                Tone.PENDING);
         updateSteps();
     }
 
@@ -766,8 +850,7 @@ public final class ConnectionView extends StackPane {
         }
         hideHostKey();
         if (trusted) {
-            field.setState(ParticleField.State.CONNECTING);
-            field.setHandshake("NEGOTIATING");
+            link.trusted();
             stateDot.setFill(DOT_BUSY);
         }
     }
@@ -784,35 +867,40 @@ public final class ConnectionView extends StackPane {
         setSessionActionsDisabled(true);
         showConnectionProgress(true);
         connectButton.setDisable(true);
-        connectButton.setText("CONNECTING");
         showCancel(true);
-        field.setState(ParticleField.State.CONNECTING);
-        field.setHandshake("STARTING");
+        link.begin(keyMode.isSelected());
         stateDot.setFill(DOT_BUSY);
-        showStatus("OPENING A CONNECTION TO " + target, Tone.PENDING);
+        showStatus("opening a connection to " + target, Tone.PENDING);
         updateSteps();
     }
 
     /**
-     * Names the wait the attempt is actually in. Pressing CONNECT used to give one line for all three waits,
-     * so a slow server looked exactly like a screen that had missed the click — and the button got pressed
-     * again. Each of these is reported by the connection itself as it begins, not on a timer.
+     * Names the wait the attempt is actually in, on the drawing and in the status line. Each step is reported
+     * by the connection itself as it begins, not on a timer, so a slow server never looks like a missed click.
      */
     private void showStep(long thisAttempt, SshConnection.Step step) {
         if (closed || thisAttempt != attempt || !busy) {
             return;
         }
-        connectButton.setText(step.label());
-        field.setHandshake(step.label());
-        showStatus(step.label() + "  ·  " + explain(step), Tone.PENDING);
+        switch (step) {
+            case READING_THE_KEY -> link.reach(ConnectionLink.KEY);
+            case REACHING_THE_SERVER -> link.reach(ConnectionLink.REACH);
+            case AUTHENTICATING -> link.reach(ConnectionLink.SIGN_IN);
+        }
+        connectButton.setText(switch (step) {
+            case READING_THE_KEY -> "unlocking the key";
+            case REACHING_THE_SERVER -> "reaching the server";
+            case AUTHENTICATING -> "signing in";
+        });
+        showStatus(explain(step), Tone.PENDING);
     }
 
     private static String explain(SshConnection.Step step) {
         return switch (step) {
-            case READING_THE_KEY -> "UNLOCKING YOUR KEY FILE. NOTHING HAS BEEN SENT ANYWHERE YET";
-            case REACHING_THE_SERVER -> "WAITING FOR THE SERVER TO ANSWER. A WRONG ADDRESS OR A CLOSED PORT "
-                    + "SPENDS ITS WHOLE TIMEOUT HERE";
-            case AUTHENTICATING -> "THE SERVER ANSWERED. PROVING WHO YOU ARE";
+            case READING_THE_KEY -> "unlocking your key file. nothing has been sent anywhere yet";
+            case REACHING_THE_SERVER -> "waiting for the server to answer. a wrong address or a closed port spends "
+                    + "its whole timeout here";
+            case AUTHENTICATING -> "the server answered. proving who you are";
         };
     }
 
@@ -823,17 +911,20 @@ public final class ConnectionView extends StackPane {
     private void cancelAttempt() {
         attempt++;
         busy = false;
+        if (hostKeyDecision != null) {
+            hostKeyDecision.complete(false);
+            hostKeyDecision = null;
+        }
+        hideHostKey();
         setFormDisabled(false);
         setSessionActionsDisabled(false);
         showConnectionProgress(false);
         showCancel(false);
         connectButton.setDisable(false);
-        connectButton.setText("CONNECT");
-        field.setState(ParticleField.State.IDLE);
-        field.setHandshake("—");
+        connectButton.setText("connect");
+        link.reset();
         stateDot.setFill(DOT_IDLE);
-        showStatus("ATTEMPT ABANDONED. IF THE SERVER ANSWERS NOW, KUBO WILL CLOSE IT RATHER THAN USE IT",
-                Tone.PENDING);
+        showStatus("attempt abandoned. if the server answers now, kubo closes it rather than use it", Tone.PENDING);
         updateSteps();
     }
 
@@ -850,13 +941,10 @@ public final class ConnectionView extends StackPane {
         showCancel(false);
         setSessionActionsDisabled(true);
         connectButton.setDisable(false);
-        connectButton.setText("DISCONNECT");
-        field.setState(ParticleField.State.CONNECTED);
-        field.setHandshake(handshakeMs + " MS");
+        connectButton.setText("disconnect");
+        link.connected(handshakeMs);
         stateDot.setFill(DOT_LIVE);
-        showStatus("CONNECTED — " + target, Tone.OK);
-        sessionStep.setOpacity(1);
-        credentialsStep.setOpacity(1);
+        showStatus("connected to " + target, Tone.OK);
     }
 
     private void showFailure(SshConnectionException failure) {
@@ -871,19 +959,25 @@ public final class ConnectionView extends StackPane {
         setSessionActionsDisabled(false);
         showCancel(false);
         connectButton.setDisable(false);
-        connectButton.setText("CONNECT");
-        field.setState(ParticleField.State.FAILED);
-        field.setHandshake("FAILED");
+        connectButton.setText("connect");
         stateDot.setFill(DOT_ALERT);
 
-        String prefix = switch (failure.reason()) {
-            case KEY_UNREADABLE -> "KEY UNREADABLE";
-            case UNREACHABLE -> "SERVER UNREACHABLE";
-            case HOST_KEY_REJECTED -> "SERVER NOT TRUSTED";
-            case HOST_KEY_CHANGED -> "HOST KEY CHANGED";
-            case AUTH_FAILED -> "AUTHENTICATION REFUSED";
+        String words = switch (failure.reason()) {
+            case KEY_UNREADABLE -> "the key file could not be read";
+            case UNREACHABLE -> "the server did not answer";
+            case HOST_KEY_REJECTED -> "the server was not trusted";
+            case HOST_KEY_CHANGED -> "the server's key changed since last time";
+            case AUTH_FAILED -> "the server refused the sign in";
         };
-        showStatus(prefix + " — " + failure.getMessage(), Tone.ERROR);
+        link.failed(switch (failure.reason()) {
+            case KEY_UNREADABLE -> ConnectionLink.KEY;
+            case UNREACHABLE -> ConnectionLink.REACH;
+            case HOST_KEY_REJECTED, HOST_KEY_CHANGED -> ConnectionLink.HOST_KEY;
+            case AUTH_FAILED -> ConnectionLink.SIGN_IN;
+        }, words);
+        String detail = failure.getMessage() == null || failure.getMessage().isBlank() ? ""
+                : "  ·  " + lower(failure.getMessage());
+        showStatus(words + detail, Tone.ERROR);
         updateSteps();
     }
 
@@ -894,28 +988,46 @@ public final class ConnectionView extends StackPane {
         setFormDisabled(false);
         showConnectionProgress(false);
         setSessionActionsDisabled(false);
-        connectButton.setText("CONNECT");
-        field.setState(ParticleField.State.IDLE);
-        field.setHandshake("IDLE");
+        connectButton.setText("connect");
+        link.reset();
         stateDot.setFill(DOT_IDLE);
-        showStatus("DISCONNECTED", Tone.NEUTRAL);
+        showStatus("disconnected", Tone.NEUTRAL);
         updateSteps();
     }
 
     private void browseKeyFile() {
+        File file = chooseKeyFile(keyFileField.getText().strip());
+        if (file != null) {
+            keyFileField.setText(file.getAbsolutePath());
+        }
+    }
+
+    /** This computer's file chooser, opened where the key was, or in ~/.ssh. */
+    private File chooseKeyFile(String near) {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Choose a private key");
         chooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Private keys", "*.ppk", "*.pem", "*.key", "id_*"),
                 new FileChooser.ExtensionFilter("All files", "*.*"));
-        File sshDirectory = Path.of(System.getProperty("user.home"), ".ssh").toFile();
-        if (sshDirectory.isDirectory()) {
-            chooser.setInitialDirectory(sshDirectory);
+        File start = null;
+        try {
+            if (near != null && !near.isBlank()) {
+                Path parent = Path.of(unquote(near)).getParent();
+                if (parent != null && Files.isDirectory(parent)) {
+                    start = parent.toFile();
+                }
+            }
+        } catch (InvalidPathException e) {
+            start = null;
         }
-        File file = chooser.showOpenDialog(getScene().getWindow());
-        if (file != null) {
-            keyFileField.setText(file.getAbsolutePath());
+        if (start == null) {
+            File sshDirectory = Path.of(System.getProperty("user.home"), ".ssh").toFile();
+            start = sshDirectory.isDirectory() ? sshDirectory : null;
         }
+        if (start != null) {
+            chooser.setInitialDirectory(start);
+        }
+        return chooser.showOpenDialog(getScene().getWindow());
     }
 
     private void updateMode() {
@@ -924,22 +1036,22 @@ public final class ConnectionView extends StackPane {
         passwordGroup.setManaged(!useKey);
         keyGroup.setVisible(useKey);
         keyGroup.setManaged(useKey);
+        if (!busy && connection == null) {
+            link.setKey(useKey);
+        }
         updateRemember();
         formEdited();
     }
 
+    /** The port in the bar, and the server on the drawing, follow what is typed. */
     private void updateSteps() {
         SshTarget target = parseOrNull(targetField.getText());
-        portLabel.setText(target == null ? "PORT —" : "PORT " + target.port());
-        field.setRemote(target == null ? "NO TARGET YET" : target.toString());
-
-        boolean hasCredentials = keyMode.isSelected()
-                ? !keyFileField.getText().isBlank()
-                : !passwordField.getText().isEmpty();
-        boolean active = busy || connection != null;
-        targetStep.setOpacity(target != null ? 1 : STEP_OFF);
-        credentialsStep.setOpacity(hasCredentials || active ? 1 : STEP_OFF);
-        sessionStep.setOpacity(connection != null ? 1 : hostKeyCard.isVisible() ? 0.55 : STEP_OFF);
+        portLabel.setText(target == null ? "port —" : "port " + target.port());
+        if (target == null) {
+            link.setTarget("", "", 22);
+        } else {
+            link.setTarget(target.username(), target.host(), target.port());
+        }
     }
 
     private void setFormDisabled(boolean disabled) {
@@ -955,14 +1067,12 @@ public final class ConnectionView extends StackPane {
     }
 
     private void showConnectionProgress(boolean visible) {
-        connectionProgress.setManaged(visible);
-        connectionProgress.setVisible(visible);
         connectButton.getStyleClass().remove("connection-busy");
         if (visible) {
             connectButton.getStyleClass().add("connection-busy");
-            connectButton.setText("CONNECTING  ·  PLEASE WAIT");
+            connectButton.setText("connecting");
         } else if (connection == null) {
-            connectButton.setText("CONNECT");
+            connectButton.setText("connect");
         }
         if (!visible) {
             hideSavedSessionProgress();
@@ -971,15 +1081,13 @@ public final class ConnectionView extends StackPane {
 
     private void showSavedSessionProgress(Button button) {
         hideSavedSessionProgress();
-        ProgressIndicator progress = new ProgressIndicator();
+        com.kubo.ui.Spinner progress = new com.kubo.ui.Spinner();
         progress.getStyleClass().add("connection-progress");
-        progress.setPrefSize(12, 12);
-        progress.setMaxSize(12, 12);
         connectingSessionButton = button;
         button.getStyleClass().add("session-connecting");
         button.setGraphic(progress);
         button.setGraphicTextGap(7);
-        button.setText("CONNECTING");
+        button.setText("connecting");
     }
 
     private void hideSavedSessionProgress() {
@@ -988,7 +1096,7 @@ public final class ConnectionView extends StackPane {
         }
         connectingSessionButton.getStyleClass().remove("session-connecting");
         connectingSessionButton.setGraphic(null);
-        connectingSessionButton.setText("CONNECT  →");
+        connectingSessionButton.setText("connect");
         connectingSessionButton = null;
     }
 
@@ -997,15 +1105,22 @@ public final class ConnectionView extends StackPane {
     }
 
     private void showStatus(String message, Tone tone) {
-        statusLabel.setText("—  " + message);
-        statusLabel.getStyleClass().removeAll("status-pending", "status-ok", "status-error");
-        switch (tone) {
-            case PENDING -> statusLabel.getStyleClass().add("status-pending");
-            case OK -> statusLabel.getStyleClass().add("status-ok");
-            case ERROR -> statusLabel.getStyleClass().add("status-error");
-            default -> {
-            }
-        }
+        // Beside the button only when something went wrong and the whole sentence has to be read; the
+        // line along the bottom says everything else.
+        statusLabel.setText(message);
+        statusLabel.setVisible(tone == Tone.ERROR);
+        statusLabel.setManaged(tone == Tone.ERROR);
+        statusLine.show(switch (tone) {
+            case PENDING -> StatusLine.Mode.BUSY;
+            case OK -> StatusLine.Mode.OK;
+            case ERROR -> StatusLine.Mode.ERROR;
+            default -> StatusLine.Mode.IDLE;
+        }, switch (tone) {
+            case PENDING -> "working";
+            case OK -> "connected";
+            case ERROR -> "failed";
+            default -> "ready";
+        }, message);
     }
 
     private static SshTarget parseOrNull(String text) {
@@ -1026,8 +1141,31 @@ public final class ConnectionView extends StackPane {
         return value;
     }
 
-    private static VBox fieldGroup(String caption, Region input) {
-        return new VBox(6, label(caption, "field-label"), input);
+    /** A sentence from another layer, started in lower case like every other line of the screen. */
+    private static String lower(String sentence) {
+        return sentence == null || sentence.isEmpty() ? ""
+                : Character.toLowerCase(sentence.charAt(0)) + sentence.substring(1);
+    }
+
+    /** A line of the form: its word on the left, what it asks for on the right, with a rule under it. */
+    private static HBox promptRow(String caption, Region input) {
+        input.setMinWidth(0);
+        input.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(input, Priority.ALWAYS);
+        HBox row = line(caption, input);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("connection-prompt-row");
+        return row;
+    }
+
+    /** A line of the form without a rule: its word on the left and what it holds. */
+    private static HBox line(String caption, Node content) {
+        Label key = label(caption, "fetch-key");
+        key.setMinWidth(76);
+        key.setPrefWidth(76);
+        HBox row = new HBox(14, key, content);
+        row.setAlignment(Pos.TOP_LEFT);
+        return row;
     }
 
     private static Label label(String text, String styleClass) {
@@ -1036,18 +1174,20 @@ public final class ConnectionView extends StackPane {
         return label;
     }
 
-    private static Region step(String styleClass) {
-        Region region = new Region();
-        region.getStyleClass().addAll("step", styleClass);
-        region.setOpacity(STEP_OFF);
-        return region;
+    private static Button action(String text) {
+        Button button = new Button(text);
+        button.getStyleClass().add("ghost-button");
+        button.setFocusTraversable(false);
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        return button;
     }
 
-    private static ToggleButton modeToggle(String text) {
-        Circle marker = new Circle(3);
-        marker.getStyleClass().add("mode-marker");
-        ToggleButton toggle = new ToggleButton(text, marker);
-        toggle.getStyleClass().add("mode-toggle");
+    /** A choice drawn as the chips every other screen uses, lit when it is on. */
+    private static ToggleButton chipToggle(String text) {
+        ToggleButton toggle = new ToggleButton(text);
+        toggle.getStyleClass().add("service-chip");
+        toggle.setFocusTraversable(false);
+        toggle.setMinWidth(Region.USE_PREF_SIZE);
         return toggle;
     }
 }

@@ -33,7 +33,7 @@ public final class EditorWindow {
         stage.setScene(scene);
         stage.setMinWidth(Math.min(720, screen.getWidth() - 32));
         stage.setMinHeight(Math.min(480, screen.getHeight() - 48));
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
 
         editor.setOnTitle(title -> stage.setTitle(title + " — Kubo Edit — " + browser.target()));
         editor.setOnClose(stage::close);

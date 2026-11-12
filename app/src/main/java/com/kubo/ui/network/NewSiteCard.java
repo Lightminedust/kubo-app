@@ -10,12 +10,15 @@ import com.kubo.model.network.Upstream;
 import com.kubo.ui.Pulse;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -24,21 +27,20 @@ import javafx.scene.layout.VBox;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * The form that writes a new site, with the file it will write shown beside it.
+ * The form that writes a new site, with the file it will write beside it.
  *
- * <p>Nobody should agree to a change to their web server on the strength of a form, so the file is on screen the
- * whole time, updating as the answers change. It is the same text that will be written, not an illustration of
- * it: {@link SiteDraft#toConfig()} produces both.
+ * <p>Read the way the machine block is read: one key, its answer, one line each. Nobody should agree to a change
+ * to their web server on the strength of a form, so the file is on screen the whole time, updating as the
+ * answers change. It is the same text that will be written, not an illustration of it: {@link SiteDraft#toConfig()}
+ * produces both.
  *
  * <p>Nothing here is a free-form configuration editor. A shape, a domain, a destination and a few switches, each
- * one refused before anything is written if the answer is not what it claims to be. The mistakes this exists to
- * prevent are the ones that cannot be made when the file is built instead of typed.
- *
- * <p>The ports this server already answers on are offered as buttons, because the port is the one answer
- * somebody has to go and look up, and the screen behind this card read it a moment ago.
+ * refused before anything is written if it is not what it claims to be. The ports this server already answers on
+ * are offered as buttons, because the port is the one answer somebody has to go and look up.
  */
 final class NewSiteCard extends VBox {
 
@@ -73,26 +75,26 @@ final class NewSiteCard extends VBox {
     private final TextField certificateKey = new TextField();
 
     private final FlowPane presetPills = new FlowPane(6, 6);
-    private final Label presetNote = note("");
+    private final Label presetNote = muted("");
     private final FlowPane targetPills = new FlowPane(6, 6);
     private final HBox securityPills = new HBox(6);
     private final FlowPane ratePills = new FlowPane(6, 6);
-    private final Label rateNote = note("");
-    private final VBox targetFields = new VBox(10);
-    private final VBox securityFields = new VBox(10);
+    private final VBox targetFields = new VBox(8);
+    private final VBox securityFields = new VBox(8);
 
-    private final Button websocket = new Button("WEBSOCKETS");
-    private final Button gzip = new Button("COMPRESSION");
-    private final Button singlePage = new Button("UNKNOWN PATHS TO index.html");
-    private final HBox switches = new HBox(6);
+    private final Button websocket = new Button("websockets");
+    private final Button gzip = new Button("compression");
+    private final Button singlePage = new Button("unknown paths to index.html");
+    private final FlowPane switches = new FlowPane(6, 6);
 
     private final TextArea preview = new TextArea();
+    private final Label fileName = new Label();
     private final Label readsBack = new Label();
     private final Label problems = new Label();
     private final Label summary = new Label();
-    private final Button create = new Button("CREATE AND SWITCH ON");
+    private final Button create = new Button("create and switch on");
     private final Pulse working = new Pulse();
-    private final HBox rail = new HBox(12);
+    private final HBox rail = new HBox(14);
 
     private Preset preset;
     private Target target = Target.PORT;
@@ -112,78 +114,87 @@ final class NewSiteCard extends VBox {
         this.listening = listening == null ? List.of() : List.copyOf(listening);
         this.onCreated = onCreated;
 
-        getStyleClass().addAll("float-card", "wide-card");
+        getStyleClass().addAll("float-card", "wide-card", "redis-help");
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
-        setSpacing(14);
-        setPadding(new Insets(24, 30, 24, 28));
+        setSpacing(16);
+        setPadding(new Insets(24, 30, 22, 28));
 
+        Label title = new Label("new site");
+        title.getStyleClass().add("fetch-host");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button close = new Button("✕");
+        Button close = new Button("close");
         close.getStyleClass().add("ghost-button");
         close.setFocusTraversable(false);
         close.setOnAction(event -> onClose.run());
-        HBox header = new HBox(12, label("A NEW SITE", "card-title"), spacer, close);
+        HBox header = new HBox(12, title, spacer, close);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        HBox body = new HBox(24, buildForm(), buildPreview());
+        HBox body = new HBox(26, buildForm(), buildPreview());
         body.setAlignment(Pos.TOP_LEFT);
 
         problems.getStyleClass().add("card-problem");
         problems.setWrapText(true);
-        problems.setMaxWidth(940);
+        problems.setMaxWidth(980);
         problems.setMinHeight(Region.USE_PREF_SIZE);
-        summary.getStyleClass().add("card-note");
+        summary.getStyleClass().add("fetch-value");
         summary.setWrapText(true);
-        summary.setMaxWidth(940);
+        summary.setMaxWidth(980);
         summary.setMinHeight(Region.USE_PREF_SIZE);
 
-        create.getStyleClass().addAll("rail-button", "compact-button");
+        create.getStyleClass().addAll("primary-button", "compact-button");
         create.setFocusTraversable(false);
         create.setOnAction(event -> ask());
+        readsBack.getStyleClass().add("home-muted");
         rail.getChildren().addAll(create, readsBack);
         rail.setAlignment(Pos.CENTER_LEFT);
 
-        getChildren().addAll(header, body, summary, problems, working, rail);
+        Region rule = new Region();
+        rule.getStyleClass().add("fetch-rule");
+        rule.setMinHeight(1);
+        rule.setMaxHeight(1);
+        getChildren().addAll(header, body, rule, summary, problems, working, rail);
         redraw();
     }
 
     // The form
 
     private ScrollPane buildForm() {
-        domains.setPromptText("api.gemmi-e.com  www.api.gemmi-e.com");
-        watch(domains);
-        port.setPromptText("8080");
-        watch(port);
+        domains.setPromptText("api.example.com  www.api.example.com");
+        watch(domains, 28);
+        port.setPromptText("3000");
+        watch(port, 7);
         root.setPromptText("/var/www/site");
-        watch(root);
+        watch(root, 22);
         upstream.setPromptText(pools.isEmpty() ? "backend_nodes" : pools.get(0).name());
-        watch(upstream);
+        watch(upstream, 22);
         socket.setPromptText(SiteDraft.DEFAULT_PHP_SOCKET);
-        watch(socket);
-        certificate.setPromptText("/etc/letsencrypt/live/api.gemmi-e.com/fullchain.pem");
-        watch(certificate);
-        certificateKey.setPromptText("/etc/letsencrypt/live/api.gemmi-e.com/privkey.pem");
-        watch(certificateKey);
+        watch(socket, 22);
+        certificate.setPromptText("/etc/letsencrypt/live/example.com/fullchain.pem");
+        watch(certificate, 22);
+        certificateKey.setPromptText("/etc/letsencrypt/live/example.com/privkey.pem");
+        watch(certificateKey, 22);
 
         for (Preset choice : Preset.values()) {
-            presetPills.getChildren().add(pill(choice.title(), () -> preset == choice, () -> apply(choice)));
+            presetPills.getChildren().add(pill(choice.title().toLowerCase(Locale.ROOT), () -> preset == choice,
+                    () -> apply(choice)));
         }
         for (Target choice : Target.values()) {
-            targetPills.getChildren().add(pill(choice.label(), () -> target == choice, () -> {
+            targetPills.getChildren().add(pill(choice.label().toLowerCase(Locale.ROOT), () -> target == choice, () -> {
                 target = choice;
                 preset = null;
                 redraw();
             }));
         }
         for (Security choice : Security.values()) {
-            securityPills.getChildren().add(pill(choice.pill(), () -> security == choice, () -> {
-                security = choice;
-                redraw();
-            }));
+            securityPills.getChildren().add(pill(choice.pill().toLowerCase(Locale.ROOT), () -> security == choice,
+                    () -> {
+                        security = choice;
+                        redraw();
+                    }));
         }
         for (RateLimit choice : RateLimit.values()) {
-            ratePills.getChildren().add(pill(choice.pill(), () -> rate == choice, () -> {
+            ratePills.getChildren().add(pill(choice.pill().toLowerCase(Locale.ROOT), () -> rate == choice, () -> {
                 rate = choice;
                 redraw();
             }));
@@ -193,25 +204,41 @@ final class NewSiteCard extends VBox {
         toggle(websocket, () -> wantsWebsocket = !wantsWebsocket);
         toggle(gzip, () -> wantsGzip = !wantsGzip);
         toggle(singlePage, () -> wantsSinglePage = !wantsSinglePage);
-        switches.setAlignment(Pos.CENTER_LEFT);
 
-        VBox form = new VBox(16,
-                new VBox(6, label("WHAT KIND OF SITE", "series"), presetPills, presetNote),
-                field("THE DOMAIN", "What a visitor types. Several, separated by spaces.", domains),
-                new VBox(6, label("WHAT ANSWERS IT", "series"), targetPills, targetFields),
-                new VBox(6, label("HOW IT ANSWERS", "series"), securityPills, securityFields),
-                new VBox(6, label("HOW MANY REQUESTS ONE ADDRESS MAY MAKE", "series"), ratePills, rateNote),
-                new VBox(6, label("AND", "series"), switches));
+        GridPane form = new GridPane();
+        form.setHgap(18);
+        form.setVgap(16);
+        ColumnConstraints keys = new ColumnConstraints();
+        keys.setMinWidth(78);
+        ColumnConstraints values = new ColumnConstraints();
+        values.setHgrow(Priority.ALWAYS);
+        form.getColumnConstraints().addAll(keys, values);
+        row(form, 0, "kind", new VBox(6, presetPills, presetNote));
+        row(form, 1, "domain", domains);
+        row(form, 2, "answered by", new VBox(8, targetPills, targetFields));
+        row(form, 3, "https", new VBox(8, securityPills, securityFields));
+        row(form, 4, "limit", ratePills);
+        row(form, 5, "extras", switches);
         form.setPadding(new Insets(0, 14, 0, 0));
 
         ScrollPane scroll = new ScrollPane(form);
         scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("plain-scroll");
+        scroll.getStyleClass().add("track-scroll");
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.setPrefViewportWidth(430);
-        scroll.setPrefViewportHeight(470);
-        scroll.setMinWidth(446);
+        scroll.setPrefViewportWidth(470);
+        scroll.setPrefViewportHeight(450);
+        scroll.setMinWidth(486);
         return scroll;
+    }
+
+    private static void row(GridPane form, int at, String key, Node value) {
+        Label name = new Label(key);
+        name.getStyleClass().add("fetch-key");
+        name.setMinWidth(Region.USE_PREF_SIZE);
+        GridPane.setValignment(name, javafx.geometry.VPos.TOP);
+        name.setPadding(new Insets(4, 0, 0, 0));
+        form.add(name, 0, at);
+        form.add(value, 1, at);
     }
 
     private VBox buildPreview() {
@@ -220,18 +247,22 @@ final class NewSiteCard extends VBox {
         preview.getStyleClass().add("redis-diagnostic-output");
         preview.setPrefRowCount(24);
         preview.setPrefColumnCount(56);
+        VBox.setVgrow(preview, Priority.ALWAYS);
 
-        VBox column = new VBox(6,
-                label("THE FILE THIS WILL WRITE", "series"),
-                note("Read it. It is the file itself, not a picture of it, and nothing else will be changed."),
-                preview);
+        Label title = new Label("the file");
+        title.getStyleClass().add("fetch-key");
+        fileName.getStyleClass().add("home-muted");
+        HBox head = new HBox(12, title, fileName);
+        head.setAlignment(Pos.CENTER_LEFT);
+        VBox column = new VBox(8, head, preview);
         column.setPrefWidth(520);
-        column.setMinWidth(520);
+        column.setMinWidth(500);
         return column;
     }
 
-    private void watch(TextField input) {
-        input.setPrefColumnCount(26);
+    private void watch(TextField input, int columns) {
+        input.getStyleClass().add("card-field");
+        input.setPrefColumnCount(columns);
         input.textProperty().addListener((observable, before, now) -> redraw());
     }
 
@@ -259,18 +290,25 @@ final class NewSiteCard extends VBox {
         redraw();
     }
 
-    private static VBox field(String title, String why, TextField input) {
-        return new VBox(4, label(title, "series"), note(why), input);
+    /** One answer under another, with a small key in front: the port, the folder, the certificate. */
+    private static HBox sub(String key, Node input) {
+        Label name = new Label(key);
+        name.getStyleClass().add("port-quiet");
+        name.setMinWidth(64);
+        HBox line = new HBox(10, name, input);
+        line.setAlignment(Pos.CENTER_LEFT);
+        return line;
     }
 
     /**
      * A path field with a button beside it that walks there instead. Every path on this form has one: a path
      * typed from memory is the likeliest thing on it to be wrong.
      */
-    private VBox pathField(String title, String why, TextField input, com.kubo.model.files.PathKind kind) {
-        Button choose = new Button("CHOOSE ON THE SERVER");
-        choose.getStyleClass().add("field-button");
+    private HBox pathField(String key, TextField input, com.kubo.model.files.PathKind kind) {
+        Button choose = new Button("browse");
+        choose.getStyleClass().add("ghost-button");
         choose.setFocusTraversable(false);
+        choose.setMinWidth(Region.USE_PREF_SIZE);
         choose.setOnAction(event -> hands.pick(kind, startFor(input, kind), chosen -> {
             input.setText(chosen);
             // Let's Encrypt puts the key beside the certificate, under a name that never changes.
@@ -279,9 +317,9 @@ final class NewSiteCard extends VBox {
             }
         }));
         HBox.setHgrow(input, Priority.ALWAYS);
-        HBox line = new HBox(8, input, choose);
-        line.setAlignment(Pos.CENTER_LEFT);
-        return new VBox(4, label(title, "series"), note(why), line);
+        HBox line = sub(key, input);
+        line.getChildren().add(choose);
+        return line;
     }
 
     private Button pill(String text, java.util.function.BooleanSupplier on, Runnable action) {
@@ -318,8 +356,9 @@ final class NewSiteCard extends VBox {
         paint(websocket, wantsWebsocket);
         paint(gzip, wantsGzip);
         paint(singlePage, wantsSinglePage);
-        presetNote.setText(preset == null ? "Or answer the questions below." : preset.why());
-        rateNote.setText(rate.label());
+        presetNote.setText(preset == null ? "" : preset.why());
+        presetNote.setVisible(preset != null);
+        presetNote.setManaged(preset != null);
 
         switches.getChildren().setAll(gzip);
         if (target == Target.PORT || target == Target.UPSTREAM) {
@@ -334,6 +373,7 @@ final class NewSiteCard extends VBox {
 
         SiteDraft draft = draft();
         preview.setText(draft.toConfig());
+        fileName.setText(draft.serverNames().isEmpty() ? "" : "/etc/nginx/sites-available/" + draft.fileName());
         List<String> wrong = draft.problems();
         problems.getStyleClass().setAll("label", "card-problem");
         problems.setText(String.join("\n", wrong));
@@ -348,53 +388,41 @@ final class NewSiteCard extends VBox {
         // checked, and the check is a real one: Kubo read its own file back and found what it put in. Nginx
         // is still asked, before the site is switched on, and it is Nginx that decides.
         boolean round = draft.readsBack();
-        readsBack.setText(round
-                ? "KUBO READ THIS FILE BACK AND FOUND WHAT IT PUT IN"
-                : "NGINX IS ASKED BEFORE ANYTHING IS SWITCHED ON");
-        readsBack.getStyleClass().setAll("label", round ? "card-success" : "card-note");
+        readsBack.setText(round ? "read back: the file says what was asked" : "nginx is asked before it goes live");
+        readsBack.getStyleClass().setAll("label", round ? "journal-ok" : "home-muted");
     }
 
     private void drawTarget() {
         targetFields.getChildren().clear();
         switch (target) {
             case PORT -> {
-                targetFields.getChildren().add(
-                        field("THE PORT", "The port the program is listening on, on this server.", port));
+                targetFields.getChildren().add(sub("port", port));
                 drawPortHints();
             }
             case FILES -> targetFields.getChildren().add(
-                    pathField("THE DIRECTORY", "Nginx will serve what is in it.", root,
-                            com.kubo.model.files.PathKind.FOLDER));
+                    pathField("folder", root, com.kubo.model.files.PathKind.FOLDER));
             case UPSTREAM -> {
-                targetFields.getChildren().add(
-                        field("THE POOL", "A pool already named in the configuration.", upstream));
+                targetFields.getChildren().add(sub("pool", upstream));
                 if (pools.isEmpty()) {
-                    targetFields.getChildren().add(note("This server names no pool. A pool is an upstream "
-                            + "block, and Kubo does not write those."));
+                    targetFields.getChildren().add(muted("this server names no pool, and Kubo does not write one"));
                 } else {
                     FlowPane names = new FlowPane(6, 6);
                     for (Upstream pool : pools) {
-                        names.getChildren().add(hint(pool.name(),
-                                pool.servers().size() + " servers", () -> upstream.setText(pool.name())));
+                        names.getChildren().add(hint(pool.name(), pool.servers().size() + " servers",
+                                () -> upstream.setText(pool.name())));
                     }
-                    targetFields.getChildren().addAll(note("This server names:"), names);
+                    targetFields.getChildren().add(names);
                 }
             }
             case PHP -> targetFields.getChildren().addAll(
-                    pathField("THE DIRECTORY", "Where the PHP files are.", root,
-                            com.kubo.model.files.PathKind.FOLDER),
-                    pathField("THE PHP-FPM SOCKET", "Its version is in its name and changes with the "
-                            + "distribution. Pick it rather than guess it.", socket,
-                            com.kubo.model.files.PathKind.SOCKET));
+                    pathField("folder", root, com.kubo.model.files.PathKind.FOLDER),
+                    pathField("php-fpm", socket, com.kubo.model.files.PathKind.SOCKET));
         }
     }
 
     /**
-     * The ports this server already answers on, as buttons.
-     *
-     * <p>The port is the one answer somebody has to go and look up, and the screen behind this card read it a
-     * moment ago. Ports the internet can already reach are left out: putting a proxy in front of something
-     * already exposed is not what this form is for.
+     * The ports this server already answers on, as buttons. Ports the internet can already reach are left out:
+     * putting a proxy in front of something already exposed is not what this form is for.
      */
     private void drawPortHints() {
         Map<Integer, String> byPort = new LinkedHashMap<>();
@@ -414,7 +442,7 @@ final class NewSiteCard extends VBox {
             hints.getChildren().add(hint(String.valueOf(number), entry.getValue(),
                     () -> port.setText(String.valueOf(number))));
         }
-        targetFields.getChildren().addAll(note("Already listening on this server:"), hints);
+        targetFields.getChildren().add(hints);
     }
 
     /** Services that do not answer HTTP, so a web proxy in front of them is never what somebody meant. */
@@ -435,7 +463,7 @@ final class NewSiteCard extends VBox {
 
     /** Something this server already has, as one click. */
     private Button hint(String value, String who, Runnable take) {
-        Button button = new Button(who.isBlank() ? value : value + "  ·  " + who);
+        Button button = new Button(who.isBlank() ? value : value + "  " + who);
         button.getStyleClass().addAll("net-chip", "net-chip-docker");
         button.setFocusTraversable(false);
         button.setOnAction(event -> {
@@ -450,15 +478,11 @@ final class NewSiteCard extends VBox {
         securityFields.getChildren().clear();
         if (security == Security.HTTPS) {
             securityFields.getChildren().addAll(
-                    note("Port 443 with these files, and port 80 sending every visitor to it."),
-                    pathField("THE CERTIFICATE", "A file this server already has.", certificate,
-                            com.kubo.model.files.PathKind.CERTIFICATE),
-                    pathField("THE PRIVATE KEY", "Its key, also already there.", certificateKey,
-                            com.kubo.model.files.PathKind.PRIVATE_KEY));
+                    pathField("cert", certificate, com.kubo.model.files.PathKind.CERTIFICATE),
+                    pathField("key", certificateKey, com.kubo.model.files.PathKind.PRIVATE_KEY),
+                    muted("port 443 with these files, port 80 sending everyone to it"));
         } else {
-            securityFields.getChildren().add(note("Port 80. This is the shape certbot expects to find when it "
-                    + "is run afterwards: it adds the secure block and the redirect itself. Kubo does not run "
-                    + "certbot."));
+            securityFields.getChildren().add(muted("port 80, the shape certbot expects to add https to later"));
         }
     }
 
@@ -481,7 +505,7 @@ final class NewSiteCard extends VBox {
         List<String> names = new ArrayList<>();
         for (String word : domains.getText().strip().split("[\\s,]+")) {
             if (!word.isBlank()) {
-                names.add(word.strip().toLowerCase(java.util.Locale.ROOT));
+                names.add(word.strip().toLowerCase(Locale.ROOT));
             }
         }
         int number;
@@ -504,12 +528,13 @@ final class NewSiteCard extends VBox {
             return;
         }
         create.setDisable(true);
+        working.setText("is " + draft.fileName() + " already there");
         working.setRunning(true);
         hands.exists(draft.fileName(), exists -> {
             if (Boolean.TRUE.equals(exists)) {
                 working.setRunning(false);
-                say("A file called " + draft.fileName() + " is already in sites-available. Kubo will not "
-                        + "write over it. Change the domain, or remove that file yourself first.", true);
+                say(draft.fileName() + " is already in sites-available and Kubo will not write over it. "
+                        + "Change the domain, or remove that file first.", true);
                 create.setDisable(false);
                 return;
             }
@@ -518,17 +543,17 @@ final class NewSiteCard extends VBox {
     }
 
     private void write(SiteDraft draft) {
+        working.setText("writing, testing, switching on");
         working.setRunning(true);
         hands.create(draft, trouble -> {
             working.setRunning(false);
             if (trouble == null) {
-                say(draft.fileName() + " is written, switched on and Nginx reloaded.", false);
+                say(draft.fileName() + " is written, switched on, and nginx reloaded", false);
                 onCreated.run();
                 return;
             }
-            say("Nginx refused it, so nothing is serving it: " + trouble
-                    + "  The file is still in sites-available, switched off, so you can read what it says.",
-                    true);
+            say("nginx refused it, so nothing serves it: " + trouble + ". The file stays in sites-available, "
+                    + "switched off, so you can read what it says.", true);
             offerToRemove(draft.fileName());
             create.setDisable(false);
         });
@@ -539,14 +564,15 @@ final class NewSiteCard extends VBox {
      * removing it is offered rather than done.
      */
     private void offerToRemove(String site) {
-        Button remove = new Button("REMOVE THE FILE");
-        remove.getStyleClass().addAll("danger-button", "compact-button");
+        Button remove = new Button("remove the file");
+        remove.getStyleClass().addAll("ghost-button", "port-danger");
         remove.setFocusTraversable(false);
         remove.setOnAction(event -> {
+            working.setText("removing " + site);
             working.setRunning(true);
             hands.delete(site, trouble -> {
                 working.setRunning(false);
-                say(trouble == null ? site + " is removed." : trouble, trouble != null);
+                say(trouble == null ? site + " is removed" : trouble, trouble != null);
                 rail.getChildren().remove(remove);
             });
         });
@@ -574,17 +600,12 @@ final class NewSiteCard extends VBox {
         redraw();
     }
 
-    private static Label note(String text) {
-        Label label = label(text, "card-note");
-        label.setWrapText(true);
-        label.setMaxWidth(410);
-        label.setMinHeight(Region.USE_PREF_SIZE);
-        return label;
-    }
-
-    private static Label label(String text, String styleClass) {
+    private static Label muted(String text) {
         Label label = new Label(text);
-        label.getStyleClass().add(styleClass);
+        label.getStyleClass().add("home-muted");
+        label.setWrapText(true);
+        label.setMaxWidth(380);
+        label.setMinHeight(Region.USE_PREF_SIZE);
         return label;
     }
 }

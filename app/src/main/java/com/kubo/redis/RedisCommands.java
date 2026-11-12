@@ -387,7 +387,7 @@ public final class RedisCommands {
             return RedisValue.failed(key.type(), "This key holds a \"" + key.typeName()
                     + "\" value, a type a Redis module owns. Kubo can rename, re-time, export and delete it, but "
                     + "it cannot show its content: reading it needs that module's own commands, which you can run "
-                    + "from the REDIS CLI tab below.");
+                    + "from the redis-cli tab below.");
         }
         return parseValue(key.type(), output, limit);
     }

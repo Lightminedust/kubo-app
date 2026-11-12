@@ -26,7 +26,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * The precise index beside the stack: every key of the chosen type, one dense row each, filtered as you type. The
+ * The precise index beside the keyspace: every key of the chosen type, one dense row each, filtered as you type. The
  * rows are virtualised, so a type holding tens of thousands of keys costs no more to show than one holding ten.
  *
  * <p>When memory has been measured, each row carries a bar of its weight, which turns the list into the heavy-key
@@ -36,12 +36,12 @@ final class RedisKeyList extends VBox {
 
     private static final int ROW_HEIGHT = 26;
 
-    private final Label heading = label("KEYS", "series");
-    private final Label countLabel = label("", "metric-label");
+    private final Label heading = label("", "redis-list-heading");
+    private final Label countLabel = label("", "home-muted");
     private final TextField filterField = new TextField();
     private final ListView<RedisKey> list = new ListView<>();
     private final ObservableList<RedisKey> shown = FXCollections.observableArrayList();
-    private final Label empty = label("NO KEYS ON THIS PLATE.", "metric-label");
+    private final Label empty = label("no key of this kind matches", "home-muted");
 
     private List<RedisKey> source = List.of();
     private RedisType type = RedisType.STRING;
@@ -56,9 +56,7 @@ final class RedisKeyList extends VBox {
     RedisKeyList() {
         getStyleClass().add("redis-key-list");
         setSpacing(8);
-        setPadding(new Insets(16, 14, 14, 26));
-        setMinWidth(250);
-        setPrefWidth(292);
+        setPadding(Insets.EMPTY);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -98,12 +96,13 @@ final class RedisKeyList extends VBox {
     }
 
     /**
-     * Shows the keys of one plate.
+     * Shows the keys of one kind.
      */
     void show(RedisType type, List<RedisKey> keys) {
         this.type = type;
         this.source = List.copyOf(keys);
-        heading.setText("KEYS  ·  " + (type == null ? "ALL" : type.name().toUpperCase(Locale.ROOT)));
+        heading.setText(type == null ? "all" : RedisTrack.title(type, keys));
+        heading.setStyle(type == null ? "" : "-fx-text-fill: " + RedisPalette.web(RedisPalette.color(type)) + ";");
         refilter();
     }
 

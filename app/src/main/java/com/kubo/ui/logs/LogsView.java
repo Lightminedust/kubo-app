@@ -572,15 +572,16 @@ public final class LogsView extends BorderPane {
                 setGraphic(null);
                 return;
             }
-            String status = command.success() ? "ok" : command.ran() ? "exit " + command.exitCode() : "fail";
+            String status = command.success() ? "OK" : command.ran() ? "EXIT " + command.exitCode() : "NOT RUN";
             Label time = label(CLOCK.format(command.at()), "mono-muted");
             Label origin = originChip(command.origin());
-            Label state = label(status, command.success() ? "log-ok" : command.ran() ? "log-failed" : "log-error");
+            Label state = label(status, command.success() ? "journal-ok" : command.ran() ? "journal-error" : "journal-warning");
+            state.setGraphic(new Circle(3.5, javafx.scene.paint.Color.web(
+                    command.success() ? "#35e0a1" : command.ran() ? "#ff2d55" : "#ffb347")));
             Label duration = label(command.durationMs() + " ms", "mono-muted");
             for (Label fixed : new Label[]{time, state, duration}) {
                 fixed.setMinWidth(Region.USE_PREF_SIZE);
             }
-            state.setMinWidth(46);
             duration.setMinWidth(62);
             HBox meta = new HBox(12, time, origin, state, duration);
             meta.setAlignment(Pos.CENTER_LEFT);

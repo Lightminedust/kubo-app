@@ -149,6 +149,14 @@ public final class ServiceControl {
         return runAsRoot(ServiceCommands.removeDropIn(unit));
     }
 
+    /**
+     * The journal of one unit, read as root. Only when the user asked for it: as the connected user, a
+     * journal closed to them says so, and that is what the screen shows until they choose otherwise.
+     */
+    public CommandEntry journal(String unit, int lines) {
+        return runAsRoot(ServiceCommands.journal(unit, lines));
+    }
+
     /** systemd does not notice a file changing on its own. */
     public CommandEntry reloadUnits() {
         return runAsRoot(ServiceCommands.DAEMON_RELOAD);

@@ -23,6 +23,7 @@ public final class KuboApp extends Application {
 
     private Scene scene;
     private KuboWindow window;
+    private com.kubo.ui.UpdateController updates;
     private Runnable closeCurrentView = () -> {
     };
     /** The screen owning the live SSH connection, or null on the connection screen. */
@@ -43,20 +44,23 @@ public final class KuboApp extends Application {
         stage.setMinWidth(Math.min(1100, width));
         stage.setMinHeight(Math.min(680, height));
         stage.setScene(scene);
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnHidden(event -> closeCurrentView.run());
         com.kubo.ui.Attentive.bind(stage, ScopeView.ATTENTION, () -> {
             if (scope != null) {
                 scope.resume();
             }
         });
+        updates = new com.kubo.ui.UpdateController(stage);
         showConnection();
         stage.show();
+        updates.start();
     }
 
     private void showConnection() {
         closeCurrentView.run();
         ConnectionView view = new ConnectionView();
+        view.setOnCheckUpdates(updates::checkManually);
         view.setOnConnected(this::showScope);
         closeCurrentView = view::shutdown;
         window.setContent(view);
@@ -81,6 +85,7 @@ public final class KuboApp extends Application {
      */
     @Override
     public void stop() {
+        if (updates != null) updates.close();
         closeCurrentView.run();
         if (scope != null) {
             scope.awaitDisconnect(3000);

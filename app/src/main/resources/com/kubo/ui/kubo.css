@@ -1,8 +1,12 @@
 /* Kubo — dark editorial look: particle art, thin rules, uppercase captions. */
 
 .root {
-    -fx-font-family: "Segoe UI";
-    -fx-background-color: #0a0a0f;
+    -kubo-background: #07080e;
+    -kubo-surface: #0a0c14;
+    -kubo-line: #252535;
+    -kubo-accent: #ff2d55;
+    -fx-font-family: "Consolas";
+    -fx-background-color: -kubo-background;
     -fx-focus-color: transparent;
     -fx-faint-focus-color: transparent;
 }
@@ -14,9 +18,14 @@
 /* Kubo's own borderless window frame */
 
 .kubo-window {
-    -fx-background-color: #050508;
+    -fx-background-color: -kubo-background;
     -fx-border-color: #20202a;
     -fx-border-width: 1;
+}
+
+/* The close button must own the outermost top-right pixel when expanded. */
+.kubo-window:expanded {
+    -fx-border-width: 0;
 }
 
 .window-title-bar {
@@ -25,7 +34,7 @@
     -fx-max-height: 35px;
     -fx-padding: 0 0 0 11px;
     -fx-spacing: 9px;
-    -fx-background-color: linear-gradient(to right, #090910 0%, #07070c 68%, #0b0710 100%);
+    -fx-background-color: -kubo-surface;
     -fx-border-color: transparent transparent #20202a transparent;
     -fx-border-width: 0 0 1 0;
 }
@@ -68,7 +77,7 @@
 
 .window-control:pressed {
     -fx-background-color: rgba(255, 63, 216, 0.16);
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .window-close:hover {
@@ -172,7 +181,7 @@
 }
 
 .text-field:focused {
-    -fx-border-color: transparent transparent #ff3fd8 transparent;
+    -fx-border-color: transparent transparent -kubo-accent transparent;
 }
 
 .text-field:disabled {
@@ -265,8 +274,8 @@
 }
 
 .mode-toggle:selected .mode-marker {
-    -fx-fill: #ff3fd8;
-    -fx-stroke: #ff3fd8;
+    -fx-fill: -kubo-accent;
+    -fx-stroke: -kubo-accent;
 }
 
 /* Buttons */
@@ -287,7 +296,7 @@
 
 .primary-button:hover,
 .primary-button:pressed {
-    -fx-background-color: linear-gradient(to right, #8a4dff, #ff3fd8);
+    -fx-background-color: #421326;
     -fx-border-color: transparent;
 }
 
@@ -299,13 +308,13 @@
 .primary-button.connection-busy:disabled {
     -fx-opacity: 1;
     -fx-background-color: rgba(255, 63, 216, 0.10);
-    -fx-border-color: #ff3fd8;
+    -fx-border-color: -kubo-accent;
     -fx-text-fill: #f4f4f7;
     -fx-cursor: wait;
 }
 
 .connection-progress {
-    -fx-progress-color: #ff3fd8;
+    -fx-progress-color: -kubo-accent;
 }
 
 .ghost-button,
@@ -339,7 +348,7 @@
 }
 
 .status-pending {
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .status-ok {
@@ -376,7 +385,7 @@
 }
 
 .step-session {
-    -fx-background-color: #ff3fd8;
+    -fx-background-color: -kubo-accent;
     -fx-pref-height: 200px;
 }
 
@@ -469,7 +478,7 @@
 }
 
 .bar-cpu {
-    -fx-background-color: #ff3fd8;
+    -fx-background-color: -kubo-accent;
 }
 
 .bar-memory {
@@ -527,7 +536,7 @@
 /* Files */
 
 .files-view {
-    -fx-background-color: #050508;
+    -fx-background-color: -kubo-background;
 }
 
 .files-title {
@@ -855,7 +864,7 @@
 }
 
 .perm-owner {
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .perm-group {
@@ -892,21 +901,21 @@
 }
 
 .perm-cell-owner:selected {
-    -fx-background-color: #ff3fd8;
-    -fx-border-color: #ff3fd8;
-    -fx-text-fill: #0a0a0f;
+    -fx-background-color: -kubo-accent;
+    -fx-border-color: -kubo-accent;
+    -fx-text-fill: -kubo-background;
 }
 
 .perm-cell-group:selected {
     -fx-background-color: #9d4dff;
     -fx-border-color: #9d4dff;
-    -fx-text-fill: #0a0a0f;
+    -fx-text-fill: -kubo-background;
 }
 
 .perm-cell-others:selected {
     -fx-background-color: #35e8ff;
     -fx-border-color: #35e8ff;
-    -fx-text-fill: #0a0a0f;
+    -fx-text-fill: -kubo-background;
 }
 
 .perm-digit {
@@ -933,7 +942,7 @@
 }
 
 .picker-card {
-    -fx-background-color: #050508;
+    -fx-background-color: -kubo-background;
     -fx-border-color: #24242d #24242d #24242d #9d4dff;
     -fx-border-width: 1 1 1 2;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.8), 40, 0, 0, 12);
@@ -954,7 +963,7 @@
 /* Editor */
 
 .editor-view {
-    -fx-background-color: #050508;
+    -fx-background-color: -kubo-background;
 }
 
 .editor-area {
@@ -1000,7 +1009,7 @@
 }
 
 .editor-status-dirty {
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .editor-status-ok {
@@ -1105,7 +1114,7 @@
 .local-button:hover,
 .local-button:pressed {
     -fx-background-color: linear-gradient(to right, #35e8ff, #6ee0c8);
-    -fx-text-fill: #050508;
+    -fx-text-fill: -kubo-background;
 }
 
 .local-ghost {
@@ -1228,7 +1237,7 @@
 }
 
 .log-origin-user {
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
     -fx-border-color: rgba(255, 63, 216, 0.5);
 }
 
@@ -1406,7 +1415,7 @@
 
 .site-row-open {
     -fx-background-color: rgba(30, 20, 34, 0.75);
-    -fx-border-color: transparent transparent transparent #ff3fd8;
+    -fx-border-color: transparent transparent transparent -kubo-accent;
     -fx-border-width: 0 0 0 2;
 }
 
@@ -1774,8 +1783,8 @@
 }
 
 .service-chip-active {
-    -fx-text-fill: #ff3fd8;
-    -fx-border-color: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
+    -fx-border-color: -kubo-accent;
 }
 
 .readout-bar {
@@ -1878,7 +1887,7 @@
 
 .redis-row:filled:selected {
     -fx-background-color: #1d1526;
-    -fx-border-color: transparent transparent transparent #ff3fd8;
+    -fx-border-color: transparent transparent transparent -kubo-accent;
     -fx-border-width: 0 0 0 2;
 }
 
@@ -2029,7 +2038,7 @@
 }
 
 .session-card-password {
-    -fx-border-color: transparent transparent transparent #ff3fd8;
+    -fx-border-color: transparent transparent transparent -kubo-accent;
 }
 
 .session-card-selected {
@@ -2085,12 +2094,12 @@
 }
 
 .session-connect:hover {
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .session-connect.session-connecting:disabled {
     -fx-opacity: 1;
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
     -fx-cursor: wait;
 }
 
@@ -2167,7 +2176,7 @@
 
 .log-mark-typed {
     -fx-font-size: 9px;
-    -fx-text-fill: #ff3fd8;
+    -fx-text-fill: -kubo-accent;
 }
 
 .log-count {
@@ -2446,3 +2455,838 @@
     -fx-pref-height: 11px;
     -fx-padding: 0;
 }
+
+/* The connection screen, framed the way a tiled terminal frames its windows. */
+
+.pane {
+    -fx-background-color: rgba(8, 8, 13, 0.72);
+    -fx-border-color: #1b1b28;
+    -fx-border-width: 1;
+    -fx-border-radius: 2;
+    -fx-background-radius: 2;
+}
+
+.pane-top {
+    -fx-border-color: transparent transparent #1b1b28 transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 7 14 7 14;
+}
+
+.pane-tab {
+    -fx-text-fill: #ff2d55;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.pane-body {
+    -fx-padding: 18 20 20 20;
+}
+
+.session-how {
+    -fx-text-fill: #5b5b6b;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+/* Terminal instruments share the base typography and controls used by Files and the other scopes. */
+.scope-view { -fx-background-color: -kubo-background; }
+.home-header { -fx-padding: 20 36 10 36; }
+.home-target { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #78798c; }
+.home-nav { -fx-padding: 8 36 12 36; -fx-border-color: transparent transparent -kubo-line transparent; -fx-border-width: 0 0 1 0; }
+.scope-switch { -fx-background-color: transparent; -fx-border-width: 0; -fx-padding: 0; }
+.scope-tab { -fx-background-radius: 0; -fx-font-family: "Consolas"; -fx-font-weight: normal; -fx-padding: 5 10; }
+.scope-tab-active, .scope-tab-active:hover { -fx-background-color: -kubo-accent; -fx-text-fill: #07080e; }
+.home-body .pane { -fx-background-color: transparent; -fx-border-width: 0; -fx-border-radius: 0; }
+.home-body .pane-top { -fx-padding: 0 0 10 0; -fx-background-color: transparent; -fx-border-width: 0; }
+.home-body .pane-tab { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #9692a6; }
+.terminal-rule { -fx-background-color: -kubo-line; }
+.home-body .pane-body { -fx-padding: 10 12 14 0; }
+.home-body:compact .pane-body { -fx-padding: 4 12 8 0; }
+.home-body:compact .pane-top { -fx-padding: 0 0 4 0; }
+.home-body:compact .home-machine { -fx-spacing: 5; }
+.home-body:compact .home-figures { -fx-vgap: 4; }
+.home-body:compact .home-host { -fx-font-size: 20px; }
+.home-host { -fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f4f4f7; }
+.home-muted { -fx-font-family: "Consolas"; -fx-font-size: 10.5px; -fx-text-fill: #77798e; }
+.home-body .badge { -fx-border-width: 0; -fx-font-family: "Consolas"; -fx-font-size: 10px; -fx-padding: 0; -fx-text-fill: #a58398; }
+.home-body .badge-alert { -fx-text-fill: -kubo-accent; }
+.home-body .metric-value { -fx-font-size: 12px; }
+.resource-panel { -fx-background-color: -kubo-surface; -fx-border-width: 1 1 1 2; -fx-padding: 16 14; }
+.home-body:compact .resource-panel { -fx-padding: 8 12; }
+.resource-name { -fx-font-family: "Consolas"; -fx-font-size: 13px; -fx-font-weight: bold; }
+.resource-value { -fx-font-family: "Consolas"; -fx-font-size: 27px; -fx-text-fill: #f4f4f7; }
+.resource-detail { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #a1a0b1; }
+.resource-caption { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #ffb347; }
+.journal-command { -fx-font-family: "Consolas"; -fx-font-size: 12px; -fx-text-fill: #d0ceda; }
+.journal-row { -fx-padding: 0 8 10 0; -fx-border-color: transparent transparent #242331 transparent; -fx-border-width: 0 0 1 0; }
+.journal-ok { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #35e0a1; }
+.journal-error { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #ff647e; }
+.journal-warning { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #ffb347; }
+.journal-detail { -fx-font-family: "Consolas"; -fx-font-size: 11px; -fx-text-fill: #bf95a4; }
+.home-status { -fx-padding: 9 36; -fx-background-color: -kubo-surface; -fx-border-color: -kubo-line transparent transparent transparent; -fx-border-width: 1 0 0 0; }
+/* Shared interaction accents: the same red focus and selection in every tool. */
+.text-field:focused { -fx-border-color: transparent transparent -kubo-accent transparent; }
+.ghost-button:hover { -fx-text-fill: -kubo-accent; -fx-border-color: transparent transparent -kubo-accent transparent; }
+.window-control:hover { -fx-background-color: #27121e; -fx-text-fill: -kubo-accent; }
+
+/* A restrained static offset gives the shared wordmark a signal/glitch edge. */
+.wordmark { -fx-font-family: "Consolas"; -fx-font-size: 22px; -fx-effect: dropshadow(one-pass-box, #b62447, 0, 0, 1, 0); }
+.window-title-bar { -fx-border-color: transparent transparent #422235 transparent; }
+.window-mark { -fx-font-family: "Consolas"; -fx-text-fill: #f4f4f7; }
+
+/* Connection screen: one terminal composition over a full-window graphic field. */
+.connection-workspace { -fx-background-color: transparent; -fx-border-width: 0; }
+.connection-heading {
+    -fx-padding: 14 36;
+    -fx-background-color: rgba(9, 10, 17, 0.8);
+    -fx-border-color: transparent transparent #24202e transparent;
+    -fx-border-width: 0 0 1 0;
+}
+.connection-route { -fx-font-size: 11px; -fx-text-fill: #918297; }
+.connection-title {
+    -fx-font-size: 46px;
+}
+.connection-identity { -fx-spacing: 5; }
+.connection-stage { -fx-padding: 26 40; }
+.connection-subtitle { -fx-font-size: 11px; -fx-text-fill: #9b6f83; }
+.connection-section-title { -fx-font-size: 10px; -fx-text-fill: #948291; }
+.connection-section-rule { -fx-background-color: #292331; }
+.connection-view .mode-toggle { -fx-font-size: 11px; }
+.connection-view .mode-toggle:selected { -fx-text-fill: #ece3ed; }
+.connection-prompt-label { -fx-font-size: 13px; -fx-text-fill: #bc667e; }
+.connection-prompt-row { -fx-border-color: transparent transparent #2e2534 transparent; -fx-border-width: 0 0 1 0; }
+.connection-view .text-field {
+    -fx-font-size: 16px;
+    -fx-padding: 9 0;
+    -fx-background-color: transparent;
+    -fx-prompt-text-fill: #767082;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 1 0;
+}
+.connection-view .text-field:focused { -fx-border-color: transparent transparent #d04466 transparent; }
+.connection-view .primary-button {
+    -fx-font-size: 12px;
+    -fx-padding: 10 22;
+    -fx-background-color: #371421;
+    -fx-border-color: #a33350;
+    -fx-text-fill: #f8e5eb;
+}
+.connection-view .primary-button:hover, .connection-view .primary-button:focused {
+    -fx-background-color: #9e2a47;
+    -fx-border-color: #e25073;
+}
+.connection-view .status { -fx-font-size: 11px; -fx-line-spacing: 2; }
+.connection-view .remember-note { -fx-font-size: 10.5px; }
+.connection-view .session-card {
+    -fx-padding: 10 10;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #25202c #683147;
+    -fx-border-width: 0 0 1 2;
+}
+.connection-view .session-card:hover, .connection-view .session-card-selected {
+    -fx-background-color: #18101b;
+    -fx-border-color: transparent transparent #452537 #cf4a6a;
+}
+.session-prompt { -fx-font-size: 15px; -fx-text-fill: #b95271; }
+.connection-view .session-target { -fx-font-size: 13px; }
+.connection-view .session-how { -fx-font-size: 11px; -fx-text-fill: #817789; }
+.connection-view .session-connect { -fx-font-size: 10px; -fx-padding: 6 0; }
+.connection-view .session-warning { -fx-font-size: 10px; }
+.connection-empty { -fx-font-size: 12px; -fx-text-fill: #827689; -fx-padding: 10 0; }
+.studio-panel {
+    -fx-padding: 22 36;
+    -fx-background-color: #0a0a12;
+    -fx-border-color: #302030 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+.studio-kicker { -fx-font-size: 11px; -fx-text-fill: #d05878; }
+.studio-name { -fx-font-size: 28px; -fx-text-fill: #e4dce9; -fx-font-weight: bold; }
+.studio-description { -fx-font-size: 12px; -fx-text-fill: #94869d; }
+.studio-link {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+    -fx-text-fill: #d1c2d5;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 0;
+    -fx-cursor: hand;
+}
+.studio-link:hover, .studio-link:focused { -fx-text-fill: #f16c8c; -fx-border-color: transparent transparent #c44667 transparent; }
+.studio-support .studio-link { -fx-font-size: 10px; -fx-text-fill: #887a91; }
+.studio-support .studio-link:hover, .studio-support .studio-link:focused { -fx-text-fill: #f16c8c; }
+.connection-view:compact .connection-title { -fx-font-size: 36px; }
+.connection-view:compact .connection-stage { -fx-padding: 18 40; }
+.connection-view:compact .connection-terminal { -fx-spacing: 18; }
+.connection-view:compact .connection-form { -fx-spacing: 10; }
+.connection-view:compact .text-field { -fx-padding: 7 0; }
+.connection-view:compact .studio-panel { -fx-padding: 16 36; }
+.connection-view:compact .studio-name { -fx-font-size: 25px; }
+
+.update-panel { -fx-background-color: #0b0c14; }
+.update-panel .progress-bar > .track { -fx-background-color: #24202e; -fx-background-radius: 0; }
+.update-panel .progress-bar > .bar { -fx-background-color: #d34265; -fx-background-radius: 0; -fx-background-insets: 0; }
+.update-preference { -fx-font-size: 11px; -fx-text-fill: #9d91a7; }
+.update-preference .box { -fx-background-color: #191421; -fx-border-color: #4c354a; -fx-border-radius: 0; }
+.update-preference:selected .mark { -fx-background-color: #d34265; }
+
+/* ---------------------------------------------------------------------------------------------------------
+   The tiled terminal: frames with their name in the top edge, a bar above and a status line below.
+   Shared by the connection screen and the server screen.
+   --------------------------------------------------------------------------------------------------------- */
+
+.tiles {
+    -fx-padding: 26 28 22 28;
+}
+
+.tile {
+    -fx-background-color: rgba(6, 6, 11, 0.86);
+    -fx-border-color: #262633;
+    -fx-border-width: 1;
+}
+
+.tile-active {
+    -fx-border-color: #5a2338;
+}
+
+.tile-body {
+    -fx-padding: 22 20 18 20;
+}
+
+.tile-name, .tile-tag {
+    -fx-background-color: #06060b;
+    -fx-padding: 0 8 0 8;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.tile-name { -fx-text-fill: #ff2d55; }
+.tile-tag { -fx-text-fill: #6f6f82; }
+.tile-cyan .tile-name { -fx-text-fill: #35e8ff; }
+.tile-violet .tile-name { -fx-text-fill: #b58cff; }
+.tile-amber .tile-name { -fx-text-fill: #e8c35a; }
+.tile-green .tile-name { -fx-text-fill: #35e0a1; }
+
+.term-bar {
+    -fx-background-color: #0a0a11;
+    -fx-border-color: transparent transparent #1d1d28 transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0 28 0 0;
+    -fx-min-height: 30;
+}
+
+.term-session {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #08080d;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-padding: 7 14 7 28;
+}
+
+.term-window, .term-fact {
+    -fx-text-fill: #a8a8b6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.term-window-quiet {
+    -fx-text-fill: #5b5b6b;
+}
+
+.status-line {
+    -fx-background-color: #0a0a11;
+    -fx-border-color: #1d1d28 transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-min-height: 28;
+    -fx-spacing: 14;
+    -fx-padding: 0 28 0 0;
+}
+
+.status-mode {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #08080d;
+    -fx-padding: 6 14 6 28;
+}
+
+.status-mode-idle { -fx-background-color: #9d4dff; }
+.status-mode-busy { -fx-background-color: #e8c35a; }
+.status-mode-ok { -fx-background-color: #35e0a1; }
+.status-mode-error { -fx-background-color: #ff2d55; }
+
+.status-message {
+    -fx-text-fill: #c9c9d6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.status-fact {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-padding: 0 0 0 18;
+}
+
+/* The fastfetch block. */
+
+.fetch-mark {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 54px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 6 0 2;
+}
+
+.fetch-key {
+    -fx-text-fill: #ff2d55;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.tile-violet .fetch-key { -fx-text-fill: #b58cff; }
+.tile-cyan .fetch-key { -fx-text-fill: #35e8ff; }
+
+.fetch-value, .fetch-link {
+    -fx-text-fill: #c9c9d6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.fetch-link {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: transparent transparent #33333f transparent;
+    -fx-cursor: hand;
+}
+
+.fetch-link:hover { -fx-text-fill: #35e8ff; -fx-border-color: transparent transparent #35e8ff transparent; }
+.fetch-link:disabled { -fx-opacity: 0.45; }
+
+.fetch-note {
+    -fx-text-fill: #e8c35a;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.connection-command {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-padding: 0 0 6 0;
+}
+
+/* The server screen inside the tiles. */
+
+.tile .resource-panel {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 4 0 0 0;
+}
+
+.fetch-host {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+}
+
+.fetch-rule { -fx-background-color: #262633; }
+
+.status-mode-live { -fx-background-color: #35e0a1; }
+
+.home-body.tiles { -fx-padding: 18 28 20 28; }
+
+.term-bar .ghost-button { -fx-font-family: "Consolas", "Cascadia Mono", monospace; }
+
+/* ---------------------------------------------------------------------------------------------------------
+   The same block at the start of every screen's bar, and the same shell everywhere.
+   --------------------------------------------------------------------------------------------------------- */
+
+.wordmark {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #08080d;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-padding: 7 14 7 14;
+    -fx-effect: null;
+}
+
+/* Root is the one state that has to be impossible to miss: the block turns inside out. */
+.wordmark-root {
+    -fx-background-color: #f0f0f5;
+    -fx-text-fill: #d6002f;
+}
+
+.term-bar .wordmark { -fx-padding: 7 14 7 28; }
+
+.bash-host {
+    -fx-text-fill: #35e0a1;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.bash-path {
+    -fx-text-fill: #5b8cff;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.tile .prompt-panel {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+
+.journal-ok, .journal-error, .journal-warning, .journal-command {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.journal-ok { -fx-text-fill: #35e0a1; }
+.journal-error { -fx-text-fill: #ff5a6e; }
+.journal-warning { -fx-text-fill: #e8c35a; }
+.journal-command { -fx-text-fill: #c9c9d6; }
+
+.home-body .journal-row {
+    -fx-padding: 2 0 2 0;
+    -fx-border-width: 0;
+    -fx-background-color: transparent;
+}
+
+/* The dials: the number inside the ring, and the figures beside it read out like the machine block. */
+
+.gauge-value {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 19px;
+    -fx-font-weight: bold;
+}
+
+.gauge-key {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.gauge-fact {
+    -fx-text-fill: #c9c9d6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.tile .gauge {
+    -fx-padding: 0;
+}
+
+/* ---------------------------------------------------------------------------------------------------------
+   Redis: the keyspace as a line of stations, the keys of one kind, the value. Inside the same tiles.
+   --------------------------------------------------------------------------------------------------------- */
+
+.redis-actions .ghost-button,
+.redis-actions .ghost-button:focused {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: #a8a8b6;
+}
+
+.redis-actions .redis-action-lit,
+.redis-actions .redis-action-lit:focused { -fx-text-fill: #35e8ff; }
+
+.redis-actions .redis-action-danger,
+.redis-actions .redis-action-danger:focused { -fx-text-fill: #ff5a6e; }
+
+.redis-actions .ghost-button:hover { -fx-text-fill: #f0f0f5; -fx-border-color: transparent transparent #f0f0f5 transparent; }
+
+.redis-pattern,
+.redis-pattern:focused {
+    -fx-font-size: 12px;
+    -fx-padding: 4 8 4 8;
+}
+
+.track-scroll,
+.track-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}
+
+.track-station {
+    -fx-background-color: transparent;
+}
+
+.track-station-quiet .track-name,
+.track-station-quiet .track-number,
+.track-station-quiet .track-meaning {
+    -fx-opacity: 0.55;
+}
+
+.track-station-quiet:hover .track-name,
+.track-station-quiet:hover .track-number,
+.track-station-quiet:hover .track-meaning {
+    -fx-opacity: 0.9;
+}
+
+.track-count {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 1 0 1 8;
+}
+
+.track-side {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.track-line {
+    -fx-background-color: #262633;
+}
+
+.track-number {
+    -fx-text-fill: #3a3a4a;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 40px;
+    -fx-font-weight: bold;
+}
+
+.track-name {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+}
+
+.track-meaning {
+    -fx-text-fill: #8d8d9e;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+}
+
+.track-bracket {
+    -fx-border-style: segments(4, 4);
+    -fx-border-width: 1;
+    -fx-padding: 9 14 10 14;
+    -fx-background-color: rgba(10, 10, 17, 0.6);
+}
+
+.track-bracket-head {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+    -fx-padding: 0 0 4 0;
+}
+
+.track-key-row {
+    -fx-padding: 2 6 2 4;
+    -fx-cursor: hand;
+}
+
+.track-key-row:hover { -fx-background-color: #15151f; }
+
+.track-key-row-chosen,
+.track-key-row-chosen:hover { -fx-background-color: #1d1526; }
+
+.track-key-mark {
+    -fx-font-size: 10px;
+}
+
+.track-key {
+    -fx-text-fill: #c9c9d6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.track-key-row-chosen .track-key { -fx-text-fill: #ffffff; }
+
+.track-key-detail, .track-rest {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.track-rest { -fx-padding: 4 0 0 4; }
+
+.track-quiet {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-padding: 10 0 0 4;
+}
+
+.track-more,
+.track-more:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #33333e transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 0 4 0;
+    -fx-text-fill: #35e8ff;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.tile .redis-key-list,
+.tile .redis-inspector {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.redis-list-heading {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.tile .redis-list {
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+
+.tile .redis-row-name { -fx-font-size: 12px; }
+
+.tile .redis-inspector .ghost-button {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+}
+
+.tile .redis-inspector .badge {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+}
+
+.track-use-key {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.track-use {
+    -fx-text-fill: #c9c9d6;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.track-command {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.track-key {
+    -fx-cursor: hand;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: transparent transparent #2a2a36 transparent;
+    -fx-padding: 0 0 1 0;
+}
+
+.track-key:hover { -fx-text-fill: #ffffff; -fx-border-color: transparent transparent #8d8d9e transparent; }
+
+.track-key-chosen { -fx-text-fill: #ffffff; }
+
+.track-station-quiet .track-key { -fx-text-fill: #8d8d9e; }
+
+.redis-help { -fx-background-color: #08080d; -fx-border-color: #262633; -fx-border-width: 1; }
+
+.tile .redis-console {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+    -fx-spacing: 6;
+}
+
+.tile .redis-console .mode-toggle {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------------------------------------------
+   Network: the ports as a list, grouped by how far they reach.
+   --------------------------------------------------------------------------------------------------------- */
+
+.port-group {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.port-group-count {
+    -fx-text-fill: #6f6f82;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.port-row {
+    -fx-padding: 4 8 4 6;
+}
+
+.port-row:hover { -fx-background-color: #13131c; }
+
+.port-row-chosen,
+.port-row-chosen:hover {
+    -fx-background-color: #1a1424;
+}
+
+.port-dot {
+    -fx-font-size: 8px;
+}
+
+.port-number {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.port-owner {
+    -fx-text-fill: #f0f0f5;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.port-what {
+    -fx-text-fill: #8d8d9e;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.port-alert {
+    -fx-text-fill: #ff5a6e;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.port-quiet {
+    -fx-text-fill: #5f5f72;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+}
+
+.ghost-button.port-danger,
+.ghost-button.port-danger:focused {
+    -fx-text-fill: #ff5a6e;
+}
+
+.tile .ghost-button {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+/* Network: a reading somebody asked for, as the journal of what came back. */
+
+.reading-overlay {
+    -fx-background-color: rgba(6, 6, 11, 0.86);
+}
+
+.reading-block {
+    -fx-background-color: #08080d;
+    -fx-border-color: #262633;
+    -fx-border-width: 1;
+    -fx-padding: 18 22 18 22;
+}
+
+.reading-mark {
+    -fx-background-color: #ff2d55;
+    -fx-text-fill: #08080d;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-padding: 3 10 3 10;
+}
+
+.reading-spinner {
+    -fx-text-fill: #e8c35a;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 13px;
+}
+
+.map-camera {
+    -fx-background-color: rgba(8, 8, 13, 0.85);
+    -fx-padding: 2 10 2 10;
+}
+
+.map-camera .ghost-button {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+    -fx-padding: 3 0 3 0;
+}
+
+/* Tabs that are plain words: the one in front is lit and underlined in the accent. */
+.ghost-button.tab-on,
+.ghost-button.tab-on:focused {
+    -fx-text-fill: #f0f0f5;
+    -fx-border-color: transparent transparent #ff2d55 transparent;
+}
+
+.tile .ghost-button.tab-on {
+    -fx-text-fill: #f0f0f5;
+}
+
+/* The apps screen. */
+.status-fact-warn {
+    -fx-text-fill: #ffb347;
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+}
+.ghost-button.apps-lit,
+.ghost-button.apps-lit:focused { -fx-text-fill: #35e8ff; }
+
+.ghost-button.apps-warn,
+.ghost-button.apps-warn:focused { -fx-text-fill: #ffb347; }
+.redis-actions .ghost-button.apps-warn,
+.redis-actions .ghost-button.apps-warn:focused { -fx-text-fill: #ffb347; }
+
+.apps-command {
+    -fx-background-color: #050508;
+    -fx-border-color: #262633;
+    -fx-border-width: 1;
+    -fx-padding: 10 12 10 12;
+}
+
+.apps-mini-row,
+.apps-mini-row-on {
+    -fx-border-color: transparent transparent #16161f transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-cursor: hand;
+}
+.apps-mini-row:hover { -fx-background-color: rgba(255, 255, 255, 0.025); }
+.apps-mini-row-on { -fx-background-color: rgba(255, 255, 255, 0.045); }
+
+.apps-mini-name,
+.apps-mini-name-on {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #dcdce4;
+}
+.apps-mini-name-on { -fx-text-fill: #ffffff; }
+
+.apps-mini-port {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #35e8ff;
+}
+
+/* An action at the end of the line it changes: no taller than the line. */
+.tile .ghost-button.apps-inline,
+.tile .ghost-button.apps-inline:focused { -fx-padding: 0 0 2 0; }
+
+/* A chip that is a switch: lit while it is on, the way a chosen chip is lit. */
+.toggle-button.service-chip:selected,
+.toggle-button.service-chip:selected:focused {
+    -fx-text-fill: -kubo-accent;
+    -fx-border-color: -kubo-accent;
+    -fx-background-color: transparent;
+}
+.toggle-button.service-chip:disabled { -fx-opacity: 0.45; }
+.connection-view .text-field { -fx-font-size: 14px; }

@@ -36,6 +36,11 @@ public final class ServerMonitor implements AutoCloseable {
 
     public static final Duration METRICS_INTERVAL = Duration.ofSeconds(2);
     public static final Duration INVENTORY_INTERVAL = Duration.ofSeconds(30);
+    /**
+     * How often the metrics are still read while another screen is in front. Slow enough to leave that screen
+     * the connection, often enough that the history has no hole in it when the operator comes back.
+     */
+    public static final Duration BACKGROUND_INTERVAL = Duration.ofSeconds(10);
 
     private final SshConnection connection;
     private final CommandService commands;
@@ -55,6 +60,8 @@ public final class ServerMonitor implements AutoCloseable {
     private ServerMetrics metrics;
     private List<ListeningPort> ports = List.of();
     private List<DiskPartition> disks = List.of();
+    /** When the metrics were last read while nobody was looking, in {@link System#nanoTime()}. */
+    private long readBehind = Long.MIN_VALUE;
 
     private volatile Server current;
     private volatile boolean degraded;
@@ -129,8 +136,8 @@ public final class ServerMonitor implements AutoCloseable {
 
         long metricsMs = METRICS_INTERVAL.toMillis();
         long inventoryMs = INVENTORY_INTERVAL.toMillis();
-        scheduler.scheduleWithFixedDelay(guarded(this::refreshMetrics), metricsMs, metricsMs, TimeUnit.MILLISECONDS);
-        scheduler.scheduleWithFixedDelay(guarded(this::refreshInventory), inventoryMs, inventoryMs, TimeUnit.MILLISECONDS);
+        scheduler.scheduleWithFixedDelay(guarded(this::refreshMetrics, true), metricsMs, metricsMs, TimeUnit.MILLISECONDS);
+        scheduler.scheduleWithFixedDelay(guarded(this::refreshInventory, false), inventoryMs, inventoryMs, TimeUnit.MILLISECONDS);
     }
 
     private void refreshMetrics() {
@@ -172,10 +179,22 @@ public final class ServerMonitor implements AutoCloseable {
         return entry;
     }
 
-    private Runnable guarded(Runnable refresh) {
+    /**
+     * @param keepsTime true for the metrics, which go on at {@link #BACKGROUND_INTERVAL} while another screen is
+     *                  in front; everything else waits until this screen is looked at again
+     */
+    private Runnable guarded(Runnable refresh, boolean keepsTime) {
         return () -> {
-            if (stopped.get() || !awake.getAsBoolean()) {
+            if (stopped.get()) {
                 return;
+            }
+            if (!awake.getAsBoolean()) {
+                long now = System.nanoTime();
+                if (!keepsTime || (readBehind != Long.MIN_VALUE
+                        && now - readBehind < BACKGROUND_INTERVAL.toNanos())) {
+                    return;
+                }
+                readBehind = now;
             }
             try {
                 refresh.run();
@@ -214,7 +233,7 @@ public final class ServerMonitor implements AutoCloseable {
             return;
         }
         try {
-            scheduler.execute(guarded(this::refreshMetrics));
+            scheduler.execute(guarded(this::refreshMetrics, false));
         } catch (java.util.concurrent.RejectedExecutionException e) {
             // Closed between the check above and here. There is nothing to read for a screen that is going away.
         }

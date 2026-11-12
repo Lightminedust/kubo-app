@@ -53,8 +53,13 @@ secret. Use an SSH key if you would rather not type a password each time.
 
 UPDATING
 --------
-Unpack the newer archive and replace this folder. Your servers and logs live in
-~/.kubo, so they survive.
+Kubo checks GitHub for updates at startup and asks before downloading. Choose
+"Restart and update" when ready: Kubo closes, replaces this portable folder,
+and reopens. The previous folder is kept beside it as a backup. Your servers
+and logs live in ~/.kubo, so they survive. No administrator access is needed.
+
+"Check for updates" on the connection screen also lets you disable startup
+checks. You can still unpack a newer archive and replace this folder manually.
 
 
 Kubo is the intellectual property of Gemmie. Free to use — see LICENSE.txt.

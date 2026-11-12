@@ -5,7 +5,6 @@ import com.kubo.model.network.Firewall;
 import com.kubo.model.network.NetworkMap;
 import com.kubo.model.network.Risk;
 import com.kubo.model.network.ServiceOwner;
-import com.kubo.model.network.Vhost;
 import com.kubo.ui.LiveTimer;
 import javafx.geometry.VPos;
 import javafx.scene.Cursor;
@@ -18,28 +17,33 @@ import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.LinearGradient;
+import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.Stop;
-import javafx.scene.shape.ArcType;
+import javafx.scene.shape.StrokeLineCap;
+import javafx.scene.shape.StrokeLineJoin;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * The way in, drawn as a living tree of particles: the internet is an arc of light on the left, the server an arc on
- * the right, and between them the traffic branches — first into the kinds of reach a port can have, then into the
- * ports themselves.
+ * The way in, as a map you can move around: the internet a globe of hosts on the left, the firewall a shield
+ * the traffic has to pass, then the kinds of reach a port can have, the ports themselves, and the server, a
+ * cabinet every port lands on at its own height.
  *
- * <p>Filaments run left to right, the direction a request travels. A branch the internet can really reach carries
- * light all the way to the server; a branch the firewall stops has its filament cut at the membrane; a branch that
- * only exists inside the machine never touches the internet arc at all. Clicking a port lights its own relations —
- * the domains that reach it and everything else its process holds — and dims the rest.
+ * <p>A branch the firewall lets through leaves the shield and carries light to its ports; a branch it stops
+ * is crossed out at the shield and goes on only as a dashed line; a branch that only exists inside the
+ * machine never touches the internet at all.
+ *
+ * <p>Drag to move, the wheel zooms where the pointer is, a double click puts the whole map back in the frame.
+ * The picture draws itself once when the first answer lands; after that it changes only when the answer does.
  */
 final class NetworkTree extends Pane {
 
@@ -47,122 +51,134 @@ final class NetworkTree extends Pane {
     record MenuRequest(Endpoint endpoint, double screenX, double screenY) {
     }
 
+    /** A right-click anywhere that is not a port, in screen coordinates. */
+    record SpaceMenu(double screenX, double screenY) {
+    }
+
     /** The kinds of reach, which are the first branching of the tree. */
     private enum Band {
-        EXPOSED("EXPOSED", "REACHABLE FROM THE INTERNET, AND SHOULD NOT BE"),
-        OPEN("OPEN", "REACHABLE FROM THE INTERNET"),
-        SHIELDED("SHIELDED", "BOUND TO EVERY INTERFACE, STOPPED BY THE FIREWALL"),
-        PRIVATE("PRIVATE", "ON A PRIVATE NETWORK ONLY"),
-        LOCAL("LOCAL", "LOOPBACK ONLY, NOTHING OUTSIDE CAN OPEN IT");
+        EXPOSED("exposed"),
+        OPEN("open"),
+        SHIELDED("shielded"),
+        PRIVATE("private"),
+        LOCAL("local");
 
         final String title;
-        final String note;
 
-        Band(String title, String note) {
+        Band(String title) {
             this.title = title;
-            this.note = note;
         }
     }
 
-    private static final Color BACKGROUND = Color.web("#04040a");
     private static final Color TEXT = Color.web("#eaeaf2");
     private static final Color DIM = Color.web("#a9a9bb");
     private static final Color MUTED = Color.web("#6b6b80");
-    private static final Color FAINT = Color.web("#1b1b26");
+    private static final Color DARK = Color.web("#08080d");
 
-    private static final Color ALERT = Color.web("#ff2d55");
-    private static final Color AMBER = Color.web("#ffb347");
-    private static final Color CYAN = Color.web("#35e8ff");
-    private static final Color VIOLET = Color.web("#8a4dff");
-    private static final Color GREEN = Color.web("#35e0a1");
+    static final Color ALERT = Color.web("#ff2d55");
+    static final Color AMBER = Color.web("#ffb347");
+    static final Color CYAN = Color.web("#35e8ff");
+    static final Color VIOLET = Color.web("#9a6bff");
+    static final Color GREEN = Color.web("#35e0a1");
     private static final Color MAGENTA = Color.web("#ff3fd8");
+    private static final Color PINK = Color.web("#ffc2f4");
 
-    // The world, left to right: internet, firewall membrane, bands, ports, server.
-    private static final double INTERNET_X = -820;
-    private static final double MEMBRANE_X = -470;
-    private static final double BAND_X = -90;
-    private static final double PORT_X = 430;
-    private static final double SERVER_X = 1420;
-    /** How wide the whole figure is, which is what framing has to fit. */
-    private static final double SPAN = SERVER_X - INTERNET_X + 320;
-    /** The middle of the figure, so framing centres on it rather than on a guessed number. */
-    private static final double CENTRE_X = (INTERNET_X + SERVER_X) / 2;
-    /** The mirror's own thickness, in world units. */
-    private static final double MIRROR_WIDTH = 96;
+    // The world, left to right, in map units. One unit is one pixel at 100 %.
+    private static final double GLOBE_R = 118;
+    private static final double SHIELD_X = 430;
+    private static final double SHIELD_W = 92;
+    private static final double SHIELD_H = 112;
+    private static final double BAND_X = 800;
+    private static final double PORT_X = 1010;
+    private static final double RACK_X = 1560;
+    private static final double RACK_W = 96;
 
-    private static final double PORT_ROW = 74;
-    private static final double BAND_GAP = 78;
+    private static final double PORT_ROW = 56;
+    private static final double BAND_MIN = 72;
+    private static final double BAND_GAP = 60;
+
+    private static final double MIN_ZOOM = 0.2;
+    private static final double MAX_ZOOM = 2.2;
     private static final double FRICTION = 4.2;
-    private static final double MIN_ZOOM = 0.22;
-    private static final double MAX_ZOOM = 2.4;
 
-    private static final Font BAND_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14);
-    private static final Font PORT_FONT = Font.font("Consolas", FontWeight.BOLD, 13);
-    private static final Font NAME_FONT = Font.font("Consolas", 11.5);
-    private static final Font SMALL = Font.font("Segoe UI", 9.5);
-    private static final Font ARC_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12);
+    /** How long the map takes to draw itself when the first answer lands, in seconds. */
+    private static final double REVEAL_SECONDS = 1.3;
 
-    /** One branch of the tree: a kind of reach, its ports, and where it sits. */
+    /** The globe's hosts: evenly spread on a sphere, the way a Fibonacci lattice spreads them. */
+    private static final double[][] SPHERE = sphere(420);
+    /** Which hosts are linked by an arc above the surface. */
+    private static final int[][] ARCS = {{24, 188}, {61, 297}, {113, 246}, {151, 389}, {212, 344},
+            {268, 92}, {329, 41}, {175, 401}};
+
+    /** One branch of the tree: a kind of reach, its ports, and where it was drawn last. */
     private static final class Branch {
         final Band band;
         final List<Endpoint> ports = new ArrayList<>();
-        double y;
-        double height;
         boolean open = true;
         double openness = 1;
         double glow;
+        double y;
+        double height;
 
         Branch(Band band) {
             this.band = band;
         }
     }
 
+    /** Where a port was drawn last, in screen coordinates, for the pointer. */
+    private record Placed(Endpoint endpoint, double x, double y, double right, double half) {
+    }
+
     private final Canvas canvas = new Canvas();
     private final LiveTimer timer;
+    private final Map<Band, Branch> branches = new EnumMap<>(Band.class);
+    private List<Branch> shown = List.of();
+    private final List<Placed> placed = new ArrayList<>();
 
     private NetworkMap map = NetworkMap.empty();
-    private final Map<Band, Branch> branches = new LinkedHashMap<>();
-    private List<Branch> shown = List.of();
-    private String hostname = "SERVER";
-
+    private boolean read;
+    private String hostname = "server";
     private Endpoint selected;
     private Endpoint hovered;
     private Band hoveredBand;
-    private boolean loading;
-    private boolean showLocal = true;
 
-    private double camX;
+    private double camX = (RACK_X - GLOBE_R) / 2;
     private double camY;
-    private double targetX;
+    private double zoom = 0.4;
+    private double targetX = camX;
     private double targetY;
-    private double zoom = 0.68;
-    private double targetZoom = 0.68;
+    private double targetZoom = 0.4;
     private double velocityX;
     private double velocityY;
     private boolean dragging;
+    private boolean movedByHand;
     private double pressX;
     private double pressY;
     private double lastX;
     private double lastY;
     private long lastNanos;
-    private boolean placed;
 
-    // Type follows the zoom, held between bounds so it never outgrows a row nor vanishes entirely.
-    private double textScale = 1;
-    private Font bandFont = BAND_FONT;
-    private Font portFont = PORT_FONT;
-    private Font nameFont = NAME_FONT;
-    private Font smallFont = SMALL;
-
+    /** 0 to 1 while the map draws itself after the first answer. */
+    private double reveal = 1;
+    /** 0 while nothing is chosen, 1 once a port has the stage to itself. */
+    private double focus;
     private double clock;
     private double lastTime = -1;
     private boolean live = true;
-    /** 0 while nothing is chosen, 1 once a port has the stage to itself. */
-    private double focus;
+
+    // The type follows the zoom within bounds, so it never outgrows a row nor shrinks out of reach.
+    private double textScale = 1;
+    private Font titleFont;
+    private Font bandFont;
+    private Font portFont;
+    private Font nameFont;
+    private Font smallFont;
 
     private Consumer<Endpoint> onSelect = endpoint -> {
     };
     private Consumer<MenuRequest> onMenu = request -> {
+    };
+    private Consumer<SpaceMenu> onSpaceMenu = request -> {
     };
 
     NetworkTree() {
@@ -170,8 +186,7 @@ final class NetworkTree extends Pane {
         getChildren().add(canvas);
         setMinSize(0, 0);
         for (Band band : Band.values()) {
-            Branch branch = new Branch(band);
-            branches.put(band, branch);
+            branches.put(band, new Branch(band));
         }
         setOnMouseMoved(this::handleMove);
         setOnMouseExited(event -> {
@@ -183,7 +198,7 @@ final class NetworkTree extends Pane {
         setOnMouseReleased(this::handleRelease);
         setOnMouseClicked(this::handleClick);
         setOnScroll(this::handleScroll);
-
+        scaleType();
         timer = new LiveTimer(this, () -> moving() ? LiveTimer.EVERY_PULSE : LiveTimer.AMBIENT, this::render);
         timer.start();
     }
@@ -198,40 +213,38 @@ final class NetworkTree extends Pane {
         this.onMenu = onMenu;
     }
 
+    void setOnSpaceMenu(Consumer<SpaceMenu> onSpaceMenu) {
+        this.onSpaceMenu = onSpaceMenu;
+    }
+
     void setHostname(String hostname) {
-        this.hostname = hostname == null || hostname.isBlank() ? "SERVER" : hostname;
+        this.hostname = hostname == null || hostname.isBlank() ? "server" : hostname;
     }
 
     void setMap(NetworkMap map) {
+        boolean first = !read;
         this.map = map == null ? NetworkMap.empty() : map;
+        this.read = true;
         rebuild();
         if (selected != null) {
             selected = allPorts().stream().filter(port -> same(port, selected)).findFirst().orElse(null);
         }
-        if (!placed && !shown.isEmpty()) {
-            placed = true;
+        if (first) {
             fit();
+            snap();
+            if (live && !shown.isEmpty()) {
+                reveal = 0;
+            }
         }
-    }
-
-    void setShowIsolated(boolean showLocal) {
-        this.showLocal = showLocal;
-        rebuild();
-    }
-
-    boolean showsIsolated() {
-        return showLocal;
-    }
-
-    void setLoading(boolean loading) {
-        this.loading = loading;
+        if (!live) {
+            paint();
+        }
     }
 
     void select(Endpoint endpoint) {
         selected = endpoint;
         if (endpoint != null) {
-            Branch branch = branches.get(bandOf(endpoint));
-            branch.open = true;
+            branches.get(bandOf(endpoint)).open = true;
         }
     }
 
@@ -239,68 +252,80 @@ final class NetworkTree extends Pane {
         timer.stop();
     }
 
+    /** Stops the clock at one moment and draws it, for a still picture. */
     void freeze(double time) {
         timer.stop();
         live = false;
         clock = time;
-        camX = targetX;
-        camY = targetY;
-        zoom = targetZoom;
+        reveal = 1;
+        focus = selected == null ? 0 : 1;
         for (Branch branch : shown) {
             branch.openness = branch.open ? 1 : 0;
         }
-        focus = selected == null ? 0 : 1;
-        placeBranches();
+        snap();
         paint();
     }
 
-    /** True while the view is dragged, gliding or easing: the moments worth drawing at full rate. */
+    void zoomIn() {
+        movedByHand = true;
+        targetZoom = clamp(targetZoom * 1.25, MIN_ZOOM, MAX_ZOOM);
+    }
+
+    void zoomOut() {
+        movedByHand = true;
+        targetZoom = clamp(targetZoom / 1.25, MIN_ZOOM, MAX_ZOOM);
+    }
+
+    /** Puts the whole map in the frame, and lets it follow the frame's size again. */
+    void fit() {
+        movedByHand = false;
+        double w = getWidth() < 1 ? 700 : getWidth();
+        double h = getHeight() < 1 ? 620 : getHeight();
+        placeBranches();
+        double half = Math.max(totalHeight() / 2, GLOBE_R + 40);
+        double left = -GLOBE_R - 40;
+        double right = RACK_X + RACK_W + 40;
+        double top = -half - 90;
+        double bottom = half + 70;
+        targetZoom = clamp(Math.min(w / (right - left), h / (bottom - top)), MIN_ZOOM, 1.1);
+        targetX = (left + right) / 2;
+        targetY = (top + bottom) / 2;
+        velocityX = 0;
+        velocityY = 0;
+        if (!live) {
+            snap();
+            paint();
+        }
+    }
+
+    private void snap() {
+        camX = targetX;
+        camY = targetY;
+        zoom = targetZoom;
+        scaleType();
+    }
+
+    /** True while the view is dragged, gliding or easing, or the map is drawing itself. */
     private boolean moving() {
-        return dragging
+        return dragging || reveal < 1
                 || Math.abs(velocityX) > 2 || Math.abs(velocityY) > 2
                 || Math.abs(targetX - camX) > 0.5 || Math.abs(targetY - camY) > 0.5
                 || Math.abs(targetZoom - zoom) > 0.001;
     }
 
-    void zoomIn() {
-        targetZoom = clamp(targetZoom * 1.2, MIN_ZOOM, MAX_ZOOM);
-    }
-
-    void zoomOut() {
-        targetZoom = clamp(targetZoom / 1.2, MIN_ZOOM, MAX_ZOOM);
-    }
-
-    void fit() {
-        placeBranches();
-        double height = Math.max(240, totalHeight() + 160);
-        double available = Math.max(200, getHeight() < 1 ? 620 : getHeight());
-        double availableWidth = Math.max(200, getWidth() < 1 ? 1000 : getWidth());
-        targetZoom = clamp(Math.min(available / height, availableWidth / SPAN), MIN_ZOOM, 0.95);
-        targetX = CENTRE_X;
-        targetY = 0;
-        velocityX = 0;
-        velocityY = 0;
-    }
-
-    private static Band bandOf(Endpoint endpoint) {
-        if (endpoint.isOpenToTheWorld()) {
-            return Risk.isSensitive(endpoint.port()) ? Band.EXPOSED : Band.OPEN;
-        }
-        return switch (endpoint.reach()) {
-            case SHIELDED -> Band.SHIELDED;
-            case PRIVATE -> Band.PRIVATE;
-            case ISOLATED, OPEN -> Band.LOCAL;
-        };
-    }
+    // The tree
 
     private void rebuild() {
         branches.values().forEach(branch -> branch.ports.clear());
         for (Endpoint endpoint : map.endpoints()) {
-            Band band = bandOf(endpoint);
-            if (band == Band.LOCAL && !showLocal) {
-                continue;
+            // The same port, protocol and process on IPv4 and IPv6 is one way in, drawn once.
+            List<Endpoint> ports = branches.get(bandOf(endpoint)).ports;
+            boolean twin = ports.stream().anyMatch(other -> other.port() == endpoint.port()
+                    && other.socket().protocol() == endpoint.socket().protocol()
+                    && other.owner().label().equals(endpoint.owner().label()));
+            if (!twin) {
+                ports.add(endpoint);
             }
-            branches.get(band).ports.add(endpoint);
         }
         List<Branch> kept = new ArrayList<>();
         for (Band band : Band.values()) {
@@ -320,18 +345,15 @@ final class NetworkTree extends Pane {
         return ports;
     }
 
-    /**
-     * Stacks the branches, each tall enough for the ports it is showing.
-     */
+    /** Stacks the branches, each as tall as the ports it shows, centred on the line from the internet. */
     private void placeBranches() {
         double y = 0;
         for (Branch branch : shown) {
-            branch.height = 40 + branch.ports.size() * PORT_ROW * branch.openness;
+            branch.height = Math.max(BAND_MIN, branch.ports.size() * PORT_ROW * branch.openness + 16);
             branch.y = y + branch.height / 2;
             y += branch.height + BAND_GAP;
         }
         double total = Math.max(0, y - BAND_GAP);
-        // Centre the whole tree on the world origin.
         for (Branch branch : shown) {
             branch.y -= total / 2;
         }
@@ -345,18 +367,18 @@ final class NetworkTree extends Pane {
         return Math.max(0, total - BAND_GAP);
     }
 
-    private double portY(Branch branch, int index) {
+    private static double portY(Branch branch, int index) {
         double spread = branch.ports.size() * PORT_ROW * branch.openness;
         return branch.y - spread / 2 + PORT_ROW * branch.openness * (index + 0.5);
     }
 
     // Geometry
 
-    private double screenX(double worldX) {
+    private double sx(double worldX) {
         return getWidth() / 2 + (worldX - camX) * zoom;
     }
 
-    private double screenY(double worldY) {
+    private double sy(double worldY) {
         return getHeight() / 2 + (worldY - camY) * zoom;
     }
 
@@ -370,8 +392,20 @@ final class NetworkTree extends Pane {
 
     @Override
     protected void layoutChildren() {
+        boolean resized = Math.abs(canvas.getWidth() - getWidth()) > 0.5
+                || Math.abs(canvas.getHeight() - getHeight()) > 0.5;
         canvas.setWidth(getWidth());
         canvas.setHeight(getHeight());
+        // Until somebody has moved the map, it follows the frame: the log opening under it, the window resized.
+        if (resized && !movedByHand && read) {
+            fit();
+            if (!live) {
+                snap();
+            }
+        }
+        if (resized && !live) {
+            paint();
+        }
     }
 
     // Input
@@ -398,6 +432,7 @@ final class NetworkTree extends Pane {
             return;
         }
         dragging = true;
+        movedByHand = true;
         targetX -= (event.getX() - lastX) / zoom;
         targetY -= (event.getY() - lastY) / zoom;
         camX = targetX;
@@ -427,13 +462,18 @@ final class NetworkTree extends Pane {
         if (Math.hypot(event.getX() - pressX, event.getY() - pressY) > 4) {
             return;
         }
+        boolean secondary = event.getButton() == MouseButton.SECONDARY;
         Endpoint port = portAt(event.getX(), event.getY());
         if (port != null) {
-            selected = same(port, selected) ? null : port;
+            selected = same(port, selected) && !secondary ? null : port;
             onSelect.accept(selected);
-            if (event.getButton() == MouseButton.SECONDARY && selected != null) {
+            if (secondary) {
                 onMenu.accept(new MenuRequest(port, event.getScreenX(), event.getScreenY()));
             }
+            return;
+        }
+        if (secondary) {
+            onSpaceMenu.accept(new SpaceMenu(event.getScreenX(), event.getScreenY()));
             return;
         }
         Band band = bandAt(event.getX(), event.getY());
@@ -442,49 +482,46 @@ final class NetworkTree extends Pane {
             branch.open = !branch.open;
             return;
         }
+        if (event.getClickCount() == 2) {
+            fit();
+            return;
+        }
         if (selected != null) {
             selected = null;
             onSelect.accept(null);
         }
     }
 
+    /** The wheel zooms where the pointer is, the way every map does. */
     private void handleScroll(ScrollEvent event) {
-        if (event.isControlDown()) {
-            double before = targetZoom;
-            targetZoom = clamp(targetZoom * (event.getDeltaY() > 0 ? 1.1 : 1 / 1.1), MIN_ZOOM, MAX_ZOOM);
-            double wx = worldX(event.getX());
-            double wy = worldY(event.getY());
-            double factor = 1 - before / targetZoom;
-            targetX += (wx - targetX) * factor;
-            targetY += (wy - targetY) * factor;
-        } else {
-            velocityY = clamp(velocityY - event.getDeltaY() * 7 / zoom, -5000, 5000);
-            velocityX = clamp(velocityX - event.getDeltaX() * 7 / zoom, -5000, 5000);
+        if (event.getDeltaY() == 0) {
+            return;
         }
+        movedByHand = true;
+        double before = targetZoom;
+        targetZoom = clamp(targetZoom * (event.getDeltaY() > 0 ? 1.12 : 1 / 1.12), MIN_ZOOM, MAX_ZOOM);
+        double wx = worldX(event.getX());
+        double wy = worldY(event.getY());
+        double factor = 1 - before / targetZoom;
+        targetX += (wx - targetX) * factor;
+        targetY += (wy - targetY) * factor;
         event.consume();
     }
 
-    private Endpoint portAt(double screenX, double screenY) {
-        double x = screenX(PORT_X);
-        for (Branch branch : shown) {
-            if (branch.openness < 0.4) {
-                continue;
-            }
-            for (int i = 0; i < branch.ports.size(); i++) {
-                double y = screenY(portY(branch, i));
-                if (screenX > x - 30 * zoom && screenX < x + 300 * zoom && Math.abs(screenY - y) < 22 * zoom) {
-                    return branch.ports.get(i);
-                }
+    private Endpoint portAt(double x, double y) {
+        for (Placed port : placed) {
+            if (x > port.x() - 6 && x < port.right() && Math.abs(y - port.y()) < port.half()) {
+                return port.endpoint();
             }
         }
         return null;
     }
 
-    private Band bandAt(double screenX, double screenY) {
-        double x = screenX(BAND_X);
+    private Band bandAt(double x, double y) {
+        double bx = sx(BAND_X);
         for (Branch branch : shown) {
-            if (screenX > x - 130 * zoom && screenX < x + 130 * zoom
-                    && Math.abs(screenY - screenY(branch.y)) < 30 * zoom) {
+            double by = sy(branch.y);
+            if (x > bx - 120 * textScale && x < bx + 16 * textScale && Math.abs(y - by) < 22 * textScale) {
                 return branch.band;
             }
         }
@@ -507,6 +544,9 @@ final class NetworkTree extends Pane {
         camX += (targetX - camX) * Math.min(1, dt * 9);
         camY += (targetY - camY) * Math.min(1, dt * 9);
         zoom += (targetZoom - zoom) * Math.min(1, dt * 9);
+        if (reveal < 1) {
+            reveal = Math.min(1, reveal + dt / REVEAL_SECONDS);
+        }
         focus += ((selected == null ? 0 : 1) - focus) * Math.min(1, dt * 6);
         for (Branch branch : shown) {
             branch.openness += ((branch.open ? 1 : 0) - branch.openness) * Math.min(1, dt * 7);
@@ -514,347 +554,534 @@ final class NetworkTree extends Pane {
             branch.glow += (wanted - branch.glow) * Math.min(1, dt * 8);
         }
         placeBranches();
+        scaleType();
         paint();
     }
 
+    private void scaleType() {
+        textScale = clamp(zoom * 1.6, 0.82, 1.3);
+        titleFont = Font.font("Consolas", FontWeight.BOLD, 13 * textScale);
+        bandFont = Font.font("Consolas", FontWeight.BOLD, 13 * textScale);
+        portFont = Font.font("Consolas", FontWeight.BOLD, 12 * textScale);
+        nameFont = Font.font("Consolas", 11.5 * textScale);
+        smallFont = Font.font("Consolas", 10.5 * textScale);
+    }
+
     private void paint() {
-        double width = canvas.getWidth();
-        double height = canvas.getHeight();
-        if (width < 1 || height < 1) {
+        double w = canvas.getWidth();
+        double h = canvas.getHeight();
+        if (w < 1 || h < 1) {
             return;
         }
         GraphicsContext gc = canvas.getGraphicsContext2D();
         gc.setGlobalAlpha(1);
-        gc.setFill(BACKGROUND);
-        gc.fillRect(0, 0, width, height);
-        scaleType();
-        drawDust(gc, width, height);
+        gc.setLineDashes((double[]) null);
+        gc.setLineCap(StrokeLineCap.ROUND);
+        gc.setLineJoin(StrokeLineJoin.ROUND);
+        gc.clearRect(0, 0, w, h);
+        placed.clear();
 
         if (shown.isEmpty()) {
-            gc.setFont(BAND_FONT);
-            gc.setTextAlign(TextAlignment.CENTER);
-            gc.setTextBaseline(VPos.CENTER);
-            if (loading) {
-                drawPulse(gc, width / 2, height / 2);
-                gc.setFill(CYAN.deriveColor(0, 1, 1, 0.55 + 0.45 * Math.sin(clock * 2.4)));
-                gc.fillText("LISTENING TO THE SERVER", width / 2, height / 2);
-            } else {
+            if (read) {
+                gc.setFont(nameFont);
                 gc.setFill(MUTED);
-                gc.fillText("NOTHING IS LISTENING", width / 2, height / 2);
+                gc.setTextAlign(TextAlignment.CENTER);
+                gc.setTextBaseline(VPos.CENTER);
+                gc.fillText("nothing is listening", w / 2, h / 2);
             }
             return;
         }
 
-        drawInternet(gc);
-        drawMembrane(gc);
-        for (Branch branch : shown) {
-            drawBranch(gc, branch);
+        // The lines first, under everything they join.
+        drawTrunk(gc);
+        for (int i = 0; i < shown.size(); i++) {
+            drawBranchLines(gc, shown.get(i), i);
         }
-        drawServer(gc);
-        if (loading) {
-            drawReading(gc, width, height);
+        drawRack(gc);
+        drawShield(gc);
+        drawGlobe(gc);
+        for (int i = 0; i < shown.size(); i++) {
+            drawBranchNodes(gc, shown.get(i), i);
         }
-        drawLegend(gc, width, height);
     }
 
-    /**
-     * What a re-read looks like while the picture on screen is still the old one.
-     *
-     * <p>A sweep crossing the map, the same direction a request travels on it, and rings leaving the server.
-     * It is drawn over the map and nowhere else: a reading of one panel has no business greying out the
-     * window, and a spinner in the corner says a thing is happening without saying what to.
-     */
-    private void drawReading(GraphicsContext gc, double width, double height) {
-        // The sweep. Thin strips rather than a gradient paint, because the alpha per strip is the whole effect.
-        double cycle = 2.6;
-        double head = ((clock % cycle) / cycle) * (width + 260) - 130;
-        double reach = 120;
-        int strips = 30;
-        for (int i = 0; i < strips; i++) {
-            double x = head - reach + (i * (reach * 2) / strips);
-            if (x < 0 || x > width) {
+    /** The share of the reveal this element has had, eased, with its own start and length. */
+    private double phase(double start, double length) {
+        double t = clamp((reveal - start) / length, 0, 1);
+        return t * t * (3 - 2 * t);
+    }
+
+    // The internet
+
+    private void drawGlobe(GraphicsContext gc) {
+        double appear = phase(0, 0.22);
+        if (appear < 0.01) {
+            return;
+        }
+        double cx = sx(0);
+        double cy = sy(0);
+        double r = GLOBE_R * zoom;
+        double spin = live ? clock * 0.14 : 0.9;
+        double tilt = 0.38;
+
+        // The air round it.
+        gc.setGlobalAlpha(appear);
+        gc.setFill(new RadialGradient(0, 0, cx, cy, r * 1.4, false, CycleMethod.NO_CYCLE,
+                new Stop(0.66, MAGENTA.deriveColor(0, 1, 1, 0)),
+                new Stop(0.72, MAGENTA.deriveColor(0, 1, 1, 0.16)),
+                new Stop(1, MAGENTA.deriveColor(0, 1, 1, 0))));
+        gc.fillOval(cx - r * 1.4, cy - r * 1.4, r * 2.8, r * 2.8);
+        // The body, lit from the upper left.
+        gc.setFill(DARK);
+        gc.fillOval(cx - r, cy - r, r * 2, r * 2);
+        gc.setFill(new RadialGradient(0, 0, cx - r * 0.35, cy - r * 0.4, r * 1.35, false, CycleMethod.NO_CYCLE,
+                new Stop(0, MAGENTA.deriveColor(0, 1, 1, 0.16)),
+                new Stop(1, MAGENTA.deriveColor(0, 1, 1, 0))));
+        gc.fillOval(cx - r, cy - r, r * 2, r * 2);
+
+        double cosS = Math.cos(spin);
+        double sinS = Math.sin(spin);
+        double cosT = Math.cos(tilt);
+        double sinT = Math.sin(tilt);
+        double dot = clamp(r / 110, 0.55, 1.5);
+        // The hosts: the far side faint and small, the near side bright, so it reads as a ball.
+        for (int pass = 0; pass < 2; pass++) {
+            for (double[] p : SPHERE) {
+                double x = p[0] * cosS + p[2] * sinS;
+                double z = -p[0] * sinS + p[2] * cosS;
+                double y = p[1] * cosT - z * sinT;
+                double depth = p[1] * sinT + z * cosT;
+                if ((pass == 0) != (depth < 0)) {
+                    continue;
+                }
+                double near = (depth + 1) / 2;
+                gc.setGlobalAlpha(appear * (0.06 + 0.86 * Math.pow(near, 1.7)));
+                gc.setFill(MAGENTA.interpolate(PINK, near * near * 0.6));
+                double size = (0.7 + 1.9 * near) * dot;
+                gc.fillOval(cx + x * r - size / 2, cy + y * r - size / 2, size, size);
+            }
+        }
+
+        // Arcs between hosts, lifted off the surface, with a light running along each.
+        gc.setLineWidth(Math.max(0.8, 1.2 * dot));
+        for (int k = 0; k < ARCS.length; k++) {
+            double[] a = SPHERE[ARCS[k][0]];
+            double[] b = SPHERE[ARCS[k][1]];
+            double dotAB = clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -0.999, 0.999);
+            double omega = Math.acos(dotAB);
+            int steps = 26;
+            double[] xs = new double[steps + 1];
+            double[] ys = new double[steps + 1];
+            double depthSum = 0;
+            for (int i = 0; i <= steps; i++) {
+                double t = (double) i / steps;
+                double fa = Math.sin((1 - t) * omega) / Math.sin(omega);
+                double fb = Math.sin(t * omega) / Math.sin(omega);
+                double lift = 1 + 0.24 * Math.sin(Math.PI * t);
+                double px = (fa * a[0] + fb * b[0]) * lift;
+                double py = (fa * a[1] + fb * b[1]) * lift;
+                double pz = (fa * a[2] + fb * b[2]) * lift;
+                double x = px * cosS + pz * sinS;
+                double z = -px * sinS + pz * cosS;
+                double y = py * cosT - z * sinT;
+                depthSum += py * sinT + z * cosT;
+                xs[i] = cx + x * r;
+                ys[i] = cy + y * r;
+            }
+            double depth = depthSum / (steps + 1);
+            if (depth < -0.05) {
                 continue;
             }
-            double falloff = 1 - Math.abs(x - head) / reach;
-            gc.setGlobalAlpha(0.10 * falloff * falloff);
-            gc.setFill(CYAN);
-            gc.fillRect(x, 0, (reach * 2) / strips + 1, height);
+            double strength = appear * Math.min(1, depth * 2.5 + 0.2);
+            gc.setStroke(MAGENTA);
+            gc.setGlobalAlpha(strength * 0.55);
+            gc.strokePolyline(xs, ys, steps + 1);
+            double t = fract((live ? clock : 1.3) * 0.32 + k * 0.17);
+            int at = (int) Math.round(t * steps);
+            gc.setFill(PINK);
+            gc.setGlobalAlpha(strength * Math.sin(Math.PI * t));
+            double size = 3.2 * dot;
+            gc.fillOval(xs[at] - size / 2, ys[at] - size / 2, size, size);
         }
+        gc.setGlobalAlpha(appear * 0.5);
+        gc.setStroke(MAGENTA);
+        gc.setLineWidth(1);
+        gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
 
-        // Rings leaving the server, one every second, so the eye has something that is plainly not a loop.
-        double period = 1.15;
-        for (int ring = 0; ring < 3; ring++) {
-            double age = ((clock + ring * period / 3) % period) / period;
-            gc.setGlobalAlpha(0.28 * (1 - age));
-            gc.setStroke(CYAN);
-            gc.setLineWidth(1.4);
-            double radius = 30 + age * 190;
-            gc.strokeOval(width - 150 - radius, height / 2 - radius, radius * 2, radius * 2);
-        }
-
-        gc.setGlobalAlpha(1);
-        gc.setFont(smallFont);
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setTextBaseline(VPos.TOP);
-        gc.setFill(CYAN.deriveColor(0, 1, 1, 0.6 + 0.4 * Math.sin(clock * 3)));
-        gc.fillText("RE-READING THE SERVER", 22, 18);
-    }
-
-    /** A slow pulse where the map will appear, for the first reading of a session. */
-    private void drawPulse(GraphicsContext gc, double x, double y) {
-        for (int ring = 0; ring < 3; ring++) {
-            double age = ((clock + ring * 0.5) % 1.5) / 1.5;
-            gc.setGlobalAlpha(0.30 * (1 - age));
-            gc.setStroke(CYAN);
-            gc.setLineWidth(1.4);
-            double radius = 20 + age * 120;
-            gc.strokeOval(x - radius, y - radius, radius * 2, radius * 2);
-        }
-        gc.setGlobalAlpha(1);
-    }
-
-    /**
-     * Sizes the type for the current zoom. Below the thresholds a row drops its least important line rather than
-     * letting two lines overlap, the way a map drops labels as you pull away from it.
-     */
-    private void scaleType() {
-        textScale = clamp(zoom / 0.58, 0.74, 1.25);
-        bandFont = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14 * textScale);
-        portFont = Font.font("Consolas", FontWeight.BOLD, 13 * textScale);
-        nameFont = Font.font("Consolas", 11.5 * textScale);
-        smallFont = Font.font("Segoe UI", 9.5 * textScale);
-    }
-
-    /** True when there is room under a port for its second line. */
-    private boolean showsDetail() {
-        return PORT_ROW * zoom > 34;
-    }
-
-    /** True when there is room beside a port for the name of what holds it. */
-    private boolean showsName() {
-        return PORT_ROW * zoom > 22;
-    }
-
-    /**
-     * The quiet field of motes the whole picture floats in.
-     */
-    private void drawDust(GraphicsContext gc, double width, double height) {
-        gc.setFill(FAINT);
-        for (int i = 0; i < 90; i++) {
-            double seed = i * 12.9898;
-            double x = (fract(Math.sin(seed) * 43758.5453) * width
-                    + (live ? Math.sin(clock * 0.07 + i) * 14 : 0) + width) % width;
-            double y = (fract(Math.sin(seed * 1.7) * 21421.1) * height
-                    + (live ? Math.cos(clock * 0.05 + i) * 10 : 0) + height) % height;
-            double size = 0.8 + fract(Math.sin(seed * 3.1) * 9111.3) * 1.4;
-            gc.setGlobalAlpha(0.25 + 0.3 * fract(Math.sin(seed * 5.3) * 1234.5));
-            gc.fillOval(x, y, size, size);
-        }
-        gc.setGlobalAlpha(1);
-    }
-
-    /**
-     * The internet: an arc of magenta light, opening towards the server, made of particles.
-     */
-    private void drawInternet(GraphicsContext gc) {
-        double cx = screenX(INTERNET_X);
-        double cy = screenY(0);
-        double radius = 240 * zoom;
-        double half = Math.PI * 0.42;
         long reachable = shown.stream().filter(branch -> branch.band == Band.EXPOSED || branch.band == Band.OPEN)
                 .mapToLong(branch -> branch.ports.size()).sum();
-
-        // The arc itself, drawn as a dense run of particles that thickens at the middle.
-        for (int i = 0; i < 320; i++) {
-            double t = i / 319.0;
-            double angle = -half + t * half * 2;
-            double jitter = live ? Math.sin(clock * 1.2 + i * 0.35) * 2.2 : 0;
-            double r = radius + jitter;
-            double x = cx + Math.cos(angle) * r;
-            double y = cy + Math.sin(angle) * r * 1.02;
-            double weight = Math.cos(angle * 1.1);
-            gc.setFill(MAGENTA);
-            gc.setGlobalAlpha(0.25 + 0.6 * weight * weight);
-            double size = (1 + 1.7 * weight * weight) * Math.max(0.5, zoom);
-            gc.fillOval(x - size / 2, y - size / 2, size, size);
-        }
-        // A spray of motes behind the arc, the crowd beyond the wire.
-        for (int i = 0; i < 150; i++) {
-            double seed = i * 7.77;
-            double angle = -half + fract(Math.sin(seed) * 4137.1) * half * 2;
-            double away = radius - 10 - fract(Math.sin(seed * 2.3) * 8231.7) * 150 * zoom;
-            double drift = live ? Math.sin(clock * 0.5 + i) * 4 : 0;
-            double x = cx + Math.cos(angle) * (away + drift);
-            double y = cy + Math.sin(angle) * (away + drift) * 1.02;
-            gc.setFill(MAGENTA);
-            gc.setGlobalAlpha(0.10 + 0.2 * fract(Math.sin(seed * 3.9) * 991.3));
-            double size = 1.2 * Math.max(0.5, zoom);
-            gc.fillOval(x, y, size, size);
-        }
-        gc.setGlobalAlpha(1);
-
+        gc.setGlobalAlpha(appear);
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setTextBaseline(VPos.CENTER);
-        double ix = cx + radius * 0.5;
-        double iy = cy - radius * 1.02 - 44;
-        gc.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12 * textScale));
+        gc.setFont(titleFont);
         gc.setFill(MAGENTA);
-        gc.fillText("INTERNET", ix, iy);
+        gc.fillText("internet", cx, cy + r * 1.18 + 14 * textScale);
         gc.setFont(smallFont);
         gc.setFill(MUTED);
-        gc.fillText(reachable + (reachable == 1 ? " WAY IN" : " WAYS IN") + "   ·   REQUESTS FLOW →", ix, iy + 16);
+        gc.fillText(reachable + (reachable == 1 ? " way in" : " ways in"), cx, cy + r * 1.18 + 30 * textScale);
+        gc.setGlobalAlpha(1);
     }
 
-    /**
-     * The firewall, as a standing pane of mirror glass across the path.
-     *
-     * <p>A pane says what a line cannot: light that reaches it either passes through or comes back. A branch the
-     * firewall stops has its filament end here and a reflection thrown back toward the internet, which is what the
-     * cross on it means — this far and no further.
-     *
-     * <p>The glass is whole and lit while the firewall enforces, shattered and red when it genuinely filters
-     * nothing, and fogged amber when Kubo could not read it: an unreadable firewall is not an absent one, and the
-     * pane must not look like a hole.
-     */
-    private void drawMembrane(GraphicsContext gc) {
+    /** The single line from the internet to the firewall: everything comes in this way. */
+    private void drawTrunk(GraphicsContext gc) {
+        double drawn = phase(0.1, 0.22);
+        double x1 = sx(GLOBE_R);
+        double x2 = sx(SHIELD_X - SHIELD_W / 2);
+        double y = sy(0);
+        if (drawn < 0.01) {
+            return;
+        }
+        double end = x1 + (x2 - x1) * drawn;
+        Color wall = colourOfFirewall(map.firewall());
+        gc.setStroke(new LinearGradient(x1, 0, x2, 0, false, CycleMethod.NO_CYCLE,
+                new Stop(0, MAGENTA), new Stop(1, wall)));
+        gc.setGlobalAlpha(0.7);
+        gc.setLineWidth(Math.max(1.4, 2.4 * zoom));
+        gc.strokeLine(x1, y, end, y);
+        flow(gc, x1, y, x2, y, MAGENTA, 0.9, 4, 0, drawn);
+        gc.setGlobalAlpha(1);
+    }
+
+    // The firewall
+
+    private void drawShield(GraphicsContext gc) {
+        double appear = phase(0.18, 0.22);
+        if (appear < 0.01) {
+            return;
+        }
         Firewall firewall = map.firewall();
         boolean enforcing = firewall.isEnforcing();
         boolean known = firewall.isKnown();
-        double x = screenX(MEMBRANE_X);
-        double half = MIRROR_WIDTH * zoom / 2;
-        double top = Math.max(18, screenY(-totalHeight() / 2 - 120));
-        double bottom = Math.min(canvas.getHeight() - 30, screenY(totalHeight() / 2 + 120));
-        if (bottom <= top) {
-            return;
-        }
-        Color colour = enforcing ? CYAN : known ? ALERT : AMBER;
-        double height = bottom - top;
+        Color colour = enforcing ? GREEN : known ? ALERT : AMBER;
+        double cx = sx(SHIELD_X);
+        double cy = sy(0);
+        double w = SHIELD_W * zoom * (0.85 + 0.15 * appear);
+        double h = SHIELD_H * zoom * (0.85 + 0.15 * appear);
+        double top = cy - h / 2;
 
-        // The glass itself: darkest at its faces, brightest through the middle, the way a pane seen edge-on reads.
-        gc.setGlobalAlpha(1);
-        gc.setFill(new LinearGradient(x - half, 0, x + half, 0, false, CycleMethod.NO_CYCLE,
-                new Stop(0, colour.deriveColor(0, 1, 1, 0)),
-                new Stop(0.35, colour.deriveColor(0, 1, 1, enforcing ? 0.16 : 0.07)),
-                new Stop(0.5, colour.deriveColor(0, 1, 1, enforcing ? 0.26 : 0.10)),
-                new Stop(0.65, colour.deriveColor(0, 1, 1, enforcing ? 0.16 : 0.07)),
+        gc.setGlobalAlpha(appear);
+        gc.setFill(new RadialGradient(0, 0, cx, cy, Math.max(w, h) * 0.95, false, CycleMethod.NO_CYCLE,
+                new Stop(0, colour.deriveColor(0, 1, 1, enforcing ? 0.16 : 0.08)),
                 new Stop(1, colour.deriveColor(0, 1, 1, 0))));
-        gc.fillRect(x - half, top, half * 2, height);
+        gc.fillOval(cx - w * 0.95, cy - h * 0.95, w * 1.9, h * 1.9);
 
-        // Its two edges, where the light gathers on real glass.
-        gc.setStroke(colour.deriveColor(0, 1, 1, enforcing ? 0.85 : 0.4));
-        gc.setLineWidth(Math.max(1, 1.6 * zoom));
-        gc.strokeLine(x - half, top, x - half, bottom);
-        gc.setStroke(colour.deriveColor(0, 1, 1, enforcing ? 0.55 : 0.25));
-        gc.strokeLine(x + half, top, x + half, bottom);
-
+        shieldPath(gc, cx, top, w, h);
+        gc.setFill(DARK);
+        gc.fill();
+        gc.setFill(colour.deriveColor(0, 1, 1, 0.10));
+        gc.fill();
         if (enforcing) {
-            // A sheen travelling down the pane: the one thing that makes a surface read as a mirror rather than a
-            // coloured bar.
-            double travel = live ? (clock * 0.16) % 1.4 - 0.2 : 0.45;
-            double sheenY = top + travel * height;
-            double sheenHeight = Math.max(40, height * 0.22);
-            gc.setFill(new LinearGradient(0, sheenY - sheenHeight / 2, 0, sheenY + sheenHeight / 2, false,
-                    CycleMethod.NO_CYCLE,
+            // A light passing down the face, which is what makes it read as a surface rather than an outline.
+            gc.save();
+            shieldPath(gc, cx, top, w, h);
+            gc.clip();
+            double travel = live ? fract(clock * 0.2) * 1.6 - 0.3 : 0.4;
+            double band = h * 0.35;
+            double y = top + travel * h;
+            gc.setFill(new LinearGradient(0, y - band / 2, 0, y + band / 2, false, CycleMethod.NO_CYCLE,
                     new Stop(0, colour.deriveColor(0, 1, 1, 0)),
-                    new Stop(0.5, colour.deriveColor(0, 1, 1, 0.34)),
+                    new Stop(0.5, colour.deriveColor(0, 1, 1, 0.22)),
                     new Stop(1, colour.deriveColor(0, 1, 1, 0))));
-            gc.fillRect(x - half, Math.max(top, sheenY - sheenHeight / 2),
-                    half * 2, Math.min(sheenHeight, bottom - Math.max(top, sheenY - sheenHeight / 2)));
+            gc.fillRect(cx - w, y - band / 2, w * 2, band);
+            gc.restore();
+        }
+        gc.setStroke(colour);
+        gc.setLineWidth(Math.max(1.2, 2.2 * zoom));
+        if (!enforcing) {
+            gc.setLineDashes(known ? new double[]{8 * zoom, 6 * zoom} : new double[]{2, 5 * zoom});
+        }
+        shieldPath(gc, cx, top, w, h);
+        gc.stroke();
+        gc.setLineDashes((double[]) null);
+        gc.setGlobalAlpha(appear * 0.35);
+        gc.setLineWidth(1);
+        shieldPath(gc, cx, top + h * 0.1, w * 0.76, h * 0.8);
+        gc.stroke();
 
-            // Faint horizontal rulings, so the surface has a grain to reflect in.
-            gc.setStroke(colour);
-            gc.setLineWidth(0.7);
-            for (double y = top; y < bottom; y += 9 * Math.max(0.6, zoom)) {
-                gc.setGlobalAlpha(0.05 + 0.05 * Math.sin((y + clock * 30) * 0.08));
-                gc.strokeLine(x - half, y, x + half, y);
-            }
-            gc.setGlobalAlpha(1);
+        // What state it is in, in the middle of it.
+        gc.setGlobalAlpha(appear);
+        gc.setStroke(colour);
+        gc.setLineWidth(Math.max(1.6, 3.2 * zoom));
+        if (enforcing) {
+            gc.strokePolyline(new double[]{cx - w * 0.17, cx - w * 0.04, cx + w * 0.2},
+                    new double[]{cy + h * 0.0, cy + h * 0.12, cy - h * 0.13}, 3);
         } else if (known) {
-            // Nothing filters: the pane is broken, and you can see straight through the gaps.
-            gc.setStroke(ALERT);
-            gc.setLineWidth(Math.max(1, 1.2 * zoom));
-            for (int i = 0; i < 16; i++) {
-                double y = top + (i + fract(Math.sin(i * 31.7) * 4113.1)) * height / 16;
-                double lean = (fract(Math.sin(i * 12.9) * 2711.3) - 0.5) * half * 3;
-                gc.setGlobalAlpha(0.45);
-                gc.strokeLine(x - half, y, x + half + lean, y + height / 40);
-            }
-            gc.setGlobalAlpha(1);
+            gc.strokeLine(cx - w * 0.16, cy - h * 0.14, cx + w * 0.16, cy + h * 0.14);
+            gc.strokeLine(cx - w * 0.16, cy + h * 0.14, cx + w * 0.16, cy - h * 0.14);
         } else {
-            // Kubo cannot see through it: fogged, not open.
-            gc.setFill(AMBER);
-            for (int i = 0; i < 90; i++) {
-                double y = top + fract(Math.sin(i * 17.3) * 3271.7) * height;
-                double dx = (fract(Math.sin(i * 7.1) * 1291.7) - 0.5) * half * 2;
-                gc.setGlobalAlpha(0.10);
-                double size = 2.4 * Math.max(0.5, zoom);
-                gc.fillOval(x + dx - size / 2, y - size / 2, size, size);
-            }
-            gc.setGlobalAlpha(1);
+            gc.setFont(Font.font("Consolas", FontWeight.BOLD, 30 * zoom));
+            gc.setFill(colour);
+            gc.setTextAlign(TextAlignment.CENTER);
+            gc.setTextBaseline(VPos.CENTER);
+            gc.fillText("?", cx, cy + h * 0.02);
         }
 
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setTextBaseline(VPos.BOTTOM);
-        gc.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12 * textScale));
+        gc.setTextBaseline(VPos.CENTER);
+        gc.setFont(titleFont);
         gc.setFill(colour);
-        gc.fillText(firewall.title(), x, Math.max(30, top - 26));
+        gc.fillText(firewall.title().toLowerCase(Locale.ROOT), cx, top + h + 16 * textScale);
         gc.setFont(smallFont);
         gc.setFill(enforcing ? MUTED : colour);
         gc.fillText(switch (firewall.state()) {
-            case ACTIVE -> "ACTIVE  \u00b7  " + map.openPorts().size() + " PORTS ALLOWED";
-            case INACTIVE -> "NOT FILTERING  \u00b7  EVERY PORT IS REACHABLE";
-            case ABSENT -> "NO FIREWALL ON THIS MACHINE";
-            case UNREADABLE -> "COULD NOT BE READ  \u00b7  NEEDS ROOT";
-            case UNRECOGNISED -> "RUNNING  \u00b7  CANNOT READ ITS RULES";
-            case UNCHECKED -> "COULD NOT BE CHECKED  \u00b7  NOT THE SAME AS NONE";
-        }, x, Math.max(46, top - 10));
+            case ACTIVE -> "on · " + map.openPorts().size() + " allowed";
+            case INACTIVE -> "off, lets everything in";
+            case ABSENT -> "none";
+            case UNREADABLE, UNRECOGNISED -> "rules need root";
+            case UNCHECKED -> "not checked";
+        }, cx, top + h + 32 * textScale);
+        gc.setGlobalAlpha(1);
     }
 
-    /**
-     * One kind of reach: its node, its filament from the internet, and the ports hanging off it.
-     */
-    private void drawBranch(GraphicsContext gc, Branch branch) {
-        Color colour = colourOf(branch.band);
-        double bx = screenX(BAND_X);
-        double by = screenY(branch.y);
-        boolean fromOutside = branch.band == Band.EXPOSED || branch.band == Band.OPEN;
-        boolean stopped = branch.band == Band.SHIELDED;
-        double dim = dimming(branch);
+    /** The outline of a shield: a flat top with rounded shoulders, coming to a point. */
+    private static void shieldPath(GraphicsContext gc, double cx, double top, double w, double h) {
+        gc.beginPath();
+        gc.moveTo(cx, top);
+        gc.quadraticCurveTo(cx + w * 0.26, top + h * 0.09, cx + w / 2, top + h * 0.12);
+        gc.lineTo(cx + w / 2, top + h * 0.48);
+        gc.bezierCurveTo(cx + w / 2, top + h * 0.78, cx + w * 0.22, top + h * 0.92, cx, top + h);
+        gc.bezierCurveTo(cx - w * 0.22, top + h * 0.92, cx - w / 2, top + h * 0.78, cx - w / 2, top + h * 0.48);
+        gc.lineTo(cx - w / 2, top + h * 0.12);
+        gc.quadraticCurveTo(cx - w * 0.26, top + h * 0.09, cx, top);
+        gc.closePath();
+    }
 
-        // Internet → band. Only the bands the internet can actually reach are fed.
-        if (fromOutside) {
-            filament(gc, screenX(INTERNET_X) + 240 * zoom, screenY(0), bx, by, colour, 0.5 * dim, true, branch.band.ordinal());
-        } else if (stopped) {
-            // It arrives at the glass and comes back: the reflection is the firewall refusing it, and the cross is
-            // where that happens.
-            double mirror = screenX(MEMBRANE_X) - MIRROR_WIDTH * zoom / 2;
-            double from = screenX(INTERNET_X) + 240 * zoom;
-            filament(gc, from, screenY(0), mirror, by, colour, 0.22 * dim, false, branch.band.ordinal());
-            filament(gc, mirror, by, from + (mirror - from) * 0.45, by + (screenY(0) - by) * 0.35,
-                    colour, 0.18 * dim, false, branch.band.ordinal() + 11);
-            cross(gc, mirror, by, CYAN, dim);
+    // The server
+
+    private void drawRack(GraphicsContext gc) {
+        double appear = phase(0.55, 0.3);
+        if (appear < 0.01) {
+            return;
         }
+        double low = Double.MAX_VALUE;
+        double high = -Double.MAX_VALUE;
+        for (Branch branch : shown) {
+            low = Math.min(low, branch.y - branch.height / 2);
+            high = Math.max(high, branch.y + branch.height / 2);
+        }
+        low = Math.min(low - 30, -110);
+        high = Math.max(high + 30, 110);
+        double x = sx(RACK_X);
+        double top = sy(low);
+        double bottom = sy(high);
+        double w = RACK_W * zoom;
+        double height = bottom - top;
+        double radius = 10 * zoom;
 
-        // The band node: a knot of particles.
-        drawKnot(gc, bx, by, colour, 26 * zoom, branch.glow, dim);
-        gc.setTextAlign(TextAlignment.RIGHT);
+        gc.setGlobalAlpha(appear);
+        gc.setFill(DARK);
+        gc.fillRoundRect(x, top, w, height, radius, radius);
+        gc.setFill(new LinearGradient(x, 0, x + w, 0, false, CycleMethod.NO_CYCLE,
+                new Stop(0, CYAN.deriveColor(0, 1, 1, 0.10)), new Stop(1, CYAN.deriveColor(0, 1, 1, 0.03))));
+        gc.fillRoundRect(x, top, w, height, radius, radius);
+        gc.setStroke(CYAN);
+        gc.setGlobalAlpha(appear * 0.8);
+        gc.setLineWidth(Math.max(1, 1.6 * zoom));
+        gc.strokeRoundRect(x, top, w, height, radius, radius);
+        // Its units, one ruled line each, and a few lights.
+        double unit = 22 * zoom;
+        int index = 0;
+        for (double y = top + unit; y < bottom - unit * 0.6; y += unit, index++) {
+            gc.setGlobalAlpha(appear * 0.14);
+            gc.setLineWidth(1);
+            gc.strokeLine(x + 8 * zoom, y, x + w - 8 * zoom, y);
+            if (index % 3 == 1) {
+                double blink = live ? 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(clock * 1.3 + index * 1.7)) : 0.8;
+                gc.setGlobalAlpha(appear * blink);
+                gc.setFill(GREEN);
+                double led = Math.max(2, 4 * zoom);
+                gc.fillOval(x + w - 16 * zoom, y - unit / 2 - led / 2, led, led);
+            }
+        }
+        gc.setGlobalAlpha(appear);
+        gc.setTextAlign(TextAlignment.CENTER);
         gc.setTextBaseline(VPos.CENTER);
-        gc.setFont(bandFont);
-        gc.setGlobalAlpha(dim);
-        gc.setFill(colour);
-        gc.fillText(branch.band.title, bx - 42 * textScale, by - 9 * textScale);
+        gc.setFont(titleFont);
+        gc.setFill(CYAN);
+        gc.fillText(clip(hostname, titleFont, Math.max(w * 2.4, 120)), x + w / 2, top - 30 * textScale);
         gc.setFont(smallFont);
         gc.setFill(MUTED);
-        gc.fillText(branch.ports.size() + (branch.ports.size() == 1 ? " PORT" : " PORTS")
-                + (branch.open ? "" : "  ·  CLICK TO OPEN"), bx - 42 * textScale, by + 11 * textScale);
+        gc.fillText(allPorts().size() + " listening", x + w / 2, top - 14 * textScale);
         gc.setGlobalAlpha(1);
+    }
+
+    // The branches
+
+    /** Every line of one branch: from the firewall to it, to its ports, and from them to the server. */
+    private void drawBranchLines(GraphicsContext gc, Branch branch, int order) {
+        Color colour = colourOf(branch.band);
+        double bx = sx(BAND_X);
+        double by = sy(branch.y);
+        double dim = dimming(branch);
+        double from = sx(SHIELD_X + SHIELD_W / 2);
+        double cy = sy(0);
+        double delay = order * 0.05;
+        double reach = phase(0.28 + delay, 0.26);
+        double node = 11 * zoom;
+
+        if (branch.band == Band.EXPOSED || branch.band == Band.OPEN) {
+            curve(gc, from, cy, bx - node, by, colour, 0.8 * dim, reach, 1.6);
+            flow(gc, from, cy, bx - node, by, colour, 0.9 * dim, 2, order, reach);
+        } else if (branch.band == Band.SHIELDED && reach > 0.01) {
+            // Turned back at the shield: crossed out where it leaves, and only a dashed line after.
+            double cross = from + 18 * zoom;
+            gc.setLineDashes(4 * zoom + 2, 6 * zoom + 2);
+            curve(gc, cross + 10 * zoom, cy, bx - node, by, colour, 0.35 * dim, reach, 1.1);
+            gc.setLineDashes((double[]) null);
+            cross(gc, cross, cy + (by - cy) * 0.08, colour, dim * reach);
+        }
 
         if (branch.openness < 0.05) {
             return;
         }
+        double px = sx(PORT_X);
+        double rack = sx(RACK_X);
         for (int i = 0; i < branch.ports.size(); i++) {
-            drawPort(gc, branch, i, colour);
+            Endpoint endpoint = branch.ports.get(i);
+            double y = sy(portY(branch, i));
+            double related = selected == null ? 1 : isRelated(endpoint) ? 1 : 1 - 0.75 * focus;
+            double drawn = phase(0.4 + delay + i * 0.012, 0.25);
+            Color shade = colourOf(endpoint);
+            curve(gc, bx + node, by, px, y, shade, 0.7 * branch.openness * related, drawn, 1.2);
+            flow(gc, bx + node, by, px, y, shade, 0.6 * branch.openness * related, 1, order * 7 + i, drawn);
+            double start = labelEnd(endpoint, px);
+            double onward = phase(0.58 + delay + i * 0.012, 0.28);
+            curve(gc, start, y, rack, y, CYAN, 0.32 * branch.openness * related, onward, 1);
+            flow(gc, start, y, rack, y, CYAN, 0.35 * branch.openness * related, 1, i * 3 + 1, onward);
+            if (onward > 0.98) {
+                gc.setGlobalAlpha(0.8 * branch.openness * related);
+                gc.setFill(CYAN);
+                double socket = Math.max(2.5, 5 * zoom);
+                gc.fillOval(rack - socket / 2, y - socket / 2, socket, socket);
+                gc.setGlobalAlpha(1);
+            }
         }
+    }
+
+    /** Where the words after a port end, which is where its line to the server starts. */
+    private double labelEnd(Endpoint endpoint, double px) {
+        String number = String.valueOf(endpoint.port());
+        double jack = Math.max(40 * textScale, width(number, portFont) + 16 * textScale);
+        double end = px + jack;
+        if (PORT_ROW * zoom >= 17) {
+            end += 10 * textScale + width(clip(name(endpoint), nameFont, nameRoom(px, jack)), nameFont);
+        }
+        if (PORT_ROW * zoom >= 26) {
+            String detail = detail(endpoint);
+            end += 10 * textScale + width(detail, smallFont);
+        }
+        return end + 10 * textScale;
+    }
+
+    private double nameRoom(double px, double jack) {
+        return Math.max(40, sx(RACK_X) - 40 * zoom - (px + jack + 10 * textScale) - 30 * textScale);
+    }
+
+    /** The branch's node and its words, then its ports. */
+    private void drawBranchNodes(GraphicsContext gc, Branch branch, int order) {
+        Color colour = colourOf(branch.band);
+        double bx = sx(BAND_X);
+        double by = sy(branch.y);
+        double dim = dimming(branch);
+        double delay = order * 0.05;
+        double appear = phase(0.36 + delay, 0.18) * dim;
+        double node = Math.max(6, 11 * zoom);
+        if (appear > 0.01) {
+            gc.setGlobalAlpha(appear);
+            gc.setFill(colour.deriveColor(0, 1, 1, 0.12 + 0.25 * branch.glow));
+            gc.fillOval(bx - node * 1.8, by - node * 1.8, node * 3.6, node * 3.6);
+            gc.setFill(DARK);
+            gc.fillOval(bx - node, by - node, node * 2, node * 2);
+            gc.setStroke(colour);
+            gc.setLineWidth(Math.max(1.2, 1.8 * zoom));
+            gc.strokeOval(bx - node, by - node, node * 2, node * 2);
+            gc.setFill(colour);
+            gc.fillOval(bx - node * 0.38, by - node * 0.38, node * 0.76, node * 0.76);
+            gc.setTextAlign(TextAlignment.RIGHT);
+            gc.setTextBaseline(VPos.CENTER);
+            gc.setFont(bandFont);
+            gc.fillText(branch.band.title, bx - node - 10 * textScale, by - 7 * textScale);
+            gc.setFont(smallFont);
+            gc.setFill(MUTED);
+            gc.fillText(branch.ports.size() + (branch.ports.size() == 1 ? " port" : " ports")
+                    + (branch.open ? "" : " · folded"), bx - node - 10 * textScale, by + 8 * textScale);
+            gc.setGlobalAlpha(1);
+        }
+        if (branch.openness < 0.05) {
+            return;
+        }
+        for (int i = 0; i < branch.ports.size(); i++) {
+            drawPort(gc, branch, order, i);
+        }
+    }
+
+    /** One port: its number in a socket, the process behind it, and how it is run. */
+    private void drawPort(GraphicsContext gc, Branch branch, int order, int index) {
+        Endpoint endpoint = branch.ports.get(index);
+        Color colour = colourOf(endpoint);
+        double x = sx(PORT_X);
+        double y = sy(portY(branch, index));
+        boolean isSelected = same(endpoint, selected);
+        boolean isHovered = same(endpoint, hovered);
+        double related = selected == null ? 1 : isRelated(endpoint) ? 1 : 1 - 0.75 * focus;
+        double appear = phase(0.48 + order * 0.05 + index * 0.012, 0.2) * branch.openness * related;
+        if (appear < 0.01) {
+            return;
+        }
+        String number = String.valueOf(endpoint.port());
+        double jack = Math.max(40 * textScale, width(number, portFont) + 16 * textScale);
+        double high = 18 * textScale;
+        gc.setGlobalAlpha(appear);
+        if (isSelected || isHovered) {
+            gc.setFill(colour.deriveColor(0, 1, 1, isSelected ? 0.18 : 0.10));
+            gc.fillRoundRect(x - 6, y - high, jack + 12, high * 2, 10, 10);
+        }
+        gc.setFill(DARK);
+        gc.fillRoundRect(x, y - high / 2, jack, high, 6, 6);
+        gc.setFill(colour.deriveColor(0, 1, 1, isSelected ? 0.3 : 0.1));
+        gc.fillRoundRect(x, y - high / 2, jack, high, 6, 6);
+        gc.setStroke(colour);
+        gc.setLineWidth(isSelected ? 1.8 : 1.1);
+        gc.strokeRoundRect(x + 0.5, y - high / 2 + 0.5, jack - 1, high - 1, 6, 6);
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setTextBaseline(VPos.CENTER);
+        gc.setFont(portFont);
+        gc.setFill(isSelected ? TEXT : colour);
+        gc.fillText(number, x + jack / 2, y + 0.5);
+
+        double right = x + jack;
+        if (PORT_ROW * zoom >= 17) {
+            boolean named = endpoint.owner().kind() != ServiceOwner.Kind.UNKNOWN;
+            String name = clip(name(endpoint), nameFont, nameRoom(x, jack));
+            gc.setTextAlign(TextAlignment.LEFT);
+            gc.setFont(nameFont);
+            gc.setFill(isSelected ? TEXT : named ? DIM : MUTED);
+            gc.fillText(name, right + 10 * textScale, y);
+            right += 10 * textScale + width(name, nameFont);
+            if (PORT_ROW * zoom >= 26) {
+                String detail = detail(endpoint);
+                gc.setFont(smallFont);
+                gc.setFill(MUTED);
+                gc.fillText(detail, right + 10 * textScale, y + 0.5);
+                right += 10 * textScale + width(detail, smallFont);
+            }
+        }
+        gc.setGlobalAlpha(1);
+        placed.add(new Placed(endpoint, x, y, right, Math.max(9, PORT_ROW * zoom / 2)));
+    }
+
+    private static String name(Endpoint endpoint) {
+        return endpoint.owner().kind() == ServiceOwner.Kind.UNKNOWN ? "unknown" : endpoint.owner().label();
+    }
+
+    private static String detail(Endpoint endpoint) {
+        String kind = switch (endpoint.owner().kind()) {
+            case PM2 -> "pm2 · ";
+            case DOCKER -> "docker · ";
+            case SYSTEM -> "";
+            case UNKNOWN -> "needs root · ";
+        };
+        return kind + endpoint.socket().protocol().name().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -865,7 +1092,7 @@ final class NetworkTree extends Pane {
             return 1;
         }
         boolean related = branch.ports.stream().anyMatch(this::isRelated);
-        return related ? 1 : 1 - 0.78 * focus;
+        return related ? 1 : 1 - 0.72 * focus;
     }
 
     /**
@@ -889,208 +1116,73 @@ final class NetworkTree extends Pane {
         return endpoint.socket().hasPid() && endpoint.socket().pid() == selected.socket().pid();
     }
 
-    private void drawPort(GraphicsContext gc, Branch branch, int index, Color colour) {
-        double bx = screenX(BAND_X);
-        double by = screenY(branch.y);
-        double x = screenX(PORT_X);
-        double y = screenY(portY(branch, index));
-        Endpoint endpoint = branch.ports.get(index);
-        boolean isSelected = same(endpoint, selected);
-        boolean isHovered = same(endpoint, hovered);
-        double alpha = branch.openness;
-        double dim = selected == null ? 1 : isRelated(endpoint) ? 1 : 1 - 0.8 * focus;
+    // Lines
 
-        // Band → port.
-        filament(gc, bx + 26 * zoom, by, x - 16 * zoom, y, colour, 0.55 * alpha * dim, true, index + branch.band.ordinal() * 7);
-
-        // Port → server: everything that listens ultimately lands on the machine.
-        filament(gc, x + 16 * zoom, y, screenX(SERVER_X) - 215 * zoom, screenY(0), CYAN, 0.28 * alpha * dim, true,
-                index * 3 + 1);
-
-        gc.setGlobalAlpha(alpha * dim);
-        double radius = (isSelected ? 15 : 12) * zoom;
-        drawKnot(gc, x, y, colour, radius, isSelected ? 1 : isHovered ? 0.6 : 0, alpha * dim);
-
-        boolean detail = showsDetail();
-        double lift = detail ? 9 * textScale : 0;
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setTextBaseline(VPos.CENTER);
-        gc.setFont(portFont);
-        gc.setFill(isSelected || isHovered ? TEXT : colour);
-        gc.fillText(String.valueOf(endpoint.port()), x + 26 * textScale, y - lift);
-
-        if (showsName()) {
-            gc.setFont(nameFont);
-            gc.setFill(isSelected ? TEXT : DIM);
-            gc.fillText(clip(endpoint.owner().label(), 22), x + 86 * textScale, y - lift);
-        }
-
-        if (detail) {
-            gc.setFont(smallFont);
-            gc.setFill(MUTED);
-            String kind = switch (endpoint.owner().kind()) {
-                case PM2 -> "PM2";
-                case DOCKER -> "DOCKER";
-                case SYSTEM -> "SYSTEM";
-                case UNKNOWN -> "UNNAMED";
-            };
-            gc.fillText(kind + "  ·  " + endpoint.socket().bindAddress() + "  ·  " + endpoint.socket().protocol(),
-                    x + 26 * textScale, y + 12 * textScale);
-        }
-
-        // The domains that reach this port, hanging just after it.
-        if (endpoint.isBehindNginx()) {
-            double dx = x + 268 * textScale;
-            gc.setGlobalAlpha(alpha * dim * 0.9);
-            int shown = showsDetail() ? 2 : 1;
-            for (int i = 0; i < endpoint.servedBy().size() && i < shown; i++) {
-                Vhost vhost = endpoint.servedBy().get(i);
-                gc.setFont(smallFont);
-                gc.setFill(vhost.ssl() ? GREEN : AMBER);
-                gc.fillText("◇ " + clip(vhost.title(), 16), dx, y - lift + i * 15 * textScale);
-            }
-        }
-        gc.setGlobalAlpha(1);
-    }
-
-    /**
-     * The server: the cyan arc everything lands on, facing the internet.
-     */
-    private void drawServer(GraphicsContext gc) {
-        double cx = screenX(SERVER_X);
-        double cy = screenY(0);
-        double radius = 210 * zoom;
-        double half = Math.PI * 0.42;
-
-        for (int i = 0; i < 320; i++) {
-            double t = i / 319.0;
-            double angle = Math.PI - half + t * half * 2;
-            double jitter = live ? Math.sin(clock * 1.1 + i * 0.3) * 2.2 : 0;
-            double r = radius + jitter;
-            double x = cx + Math.cos(angle) * r;
-            double y = cy + Math.sin(angle) * r * 1.02;
-            double weight = Math.cos((angle - Math.PI) * 1.1);
-            gc.setFill(CYAN);
-            gc.setGlobalAlpha(0.25 + 0.6 * weight * weight);
-            double size = (1 + 1.7 * weight * weight) * Math.max(0.5, zoom);
-            gc.fillOval(x - size / 2, y - size / 2, size, size);
-        }
-        for (int i = 0; i < 150; i++) {
-            double seed = i * 5.31;
-            double angle = Math.PI - half + fract(Math.sin(seed) * 3311.7) * half * 2;
-            double away = radius - 10 - fract(Math.sin(seed * 2.1) * 7717.3) * 150 * zoom;
-            double drift = live ? Math.cos(clock * 0.45 + i) * 4 : 0;
-            gc.setFill(CYAN);
-            gc.setGlobalAlpha(0.10 + 0.2 * fract(Math.sin(seed * 4.4) * 881.1));
-            double size = 1.2 * Math.max(0.5, zoom);
-            gc.fillOval(cx + Math.cos(angle) * (away + drift), cy + Math.sin(angle) * (away + drift) * 1.02,
-                    size, size);
-        }
-        gc.setGlobalAlpha(1);
-
-        // The caption sits clear above the arc, where nothing can run into the curve.
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setTextBaseline(VPos.CENTER);
-        double sx = cx - radius * 0.5;
-        double sy = cy - radius * 1.02 - 44;
-        gc.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12 * textScale));
-        gc.setFill(CYAN);
-        gc.fillText(clip(hostname, 18), sx, sy);
-        gc.setFont(smallFont);
-        gc.setFill(MUTED);
-        gc.fillText("THIS SERVER  ·  " + map.endpoints().size() + " LISTENING PORTS", sx, sy + 16);
-    }
-
-    /**
-     * A filament of light between two points, with particles running along it in the direction of travel.
-     */
-    private void filament(GraphicsContext gc, double x1, double y1, double x2, double y2, Color colour,
-                          double strength, boolean flowing, int seed) {
-        if (strength <= 0.01 || x2 <= x1) {
+    /** A curve between two points, flat at both ends, drawn up to {@code drawn} of its length. */
+    private void curve(GraphicsContext gc, double x1, double y1, double x2, double y2, Color colour,
+                       double strength, double drawn, double width) {
+        if (strength <= 0.01 || drawn <= 0.001 || x2 <= x1) {
             return;
         }
-        double c1 = x1 + (x2 - x1) * 0.45;
-        double c2 = x2 - (x2 - x1) * 0.45;
         gc.setStroke(colour);
-        gc.setLineWidth(Math.max(0.6, 1.1 * zoom));
-        gc.setGlobalAlpha(strength * 0.5);
-        gc.beginPath();
-        gc.moveTo(x1, y1);
-        gc.bezierCurveTo(c1, y1, c2, y2, x2, y2);
-        gc.stroke();
+        gc.setLineWidth(Math.max(0.8, width * Math.max(0.7, zoom)));
+        gc.setGlobalAlpha(Math.min(1, strength * 0.6));
+        if (drawn >= 1) {
+            double middle = (x1 + x2) / 2;
+            gc.beginPath();
+            gc.moveTo(x1, y1);
+            gc.bezierCurveTo(middle, y1, middle, y2, x2, y2);
+            gc.stroke();
+        } else {
+            int steps = 28;
+            double[] xs = new double[steps + 1];
+            double[] ys = new double[steps + 1];
+            for (int i = 0; i <= steps; i++) {
+                double[] point = bezier(x1, y1, x2, y2, drawn * i / steps);
+                xs[i] = point[0];
+                ys[i] = point[1];
+            }
+            gc.strokePolyline(xs, ys, steps + 1);
+            gc.setFill(colour);
+            gc.setGlobalAlpha(Math.min(1, strength * 1.4));
+            gc.fillOval(xs[steps] - 2, ys[steps] - 2, 4, 4);
+        }
+        gc.setGlobalAlpha(1);
+    }
 
-        if (!flowing || !live) {
-            gc.setGlobalAlpha(1);
+    /** A few lights running along a line, in the direction a request travels. */
+    private void flow(GraphicsContext gc, double x1, double y1, double x2, double y2, Color colour,
+                      double strength, int count, int seed, double drawn) {
+        if (!live || strength <= 0.01 || drawn < 1 || x2 <= x1) {
             return;
         }
-        for (int i = 0; i < 4; i++) {
-            double t = (clock * 0.34 + i / 4.0 + (seed % 9) * 0.07) % 1;
-            double[] point = bezier(x1, y1, c1, c2, x2, y2, t);
-            double size = (1.4 + 1.6 * Math.sin(Math.PI * t)) * Math.max(0.5, zoom);
+        double speed = 220 / Math.max(80, x2 - x1);
+        for (int i = 0; i < count; i++) {
+            double t = fract(clock * speed * 0.35 + (double) i / count + (seed % 11) * 0.083);
+            double[] point = bezier(x1, y1, x2, y2, t);
+            double fade = Math.sin(Math.PI * t);
+            double size = Math.max(2, (2.2 + 1.4 * fade) * Math.max(0.6, zoom));
             gc.setFill(colour);
-            gc.setGlobalAlpha(strength * Math.sin(Math.PI * t) * 1.5);
+            gc.setGlobalAlpha(Math.min(1, strength * fade * 0.35));
+            gc.fillOval(point[0] - size, point[1] - size, size * 2, size * 2);
+            gc.setGlobalAlpha(Math.min(1, strength * fade));
             gc.fillOval(point[0] - size / 2, point[1] - size / 2, size, size);
         }
         gc.setGlobalAlpha(1);
     }
 
-    /**
-     * A node drawn as a knot of particles rather than a plain disc.
-     */
-    private void drawKnot(GraphicsContext gc, double x, double y, Color colour, double radius, double glow,
-                          double alpha) {
-        gc.setFill(colour.deriveColor(0, 1, 1, 0.16 + 0.2 * glow));
-        gc.setGlobalAlpha(alpha);
-        gc.fillOval(x - radius, y - radius, radius * 2, radius * 2);
-        int count = 26;
-        for (int i = 0; i < count; i++) {
-            double angle = i * Math.PI * 2 / count + (live ? clock * (0.2 + 0.1 * glow) : 0);
-            double r = radius * (0.45 + 0.5 * fract(Math.sin(i * 12.3) * 4421.7))
-                    + (live ? Math.sin(clock * 2 + i) * 1.6 : 0);
-            double size = (1 + 1.2 * fract(Math.sin(i * 7.1) * 991.7)) * Math.max(0.5, zoom);
-            gc.setFill(colour);
-            gc.setGlobalAlpha(alpha * (0.4 + 0.6 * glow));
-            gc.fillOval(x + Math.cos(angle) * r - size / 2, y + Math.sin(angle) * r * 0.92 - size / 2, size, size);
-        }
-        gc.setFill(colour);
-        gc.setGlobalAlpha(alpha);
-        double core = radius * 0.28;
-        gc.fillOval(x - core, y - core, core * 2, core * 2);
-        gc.setGlobalAlpha(1);
-    }
-
-    /**
-     * The mark where a branch meets the firewall and goes no further. It is drawn at a readable size whatever the
-     * zoom, the way a callout on a drawing stays legible, because it carries the whole meaning of that branch.
-     */
+    /** The mark where a line is turned back. */
     private void cross(GraphicsContext gc, double x, double y, Color colour, double alpha) {
-        double arm = 8 * textScale;
-        gc.setFill(colour.deriveColor(0, 1, 1, 0.16 * alpha));
-        double halo = arm * 2.2;
-        gc.fillOval(x - halo, y - halo, halo * 2, halo * 2);
+        double arm = Math.max(4, 7 * zoom);
+        gc.setGlobalAlpha(alpha * 0.2);
+        gc.setFill(colour);
+        gc.fillOval(x - arm * 2, y - arm * 2, arm * 4, arm * 4);
         gc.setStroke(colour);
-        gc.setLineWidth(2.2 * textScale);
+        gc.setLineWidth(Math.max(1.6, 2.4 * zoom));
         gc.setGlobalAlpha(alpha);
         gc.strokeLine(x - arm, y - arm, x + arm, y + arm);
         gc.strokeLine(x - arm, y + arm, x + arm, y - arm);
         gc.setGlobalAlpha(1);
-    }
-
-    private void drawLegend(GraphicsContext gc, double width, double height) {
-        gc.setFont(SMALL);
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setTextBaseline(VPos.BOTTOM);
-        gc.setFill(MUTED);
-        gc.fillText(selected == null
-                        ? "CLICK A PORT TO SEE WHAT REACHES IT  ·  CLICK A BRANCH TO FOLD IT  ·  DRAG TO PAN  ·  "
-                        + "CTRL+WHEEL TO ZOOM"
-                        : "SHOWING " + selected.port() + " AND EVERYTHING ITS PROCESS HOLDS  ·  CLICK IT AGAIN TO "
-                        + "SHOW THEM ALL", 24, height - 14);
-        gc.setTextAlign(TextAlignment.RIGHT);
-        // The zoom stays true while a reading is in flight, and the reading already says so across the top
-        // of the map. Two labels for one event read as two things happening.
-        gc.setFill(MUTED);
-        gc.fillText(Math.round(zoom * 100) + "%", width - 24, height - 14);
     }
 
     // Helpers
@@ -1117,9 +1209,35 @@ final class NetworkTree extends Pane {
         };
     }
 
-    private static double[] bezier(double x1, double y1, double c1, double c2, double x2, double y2, double t) {
+    private static Band bandOf(Endpoint endpoint) {
+        if (endpoint.isOpenToTheWorld()) {
+            return Risk.isSensitive(endpoint.port()) ? Band.EXPOSED : Band.OPEN;
+        }
+        return switch (endpoint.reach()) {
+            case SHIELDED -> Band.SHIELDED;
+            case PRIVATE -> Band.PRIVATE;
+            case ISOLATED, OPEN -> Band.LOCAL;
+        };
+    }
+
+    /** Points spread evenly over a unit sphere. */
+    private static double[][] sphere(int count) {
+        double[][] points = new double[count][];
+        double golden = Math.PI * (3 - Math.sqrt(5));
+        for (int i = 0; i < count; i++) {
+            double y = 1 - (i / (double) (count - 1)) * 2;
+            double ring = Math.sqrt(1 - y * y);
+            double theta = golden * i;
+            points[i] = new double[]{Math.cos(theta) * ring, y, Math.sin(theta) * ring};
+        }
+        return points;
+    }
+
+    /** A point along the curve {@link #curve} draws. */
+    private static double[] bezier(double x1, double y1, double x2, double y2, double t) {
+        double c = (x1 + x2) / 2;
         double u = 1 - t;
-        double x = u * u * u * x1 + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * x2;
+        double x = u * u * u * x1 + 3 * u * u * t * c + 3 * u * t * t * c + t * t * t * x2;
         double y = u * u * u * y1 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y2;
         return new double[]{x, y};
     }
@@ -1134,16 +1252,32 @@ final class NetworkTree extends Pane {
                 && a.socket().protocol() == b.socket().protocol();
     }
 
-    private static String clip(String text, int max) {
-        String clean = text == null ? "" : text.replace('\n', ' ');
-        return clean.length() > max ? clean.substring(0, max - 1) + "…" : clean;
+    private static double width(String text, Font font) {
+        Text measure = new Text(text);
+        measure.setFont(font);
+        return measure.getLayoutBounds().getWidth();
+    }
+
+    private static String clip(String text, Font font, double room) {
+        if (room <= 14) {
+            return "";
+        }
+        if (width(text, font) <= room) {
+            return text;
+        }
+        String cut = text;
+        while (cut.length() > 1 && width(cut + "…", font) > room) {
+            cut = cut.substring(0, cut.length() - 1);
+        }
+        return cut + "…";
     }
 
     private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
     }
 
-    static String describe(Band band) {
-        return band.note.toUpperCase(Locale.ROOT);
+    static String web(Color color) {
+        return String.format(Locale.ROOT, "#%02x%02x%02x", Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255), Math.round(color.getBlue() * 255));
     }
 }

@@ -11,6 +11,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -20,18 +21,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Where this server sits on the network: its interfaces and addresses, what leaves by which route, the resolvers
- * it asks, and how much is moving through each interface right now.
- *
- * <p>It sits beside the map instead of behind a button because it is the answer to "which machine am I looking
- * at", and that question comes before every other one on this screen.
+ * Where this server sits on the network, read out the way fastfetch reads out a machine: one key, one value,
+ * one line. The interfaces with their addresses and how much is moving through them, the way out, the
+ * resolvers, and at the bottom whatever Kubo could not read.
  */
-final class MachinePanel extends VBox {
+final class MachinePanel extends ScrollPane {
 
-    private final VBox links = new VBox(10);
-    private final VBox routing = new VBox(4);
-    private final VBox dns = new VBox(4);
-    private final Label reached = label("", "mono");
+    private final VBox column = new VBox(5);
+    private final VBox notes = new VBox(4);
     /** The container interfaces stay folded: a server with twenty containers has forty of them. */
     private boolean showVirtual;
     private Identity identity = Identity.empty();
@@ -42,28 +39,17 @@ final class MachinePanel extends VBox {
      * re-reads every twelve seconds, so rebuilding the whole column each time made it blink for no reason.
      */
     private String drawnFrom = "";
-    private final java.util.Map<String, Label> speeds = new java.util.LinkedHashMap<>();
-    private final com.kubo.ui.Pulse pulse = new com.kubo.ui.Pulse();
+    private final Map<String, Label> speeds = new java.util.LinkedHashMap<>();
 
     MachinePanel() {
-        VBox column = new VBox(12,
-                label("THE MACHINE", "series"), pulse,
-                caption("REACHED AT"), reached,
-                caption("INTERFACES"), links,
-                caption("ROUTING"), routing,
-                caption("DNS"), dns);
-        column.setPadding(new Insets(16, 20, 16, 24));
-
-        ScrollPane scroll = new ScrollPane(column);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.getStyleClass().add("redis-inspector");
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-
-        getChildren().add(scroll);
-        getStyleClass().add("redis-inspector");
-        setPrefWidth(320);
-        setMinWidth(280);
+        getStyleClass().add("track-scroll");
+        setFitToWidth(true);
+        setHbarPolicy(ScrollBarPolicy.NEVER);
+        column.setPadding(new Insets(0, 8, 8, 0));
+        column.setMinWidth(0);
+        notes.setMinWidth(0);
+        VBox holder = new VBox(14, column, notes);
+        setContent(holder);
         show(Identity.empty(), Map.of(), Naming.none());
     }
 
@@ -74,7 +60,6 @@ final class MachinePanel extends VBox {
         this.identity = identity;
         this.rates = rates;
         this.naming = naming;
-        reached.setText(identity.reachedAt().isBlank() ? "unknown" : identity.reachedAt());
 
         // The rate is the only thing that really moves between two readings. When nothing else changed, only
         // the rate is written, and the panel stops flickering.
@@ -85,67 +70,129 @@ final class MachinePanel extends VBox {
         }
         drawnFrom = signature;
         speeds.clear();
+        column.getChildren().clear();
 
-        links.getChildren().clear();
+        column.getChildren().add(fact("reached", identity.reachedAt().isBlank() ? "—" : identity.reachedAt()));
+        column.getChildren().add(gap());
+
         List<Link> real = identity.realLinks().stream().filter(link -> !Naming.virtual(link)).toList();
         List<Link> virtual = identity.realLinks().stream().filter(Naming::virtual).toList();
         if (identity.links().isEmpty()) {
-            links.getChildren().add(note("No interface could be read. Kubo needs the ip command."));
+            column.getChildren().add(fact("links", "—"));
         }
         for (Link link : real) {
-            links.getChildren().add(linkBlock(link, rates.get(link.name())));
+            linkLines(link);
         }
         if (!virtual.isEmpty()) {
-            // Folded by default. On a server running twenty containers these are forty interfaces, and none of
-            // them is the one somebody opened this panel to find.
-            Button fold = new Button(showVirtual
-                    ? "HIDE THE " + virtual.size() + " CONTAINER INTERFACES"
-                    : "SHOW " + virtual.size() + " CONTAINER INTERFACES");
-            fold.getStyleClass().addAll("ghost-button", "compact-button");
+            Button fold = new Button(showVirtual ? "hide " + virtual.size() + " container links"
+                    : virtual.size() + " container links");
+            fold.getStyleClass().add("track-more");
             fold.setFocusTraversable(false);
             fold.setOnAction(event -> {
                 showVirtual = !showVirtual;
-                // The signature is what the reading says, and the reading did not change: only the question
-                // did. Without this the panel compared, found nothing new and returned, and the button that
-                // had just been clicked did nothing at all.
+                // The reading did not change, only the question did: without this the button did nothing.
                 drawnFrom = "";
                 show(this.identity, this.rates, this.naming);
             });
-            links.getChildren().add(fold);
+            column.getChildren().add(fold);
             if (showVirtual) {
-                for (Link link : virtual) {
-                    links.getChildren().add(linkBlock(link, rates.get(link.name())));
-                }
+                virtual.forEach(this::linkLines);
             }
         }
+        column.getChildren().add(gap());
 
-        routing.getChildren().clear();
         identity.defaultRoute().ifPresentOrElse(
-                route -> routing.getChildren().add(row("default", describe(route))),
-                () -> routing.getChildren().add(note("No default route. This server reaches its own network only.")));
-        for (Route route : identity.routes()) {
-            if (!route.isDefault() && !route.device().isBlank()) {
-                routing.getChildren().add(row(route.destination(), "via " + route.device()));
-            }
-        }
-
-        dns.getChildren().clear();
+                route -> column.getChildren().add(fact("route", describe(route))),
+                () -> column.getChildren().add(fact("route", "none, local network only")));
         if (!identity.resolvers().known()) {
-            dns.getChildren().add(note("No resolver could be read."));
+            column.getChildren().add(fact("dns", "—"));
         } else {
+            boolean firstServer = true;
             for (String server : identity.resolvers().servers()) {
-                dns.getChildren().add(row(server, ""));
+                column.getChildren().add(fact(firstServer ? "dns" : "", server));
+                firstServer = false;
             }
             if (!identity.resolvers().searchDomains().isEmpty()) {
-                dns.getChildren().add(row("search", String.join(" ", identity.resolvers().searchDomains())));
+                column.getChildren().add(fact("search", String.join(" ", identity.resolvers().searchDomains())));
             }
-            dns.getChildren().add(note("Read from " + identity.resolvers().source() + "."));
         }
     }
 
-    /** Says the panel is waiting on the server, in the panel. */
+    /** What Kubo could not read on the last reading, at the bottom, short and in amber. */
+    void setNotes(List<String> said) {
+        notes.getChildren().clear();
+        for (String note : said) {
+            Label line = new Label(note);
+            line.getStyleClass().add("fetch-note");
+            line.setWrapText(true);
+            line.setMinHeight(Region.USE_PREF_SIZE);
+            notes.getChildren().add(line);
+        }
+    }
+
+    /** Kept for the screen that drives it; reading is said once, in the status line. */
     void setReading(boolean reading) {
-        pulse.setRunning(reading);
+        // Nothing here moves while the server is being read.
+    }
+
+    private void linkLines(Link link) {
+        Label name = new Label(link.name());
+        name.getStyleClass().add("fetch-key");
+        name.setMinWidth(KEY_WIDTH);
+        Label state = new Label(link.up() ? "up" : "down");
+        state.getStyleClass().add(link.up() ? "journal-ok" : "journal-error");
+        state.setMinWidth(Region.USE_PREF_SIZE);
+        HBox head = new HBox(10, name, state);
+        head.setAlignment(Pos.CENTER_LEFT);
+        String role = naming.role(link);
+        if (!role.isEmpty()) {
+            Tooltip.install(head, new Tooltip(role));
+        }
+        column.getChildren().add(head);
+        for (Link.Address address : link.addresses()) {
+            // A public address is the one the internet can reach, so it carries the colour of "open".
+            boolean open = address.exposure() == ListeningPort.Exposure.PUBLIC;
+            Label value = new Label(address.cidr());
+            value.getStyleClass().add("fetch-value");
+            if (open) {
+                value.setStyle("-fx-text-fill: #ffb347;");
+                value.setTooltip(new Tooltip("public: reachable from the internet"));
+            }
+            value.setMinWidth(0);
+            value.setPadding(new Insets(0, 0, 0, KEY_WIDTH + 10));
+            column.getChildren().add(value);
+        }
+        // How much is moving through it, under its addresses.
+        Label speed = new Label("");
+        speed.getStyleClass().add("port-quiet");
+        speed.setPadding(new Insets(0, 0, 0, KEY_WIDTH + 10));
+        speeds.put(link.name(), speed);
+        Counter.Rate rate = rates.get(link.name());
+        speed.setText(rate == null ? "" : speed(rate));
+        speed.setVisible(rate != null);
+        speed.setManaged(rate != null);
+        column.getChildren().add(speed);
+    }
+
+    private static final double KEY_WIDTH = 64;
+
+    private static HBox fact(String key, String value) {
+        Label name = new Label(key);
+        name.getStyleClass().add("fetch-key");
+        name.setMinWidth(KEY_WIDTH);
+        Label text = new Label(value);
+        text.getStyleClass().add("fetch-value");
+        text.setMinWidth(0);
+        text.setTooltip(new Tooltip(value));
+        HBox row = new HBox(10, name, text);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
+    private static Region gap() {
+        Region gap = new Region();
+        gap.setMinHeight(6);
+        return gap;
     }
 
     /**
@@ -171,6 +218,8 @@ final class MachinePanel extends VBox {
         for (var entry : speeds.entrySet()) {
             Counter.Rate rate = rates.get(entry.getKey());
             entry.getValue().setText(rate == null ? "" : speed(rate));
+            entry.getValue().setVisible(rate != null);
+            entry.getValue().setManaged(rate != null);
         }
     }
 
@@ -179,41 +228,9 @@ final class MachinePanel extends VBox {
         return gateway + "on " + route.device();
     }
 
-    private VBox linkBlock(Link link, Counter.Rate rate) {
-        Label name = label(link.name(), "card-title");
-        Label state = label(link.up() ? "UP" : "DOWN", link.up() ? "card-success" : "card-problem");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        Label speed = label(rate == null ? "" : speed(rate), "mono-muted");
-        speeds.put(link.name(), speed);
-        HBox head = new HBox(10, name, state, spacer, speed);
-        head.setAlignment(Pos.CENTER_LEFT);
-
-        VBox block = new VBox(3, head);
-        // What this interface is for, in words. eth0 means nothing to somebody who did not name it.
-        String role = naming.role(link);
-        if (!role.isEmpty()) {
-            block.getChildren().add(note(role));
-        }
-        for (Link.Address address : link.addresses()) {
-            // A public address is the one that matters on this screen, so it is the one that is marked.
-            boolean open = address.exposure() == ListeningPort.Exposure.PUBLIC;
-            block.getChildren().add(row(address.cidr(), open ? "reachable" : ""));
-        }
-        if (link.addresses().isEmpty()) {
-            block.getChildren().add(note("No address."));
-        }
-        if (link.mtu() != Link.UNKNOWN_MTU || !link.mac().isBlank()) {
-            String detail = (link.mac().isBlank() ? "" : link.mac() + "  ")
-                    + (link.mtu() == Link.UNKNOWN_MTU ? "" : "MTU " + link.mtu());
-            block.getChildren().add(note(detail.strip()));
-        }
-        return block;
-    }
-
     /** Bytes per second, in the unit a reader can hold in their head. */
     static String speed(Counter.Rate rate) {
-        return "↓ " + perSecond(rate.received()) + "   ↑ " + perSecond(rate.sent());
+        return "↓ " + perSecond(rate.received()) + "  ↑ " + perSecond(rate.sent());
     }
 
     private static String perSecond(double bytes) {
@@ -221,35 +238,8 @@ final class MachinePanel extends VBox {
             return String.format(java.util.Locale.ROOT, "%.0f B/s", bytes);
         }
         if (bytes < 1024 * 1024) {
-            return String.format(java.util.Locale.ROOT, "%.1f kB/s", bytes / 1024);
+            return String.format(java.util.Locale.ROOT, "%.1f KB/s", bytes / 1024);
         }
         return String.format(java.util.Locale.ROOT, "%.1f MB/s", bytes / (1024 * 1024));
-    }
-
-    private static HBox row(String left, String right) {
-        Label name = label(left, "mono");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox row = new HBox(10, name, spacer, label(right, "mono-muted"));
-        row.setAlignment(Pos.CENTER_LEFT);
-        return row;
-    }
-
-    private static Label caption(String text) {
-        return label(text, "metric-label");
-    }
-
-    private static Label note(String text) {
-        Label label = label(text, "card-note");
-        label.setWrapText(true);
-        label.setMaxWidth(280);
-        label.setMinHeight(Region.USE_PREF_SIZE);
-        return label;
-    }
-
-    private static Label label(String text, String styleClass) {
-        Label label = new Label(text);
-        label.getStyleClass().add(styleClass);
-        return label;
     }
 }

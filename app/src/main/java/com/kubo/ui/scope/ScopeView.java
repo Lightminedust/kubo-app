@@ -5,7 +5,6 @@ import com.kubo.command.CommandService;
 import com.kubo.connection.ssh.SshConnection;
 import com.kubo.logs.SessionLog;
 import com.kubo.model.server.DiskPartition;
-import com.kubo.model.server.ListeningPort;
 import com.kubo.model.server.Server;
 import com.kubo.model.server.ServerIdentity;
 import com.kubo.model.server.ServerIdentity.UserIdentity;
@@ -18,7 +17,6 @@ import com.kubo.ui.shell.LocalShellWindow;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -35,7 +33,6 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -43,8 +40,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * The live picture of one server: identity and figures on the left, the core system in the middle,
- * exposure and the session log on the right, recent history at the bottom.
+ * A quiet terminal-style overview: measured resources and one compact session journal.
  */
 public final class ScopeView extends StackPane {
 
@@ -54,21 +50,34 @@ public final class ScopeView extends StackPane {
     private static final Color LIVE = Color.web("#35e0a1");
     private static final Color ALERT = Color.web("#ff2d55");
     private static final Color IDLE = Color.web("#6e6e7d");
-    private static final Color INTERNAL = Color.web("#8a4dff");
     private static final Color AMBER = Color.web("#ffb347");
-    private static final Color CYAN = Color.web("#35e8ff");
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
-    private static final int LOG_ROWS = 60;
-    private static final double BAR_MIN = 36;
-    private static final double BAR_RANGE = 170;
-
-    private final CoreField core = new CoreField();
-    private final ScopeTimeline timeline = new ScopeTimeline();
+    private final ScopeHistory scopeHistory = new ScopeHistory();
+    private final ResourceGauge cpuGauge = new ResourceGauge("cpu", "#35e8ff");
+    private final ResourceGauge memoryGauge = new ResourceGauge("ram", "#b58cff");
+    private final ResourceGauge diskGauge = new ResourceGauge("disk", "#ffb347");
+    private final com.kubo.ui.Tile cpuTile = new com.kubo.ui.Tile("cpu", cpuGauge).accent("tile-cyan");
+    private final com.kubo.ui.Tile memoryTile = new com.kubo.ui.Tile("ram", memoryGauge).accent("tile-violet");
+    private final com.kubo.ui.Tile diskTile = new com.kubo.ui.Tile("disk", diskGauge).accent("tile-amber");
+    private final com.kubo.ui.Tile historyTile = new com.kubo.ui.Tile("history", scopeHistory).accent("tile-green");
+    private final VBox logBox = new VBox(10);
+    private final Label logOk = label("0 OK", "journal-ok");
+    private final Label logFailed = label("0 FAILED", "journal-error");
+    private final Label logNotRun = label("0 NOT RUN", "journal-warning");
+    private final Label transferValue = label("—", "metric-value");
+    private final Label sampleTime = label("waiting for data", "home-muted");
+    private final Label connectionState = label("connecting", "home-muted");
+    private final Button terminalButton = new Button("terminal");
+    private com.kubo.ui.Tile shellTile;
+    private Node machineArea;
+    private Node journal;
+    private boolean terminalVisible;
+    private Runnable stopLogListener = () -> {};
     private final CommandService commands = new CommandService();
 
     private final Circle stateDot = new Circle(3.5, IDLE);
     private final Label targetLabel = label("", "series");
-    private final Label latencyLabel = label("LATENCY —", "header-note");
+    private final Label latencyLabel = label("latency —", "header-note");
     // A polling step failing while monitoring goes on: shown until a step succeeds again.
     private final Label problemLabel = label("", "monitor-problem");
     private final Button filesButton = new Button("FILES");
@@ -82,6 +91,7 @@ public final class ScopeView extends StackPane {
     private com.kubo.ui.redis.RedisWindow redisWindow;
     private final Button networkButton = new Button("NETWORK");
     private final Button servicesButton = new Button("SERVICES");
+    private final Button appsButton = new Button("apps");
     private com.kubo.ui.network.NetworkWindow networkWindow;
     private com.kubo.ui.services.ServicesWindow servicesWindow;
     /** One root state for the whole session, so the sudo password is asked for once, not per window. */
@@ -96,73 +106,88 @@ public final class ScopeView extends StackPane {
     private final Button packagesTab = new Button("PACKAGES");
     private BorderPane layout;
     private BorderPane serverBody;
+    /** The server body with the first reading's journal over it, which is what the window shows. */
+    private StackPane serverStack;
+    /** The first reading of a session, as Kubo's journal: who the machine is, its disks, what it is doing. */
+    private final com.kubo.ui.Journal bootJournal = new com.kubo.ui.Journal(ScopeView::words);
+    private Runnable stopBootJournal = () -> { };
     private com.kubo.ui.ServerConsole console;
     private com.kubo.ui.packages.PackagesView packagesView;
 
     private final Label titleLabel = label("READING", "scope-title");
+    /** Recording failures stay visible even when the journal is hidden. */
+    private final Label logTrouble = label("", "card-problem");
     private final Label ledeLabel = label("WAITING FOR THE FIRST ANSWER FROM THE SERVER.", "lede");
     private final HBox badges = new HBox(8);
-    private final Label cpuValue = label("—", "metric-value");
-    private final Label stealValue = label("—", "metric-value");
     private final Label loadValue = label("—", "metric-value");
-    private final Label memoryValue = label("—", "metric-value");
-    private final Label swapValue = label("—", "metric-value");
+    private final Label osValue = label("—", "fetch-value");
+    private final Label kernelValue = label("—", "fetch-value");
+    private final Label cpuFact = label("—", "fetch-value");
+    private final Label memoryFact = label("—", "fetch-value");
     private final Label processesValue = label("—", "metric-value");
     private final Label uptimeValue = label("—", "metric-value");
-    private final VBox disksBox = new VBox(14);
 
-    private final VBox logBox = new VBox(5);
-
-    private final Region cpuBar = bar("bar-cpu");
-    private final Region memoryBar = bar("bar-memory");
-    private final Region diskBar = bar("bar-disk");
 
     private final Label lostMessage = label("", "lede");
     private final VBox lostCard;
 
-    private final Label logFileLabel = label("", "mono-muted");
 
     private SshConnection connection;
     private ServerMonitor monitor;
     private SessionLog sessionLog;
     private Runnable onClosed = () -> {
     };
-    private Instant lastMetricsTime;
     private boolean closed;
 
     public ScopeView() {
         getStyleClass().add("scope-view");
 
-        StackPane centerCore = new StackPane(core);
-        VBox center = new VBox(centerCore, timeline);
-        VBox.setVgrow(centerCore, Priority.ALWAYS);
-        timeline.setMinHeight(92);
-        timeline.setPrefHeight(92);
-        VBox.setMargin(timeline, new Insets(4, 8, 22, 8));
-
-        serverBody = new BorderPane(center);
-        serverBody.setLeft(buildLeftColumn());
-        serverBody.setRight(buildRightColumn());
-        layout = new BorderPane(serverBody);
+        // A short row of three dials, and under it one panel with all of the history. The dials say
+        // where things are; the history says where they have been. Kept apart, the row stays short and
+        // even, and the history gets the height instead of three half-empty boxes sharing it.
+        GridPane resources = new GridPane();
+        resources.setHgap(18);
+        com.kubo.ui.Tile[] tiles = {cpuTile, memoryTile, diskTile};
+        for (int i = 0; i < tiles.length; i++) {
+            javafx.scene.layout.ColumnConstraints column = new javafx.scene.layout.ColumnConstraints();
+            column.setPercentWidth(100.0 / tiles.length);
+            resources.getColumnConstraints().add(column);
+            tiles[i].setMinHeight(Region.USE_PREF_SIZE);
+            resources.add(tiles[i], i, 0);
+        }
+        resources.setMinHeight(Region.USE_PREF_SIZE);
+        historyTile.setTag("last 3 min");
+        historyTile.setMinHeight(0);
+        com.kubo.ui.Tile machine = new com.kubo.ui.Tile("machine", buildMachine());
+        machine.setMinHeight(Region.USE_PREF_SIZE);
+        VBox left = new VBox(20, machine, resources, historyTile);
+        VBox.setVgrow(historyTile, Priority.ALWAYS);
+        left.setMinWidth(0);
+        left.setPadding(new Insets(10, 0, 0, 0));
+        ScrollPane machineScroll = scroll(left);
+        machineScroll.setMinSize(0, 0);
+        machineScroll.setFitToHeight(true);
+        journal = buildJournal();
+        machineArea = machineScroll;
+        serverBody = new BorderPane(machineScroll);
+        serverBody.getStyleClass().addAll("home-body", "tiles");
+        serverBody.setRight(journal);
+        BorderPane.setMargin(journal, new Insets(10, 0, 0, 18));
+        serverBody.setMinSize(0, 0);
+        serverBody.heightProperty().addListener((observable, before, height) -> {
+            boolean compact = terminalVisible || height.doubleValue() < 480;
+            serverBody.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("compact"), compact);
+            // With the shell open, or in a short window, the history goes and the dials stay.
+            historyTile.setVisible(!compact);
+            historyTile.setManaged(!compact);
+        });
+        serverStack = new StackPane(serverBody, bootJournal);
+        layout = new BorderPane(serverStack);
         layout.setTop(buildHeader());
-
-        VBox colorBar = new VBox(diskBar, memoryBar, cpuBar);
-        colorBar.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
-        colorBar.setMouseTransparent(true);
-        StackPane.setAlignment(colorBar, Pos.BOTTOM_LEFT);
-
-        Label note = label("READ ONLY  —  EVERY " + ServerMonitor.METRICS_INTERVAL.toSeconds() + " S", "vertical-note");
-        note.setRotate(-90);
-        Group noteGroup = new Group(note);
-        noteGroup.setMouseTransparent(true);
-        StackPane.setAlignment(noteGroup, Pos.BOTTOM_RIGHT);
-        StackPane.setMargin(noteGroup, new Insets(0, 14, 40, 0));
-
+        layout.setBottom(buildStatus());
         lostCard = buildLostCard();
         StackPane.setAlignment(lostCard, Pos.CENTER);
-
-        getChildren().addAll(layout, colorBar, noteGroup, lostCard);
-        updateBars(0, 0, 0);
+        getChildren().addAll(layout, lostCard);
     }
 
     /**
@@ -175,16 +200,23 @@ public final class ScopeView extends StackPane {
         detectRootAccess(connection);
         console = new com.kubo.ui.ServerConsole(connection, commands, null, "SERVER",
                 CommandService.Origin.MONITOR, java.util.Set.of(CommandService.Origin.PACKAGES));
-        layout.setBottom(console);
         targetLabel.setText(connection.target().toString());
         stateDot.setFill(AMBER);
+        // Until the first answer, the journal of what is being asked rather than a screen of dashes.
+        bootJournal.start("reading", connection.target().username() + "@" + connection.target().host(),
+                "who the machine is, its disks, what it is doing");
+        stopBootJournal = bootJournal.follow(commands, CommandService.Origin.MONITOR);
+        stopLogListener = commands.addListener((entry, origin) -> Platform.runLater(() -> {
+            if (!closed) updateLog(commands.getHistory());
+        }));
         try {
             sessionLog = SessionLog.start(connection.target().toString());
             commands.addLoggedListener(sessionLog::append);
-            logFileLabel.setText(sessionLog.path().getFileName().toString());
-            Tooltip.install(logFileLabel, new Tooltip(sessionLog.path().toString()));
+            // Where the log file is lives in the LOGS window, which is the screen for it.
         } catch (IOException e) {
-            logFileLabel.setText("LOG FILE UNAVAILABLE: " + e.getMessage());
+            logTrouble.setText("NOT RECORDING: " + e.getMessage());
+            logTrouble.setVisible(true);
+            logTrouble.setManaged(true);
         }
         monitor = new ServerMonitor(connection, commands,
                 server -> Platform.runLater(() -> apply(server, commands.getHistory())),
@@ -201,9 +233,6 @@ public final class ScopeView extends StackPane {
     }
 
     /**
-     * Stops monitoring and closes the connection in the background. Safe to call more than once.
-     */
-    /**
      * Called when the main window comes back to the front: the figures stopped moving while it was behind.
      */
     public void resume() {
@@ -212,7 +241,10 @@ public final class ScopeView extends StackPane {
         }
     }
 
+    /** Stops monitoring and closes the connection in the background. Safe to call more than once. */
     public void shutdown() {
+        closed = true;
+        stopLogListener.run();
         if (filesWindow != null) {
             filesWindow.close();
             filesWindow = null;
@@ -233,6 +265,7 @@ public final class ScopeView extends StackPane {
             servicesWindow.close();
             servicesWindow = null;
         }
+        com.kubo.ui.apps.AppsWindow.closeShared();
         if (networkWindow != null) {
             networkWindow.close();
             networkWindow = null;
@@ -269,7 +302,6 @@ public final class ScopeView extends StackPane {
             disconnect.setDaemon(true);
             disconnect.start();
         }
-        core.stop();
     }
 
     /**
@@ -292,181 +324,182 @@ public final class ScopeView extends StackPane {
      * Shows sample data without a server, to render previews.
      */
     void showPreview(Server server, List<ServerMetrics> history, List<CommandEntry> log, String target,
-                     boolean lost, boolean consoleCollapsed) {
-        // The preview shows the real screen, console and root button included, so their place is checked too.
+                     boolean lost, boolean showTerminal) {
         rootSession = new com.kubo.privilege.RootSession(com.kubo.privilege.RootAccess.SUDO_PASSWORD);
         installRootButton();
         console = new com.kubo.ui.ServerConsole(null, commands, null, "SERVER",
                 CommandService.Origin.MONITOR, java.util.Set.of(CommandService.Origin.PACKAGES));
-        console.setCollapsed(consoleCollapsed);
         console.showForPreview(log.stream()
                 .map(entry -> new CommandService.Logged(entry, CommandService.Origin.MONITOR, false)).toList());
-        if (consoleCollapsed) {
-            return;
-        }
-        // The shell mid-command: what was typed, what came back, and the line that is waiting for an answer.
-        console.showShellForPreview(java.util.List.of(
-                "11:02:14  $ git clone https://github.com/xana/private-notes.git",
-                "Cloning into 'private-notes'...",
-                "Username for 'https://github.com': xana",
-                "Password for 'https://xana@github.com':"));
-        layout.setBottom(console);
         targetLabel.setText(target);
-        for (ServerMetrics metrics : history) {
-            timeline.push(metrics);
-            lastMetricsTime = metrics.timestamp();
-        }
+        history.forEach(scopeHistory::push);
         apply(server, log);
+        if (showTerminal) toggleTerminal();
         if (lost) {
             showLost("Connection lost: Broken pipe");
             updateLog(log);
         }
-        core.stop();
         applyCss();
         layout();
-        core.snapToState();
-        core.simulate(6);
     }
 
     private void apply(Server server, List<CommandEntry> log) {
         if (closed) {
             return;
         }
+        if (bootJournal.active()) {
+            stopBootJournal.run();
+            bootJournal.finish("read", null);
+        }
         ServerIdentity identity = server.identity();
-        titleLabel.setText(identity.hostname().toUpperCase(Locale.ROOT));
-        ledeLabel.setText((identity.osRelease() + "  ·  KERNEL " + identity.kernelVersion() + "  ·  "
-                + identity.cores() + " × " + identity.cpuModel() + "  ·  "
-                + Format.bytes(identity.totalMemoryBytes()) + " RAM").toUpperCase(Locale.ROOT));
+        titleLabel.setText(identity.user().username() + "@" + identity.hostname());
+        osValue.setText(identity.osRelease());
+        kernelValue.setText(identity.kernelVersion());
+        cpuFact.setText(identity.cores() + " × " + identity.cpuModel());
+        cpuFact.setTooltip(new Tooltip(identity.cpuModel()));
+        memoryFact.setText(Format.bytes(identity.totalMemoryBytes()));
         updateBadges(identity.user());
-
-        double cpuLevel = 0;
-        double memoryLevel = 0;
         if (server.metrics().isPresent()) {
             ServerMetrics metrics = server.metrics().get();
-            core.setMetrics(metrics, identity.cores());
-            if (!metrics.timestamp().equals(lastMetricsTime)) {
-                timeline.push(metrics);
-                lastMetricsTime = metrics.timestamp();
-            }
+            scopeHistory.push(metrics);
             updateFigures(metrics, identity.cores());
-            cpuLevel = metrics.cpuPercent() / 100;
-            memoryLevel = metrics.memory().usagePercentage() / 100;
+            ServerMetrics.MemoryMetrics memory = metrics.memory();
+            cpuGauge.update(metrics.cpuPercent());
+            cpuGauge.facts("steal", Format.percent(metrics.stealPercent()).replace(" ", ""),
+                    "load/core", String.format(Locale.ROOT, "%.2f",
+                            metrics.loadAverage().oneMin() / Math.max(1, identity.cores())),
+                    "procs", String.valueOf(metrics.processCount()));
+            cpuTile.setTag(identity.cores() + (identity.cores() == 1 ? " core" : " cores"));
+            memoryGauge.update(memory.usagePercentage());
+            memoryGauge.facts("used", Format.bytes(memory.usedBytes()),
+                    "free", Format.bytes(memory.availableBytes()),
+                    "swap", memory.totalSwapBytes() == 0 ? "none" : Format.bytes(memory.usedSwapBytes()));
+            memoryTile.setTag(Format.bytes(memory.totalBytes()));
+            transferValue.setText("↓ " + Format.rate(metrics.network().rxBytesPerSec())
+                    + "   ↑ " + Format.rate(metrics.network().txBytesPerSec()));
+            sampleTime.setText("updated " + CLOCK.format(metrics.timestamp()));
+            connectionState.setText("connected");
         } else {
-            core.setWaiting();
+            cpuGauge.update(Double.NaN);
+            memoryGauge.update(Double.NaN);
+            connectionState.setText("reading");
         }
-
-        double diskLevel = updateDisks(server.disks());
-        updateBars(cpuLevel, memoryLevel, diskLevel);
+        updateDisks(server.disks());
         updateLog(log);
         stateDot.setFill(LIVE);
     }
 
     private void updateBadges(UserIdentity user) {
-        badges.getChildren().setAll(badge(user.username().toUpperCase(Locale.ROOT), "badge"));
+        badges.getChildren().setAll(badge(user.username(), "badge"));
         if (user.isRoot()) {
-            badges.getChildren().add(badge("ROOT", "badge-alert"));
+            badges.getChildren().add(badge("root", "badge-alert"));
         }
         if (user.inSudoGroup()) {
-            badges.getChildren().add(badge("SUDO", "badge"));
+            badges.getChildren().add(badge("sudo", "badge"));
         }
         if (user.inDockerGroup()) {
-            badges.getChildren().add(badge("DOCKER", "badge-accent"));
+            badges.getChildren().add(badge("docker", "badge-accent"));
         }
     }
 
     private void updateFigures(ServerMetrics metrics, int cores) {
-        cpuValue.setText(Format.percent(metrics.cpuPercent()));
-        cpuValue.setStyle("-fx-text-fill: " + web(CoreField.heat(metrics.cpuPercent() / 100)) + ";");
-        stealValue.setText(Format.percent(metrics.stealPercent()));
-        stealValue.setStyle(metrics.stealPercent() >= 5 ? "-fx-text-fill: " + web(ALERT) + ";" : "");
-
         ServerMetrics.LoadAverage load = metrics.loadAverage();
         loadValue.setText(String.format(Locale.ROOT, "%.2f  %.2f  %.2f", load.oneMin(), load.fiveMin(), load.fifteenMin()));
         loadValue.setStyle(load.oneMin() >= cores ? "-fx-text-fill: " + web(ALERT) + ";" : "");
 
-        ServerMetrics.MemoryMetrics memory = metrics.memory();
-        memoryValue.setText(Format.bytes(memory.usedBytes()) + " / " + Format.bytes(memory.totalBytes()));
-        swapValue.setText(memory.totalSwapBytes() == 0
-                ? "NONE"
-                : Format.bytes(memory.usedSwapBytes()) + " / " + Format.bytes(memory.totalSwapBytes()));
         processesValue.setText(String.valueOf(metrics.processCount()));
         uptimeValue.setText(Format.uptime(metrics.uptimeSeconds()));
     }
 
-    private double updateDisks(List<DiskPartition> disks) {
-        disksBox.getChildren().clear();
-        double fullest = 0;
-        for (DiskPartition disk : disks) {
-            double used = disk.usedPercentage() / 100;
-            fullest = Math.max(fullest, used);
-
-            Label mount = label(disk.mountPoint(), "mono");
-            mount.setMinWidth(0);
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS);
-            Label amount = label(Format.bytes(disk.usedBytes()) + " / " + Format.bytes(disk.totalBytes()), "mono-muted");
-            HBox header = new HBox(8, mount, spacer, amount);
-
-            Region track = new Region();
-            track.getStyleClass().add("disk-track");
-            Region fill = new Region();
-            fill.setMaxHeight(2);
-            fill.setStyle("-fx-background-color: " + web(used < 0.7 ? CYAN : used < 0.9 ? AMBER : ALERT) + ";");
-            StackPane gauge = new StackPane(track, fill);
-            StackPane.setAlignment(fill, Pos.CENTER_LEFT);
-            fill.maxWidthProperty().bind(gauge.widthProperty().multiply(used));
-
-            disksBox.getChildren().add(new VBox(6, header, gauge));
-        }
+    /**
+     * The dial is the fullest filesystem, since that is the one that stops the machine. Beside it, the
+     * fullest three by name and share; the sizes are in each line's tooltip.
+     */
+    private void updateDisks(List<DiskPartition> disks) {
         if (disks.isEmpty()) {
-            disksBox.getChildren().add(label("NO LOCAL DISK FOUND", "mono-muted"));
+            diskGauge.update(Double.NaN);
+            diskGauge.facts("disk", "none found");
+            diskTile.setTag("");
+            return;
         }
-        return fullest;
+        List<DiskPartition> fullest = disks.stream()
+                .sorted(java.util.Comparator.comparingDouble(DiskPartition::usedPercentage).reversed())
+                .toList();
+        diskGauge.update(fullest.getFirst().usedPercentage());
+        List<String[]> rows = new java.util.ArrayList<>();
+        for (DiskPartition disk : fullest.subList(0, Math.min(3, fullest.size()))) {
+            // The share fits beside the dial; the sizes do not, so they are on the line's tooltip.
+            rows.add(new String[]{disk.mountPoint(), String.format(Locale.ROOT, "%.0f%%", disk.usedPercentage()),
+                    disk.mountPoint() + "  " + Format.bytes(disk.usedBytes()) + " of "
+                            + Format.bytes(disk.totalBytes()) + ", " + Format.bytes(disk.availableBytes())
+                            + " free"});
+        }
+        diskGauge.rows(rows.toArray(String[][]::new));
+        diskTile.setTag(disks.size() + (disks.size() == 1 ? " filesystem" : " filesystems"));
     }
 
     private void updateLog(List<CommandEntry> log) {
+        logOk.setText(log.stream().filter(CommandEntry::success).count() + " ok");
+        logFailed.setText(log.stream().filter(entry -> entry.ran() && !entry.success()).count() + " failed");
+        logNotRun.setText(log.stream().filter(entry -> !entry.ran()).count() + " skipped");
         logBox.getChildren().clear();
-        for (int i = log.size() - 1; i >= Math.max(0, log.size() - LOG_ROWS); i--) {
+        if (log.isEmpty()) logBox.getChildren().add(label("waiting for commands…", "home-muted"));
+        // Bound the visible journal; the LOGS window keeps the complete session.
+        for (int i = log.size() - 1; i >= Math.max(0, log.size() - 40); i--) {
             CommandEntry entry = log.get(i);
-            Color color = entry.success() ? LIVE : entry.ran() ? AMBER : ALERT;
-
-            Label time = label(CLOCK.format(entry.executedAt()), "mono-muted");
+            // The way systemd reports a boot: the verdict in brackets at the start of the line, green,
+            // red or amber, and everything else after it. Anybody who has watched a Linux machine start
+            // reads this column without being told what it is.
+            String result = entry.success() ? "[  OK  ]" : entry.ran() ? "[FAILED]" : "[ SKIP ]";
+            Label state = label(result, entry.success() ? "journal-ok" : entry.ran() ? "journal-error" : "journal-warning");
+            state.setMinWidth(Region.USE_PREF_SIZE);
+            Label time = label(CLOCK.format(entry.executedAt()), "home-muted");
             time.setMinWidth(Region.USE_PREF_SIZE);
-            Label duration = label(entry.duration().toMillis() + " MS", "mono-muted");
-            duration.setMinWidth(46);
-            // Probe scripts start each command with a section marker; the log shows the commands themselves.
-            Label command = label(entry.command().replaceAll("echo @@\\w+; ", ""), "mono");
+            Label took = label(entry.duration().toMillis() + "ms", "home-muted");
+            took.setMinWidth(Region.USE_PREF_SIZE);
+            String commandText = entry.command().replaceAll("echo @@\\w+; ", "")
+                    .replaceAll("\\s+", " ").strip();
+            Label command = label(commandText, "journal-command");
             command.setMinWidth(0);
+            command.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(command, Priority.ALWAYS);
-
-            HBox row = new HBox(8, time, new Circle(2.5, color), duration, command);
-            row.setAlignment(Pos.CENTER_LEFT);
-            String details = entry.command() + "\n\nexit " + entry.exitCode()
-                    + (entry.error().isBlank() ? "" : "\n" + entry.error().strip());
-            Tooltip.install(row, new Tooltip(details));
+            HBox meta = new HBox(10, state, time, command, took);
+            meta.setAlignment(Pos.CENTER_LEFT);
+            VBox row = new VBox(2, meta);
+            row.setMinHeight(Region.USE_PREF_SIZE);
+            if (!entry.success() && !entry.error().isBlank()) {
+                Label error = label(entry.error().replaceAll("\\s+", " ").strip(), "journal-detail");
+                error.setMinWidth(0);
+                error.setMaxWidth(Double.MAX_VALUE);
+                row.getChildren().add(error);
+            }
+            row.getStyleClass().add("journal-row");
+            Tooltip.install(row, new Tooltip(entry.command() + "\nexit " + entry.exitCode()
+                    + (entry.error().isBlank() ? "" : "\n" + entry.error().strip())));
             logBox.getChildren().add(row);
         }
-
         for (int i = log.size() - 1; i >= 0; i--) {
             CommandEntry entry = log.get(i);
             if (entry.ran() && entry.command().equals(MetricsParser.COMMAND)) {
-                latencyLabel.setText("LATENCY " + entry.duration().toMillis() + " MS");
+                latencyLabel.setText("latency " + entry.duration().toMillis() + " ms");
                 break;
             }
         }
-    }
-
-    private void updateBars(double cpuLevel, double memoryLevel, double diskLevel) {
-        cpuBar.setPrefHeight(BAR_MIN + cpuLevel * BAR_RANGE);
-        memoryBar.setPrefHeight(BAR_MIN + memoryLevel * BAR_RANGE);
-        diskBar.setPrefHeight(BAR_MIN + diskLevel * BAR_RANGE);
     }
 
     private void showLost(String message) {
         if (closed) {
             return;
         }
-        core.setOffline(true);
+        if (bootJournal.active()) {
+            stopBootJournal.run();
+            bootJournal.finish("read", "the connection was lost");
+        }
+        connectionState.setText("disconnected");
+        // The block that was green goes red: the one place on the screen that says the link is gone.
+        connectionState.getStyleClass().remove("status-mode-live");
+        connectionState.getStyleClass().add("status-mode-error");
+        sampleTime.setText("last reading · connection lost");
         stateDot.setFill(ALERT);
         lostMessage.setText(message);
         lostCard.setVisible(true);
@@ -509,7 +542,7 @@ public final class ScopeView extends StackPane {
         packagesTab.getStyleClass().remove("scope-tab-active");
         (packages ? packagesTab : serverTab).getStyleClass().add("scope-tab-active");
         if (!packages) {
-            layout.setCenter(serverBody);
+            layout.setCenter(serverStack);
             return;
         }
         if (packagesView == null) {
@@ -523,6 +556,7 @@ public final class ScopeView extends StackPane {
                     // Only so the packages screen can restart what an upgrade left running on old libraries.
                     new com.kubo.services.ServiceControl(connection, commands,
                             rootSession == null ? null : rootSession.privilege()));
+            packagesView.watch(commands, connection.target().username() + "@" + connection.target().host());
             packagesView.start();
         }
         layout.setCenter(packagesView);
@@ -551,7 +585,7 @@ public final class ScopeView extends StackPane {
      * every screen of the session: the wordmark then reads Kubo_root in each window.
      */
     private void installRootButton() {
-        if (rootSession == null) {
+        if (rootSession == null || closed) {
             return;
         }
         rootSlot.getChildren().setAll(new com.kubo.ui.RootButton(rootSession,
@@ -616,6 +650,16 @@ public final class ScopeView extends StackPane {
     }
 
     /**
+     * Opens the apps screen: what PM2 and supervisor keep running, and the cores and ports they use.
+     */
+    private void openApps() {
+        if (connection == null || closed) {
+            return;
+        }
+        com.kubo.ui.apps.AppsWindow.open(connection, commands, rootSession, null);
+    }
+
+    /**
      * Opens the Redis screen, finding Redis on the host or in a container.
      */
     private void openRedis() {
@@ -657,15 +701,10 @@ public final class ScopeView extends StackPane {
         onClosed.run();
     }
 
-    private HBox buildHeader() {
+    private VBox buildHeader() {
         Label wordmark = com.kubo.ui.RootButton.wordmark();
-        HBox brand = new HBox(wordmark);
-        brand.setAlignment(Pos.BOTTOM_LEFT);
-
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Region rule = new Region();
-        rule.getStyleClass().add("series-rule");
 
         disconnectButton.getStyleClass().add("ghost-button");
         disconnectButton.setOnAction(event -> leave());
@@ -681,6 +720,8 @@ public final class ScopeView extends StackPane {
         networkButton.setOnAction(event -> openNetwork());
         servicesButton.getStyleClass().add("ghost-button");
         servicesButton.setOnAction(event -> openServices());
+        appsButton.getStyleClass().add("ghost-button");
+        appsButton.setOnAction(event -> openApps());
         serverTab.getStyleClass().addAll("scope-tab", "scope-tab-active");
         serverTab.setFocusTraversable(false);
         serverTab.setOnAction(event -> showPackages(false));
@@ -698,76 +739,164 @@ public final class ScopeView extends StackPane {
         tabs.setAlignment(Pos.CENTER_LEFT);
         rootSlot.setAlignment(Pos.CENTER_LEFT);
 
-        // The other screens are somewhere to go, not the thing you are looking at: one quiet group, set apart.
-        HBox destinations = new HBox(16, filesButton, servicesButton, networkButton, dockerButton, redisButton,
-                localShellButton, logsButton);
-        destinations.getStyleClass().add("destination-group");
-        destinations.setAlignment(Pos.CENTER_LEFT);
-
-        HBox header = new HBox(18, brand, tabs, spacer, rule, targetLabel, stateDot, latencyLabel, problemLabel,
-                rootSlot, destinations, disconnectButton);
+        // The bar tmux keeps: the session in a block, then where you are.
+        targetLabel.getStyleClass().setAll("label", "term-window");
+        HBox header = new HBox(14, wordmark, targetLabel, spacer, rootSlot,
+                disconnectButton);
         header.setAlignment(Pos.CENTER_LEFT);
-        header.setPadding(new Insets(22, 40, 6, 36));
-        HBox.setMargin(tabs, new Insets(0, 0, 0, 10));
-        HBox.setMargin(disconnectButton, new Insets(0, 0, 0, 14));
-        return header;
-    }
-
-    private Node buildLeftColumn() {
-        Label kicker = label("SERVER.SCOPE", "series");
-        Region dash = new Region();
-        dash.getStyleClass().add("dash");
-        titleLabel.setWrapText(true);
-        titleLabel.setMinHeight(Region.USE_PREF_SIZE);
-        ledeLabel.setWrapText(true);
-        ledeLabel.setMinHeight(Region.USE_PREF_SIZE);
-
-        GridPane figures = new GridPane();
-        figures.setHgap(18);
-        figures.setVgap(10);
-        String[] names = {"PROCESSES", "UPTIME"};
-        Label[] values = {processesValue, uptimeValue};
-        for (int i = 0; i < names.length; i++) {
-            figures.add(label(names[i], "metric-label"), 0, i);
-            figures.add(values[i], 1, i);
-        }
-
-        // One red kicker on the screen, and the rest of the headings quiet, so the eye is not called four times.
-        Label capacity = label("RUNNING", "column-heading");
-        VBox column = new VBox(kicker, dash, titleLabel, ledeLabel, badges, capacity, figures,
-                label("DISKS", "column-heading"), disksBox);
-        VBox.setMargin(dash, new Insets(16, 0, 0, 0));
-        VBox.setMargin(titleLabel, new Insets(16, 0, 10, 0));
-        VBox.setMargin(badges, new Insets(16, 0, 0, 0));
-        VBox.setMargin(capacity, new Insets(34, 0, 0, 0));
-        VBox.setMargin(figures, new Insets(12, 0, 0, 0));
-        VBox.setMargin(column.getChildren().get(7), new Insets(34, 0, 0, 0));
-        VBox.setMargin(disksBox, new Insets(12, 0, 0, 0));
-        column.setPadding(new Insets(20, 12, 24, 56));
-        column.setPrefWidth(310);
-        column.setMaxWidth(310);
-        ScrollPane pane = scroll(column);
-        pane.setMinWidth(310);
-        pane.setPrefWidth(310);
-        return pane;
+        header.getStyleClass().add("term-bar");
+        terminalButton.getStyleClass().add("ghost-button");
+        terminalButton.setOnAction(event -> toggleTerminal());
+        // Lower case and nothing else. The current one is the lit block.
+        serverTab.setText("server");
+        packagesTab.setText("packages");
+        filesButton.setText("files");
+        servicesButton.setText("services");
+        networkButton.setText("network");
+        dockerButton.setText("docker");
+        redisButton.setText("redis");
+        logsButton.setText("logs");
+        disconnectButton.setText("disconnect");
+        localShellButton.setText("local shell");
+        terminalButton.setText("shell");
+        Region navGap = new Region();
+        HBox.setHgrow(navGap, Priority.ALWAYS);
+        HBox destinations = new HBox(20, tabs, filesButton, servicesButton, appsButton, networkButton, dockerButton, redisButton,
+                navGap, terminalButton, localShellButton, logsButton);
+        destinations.setAlignment(Pos.CENTER_LEFT);
+        destinations.getStyleClass().add("home-nav");
+        VBox top = new VBox(header, destinations, problemLabel);
+        return top;
     }
 
     /**
-     * What the server is doing right now, and the trace of what it has sent. What the network exposes lives in
-     * NETWORK.SCOPE, so this screen stays about the machine itself.
+     * The machine read out the way fastfetch reads one out: who and where on the first line, a rule, then
+     * one fact per line with every value on the same column.
      */
-    private Node buildRightColumn() {
-        ScrollPane logScroll = scroll(logBox);
-        VBox.setVgrow(logScroll, Priority.ALWAYS);
+    private Node buildMachine() {
+        titleLabel.getStyleClass().setAll("label", "fetch-host");
+        titleLabel.setMinHeight(Region.USE_PREF_SIZE);
+        GridPane facts = new GridPane();
+        facts.setHgap(18);
+        facts.setVgap(4);
+        String[] names = {"os", "kernel", "cpu", "memory", "uptime", "processes", "load", "net"};
+        Label[] values = {osValue, kernelValue, cpuFact, memoryFact, uptimeValue, processesValue, loadValue,
+                transferValue};
+        int half = (names.length + 1) / 2;
+        for (int i = 0; i < names.length; i++) {
+            // Two columns of four, so the tile stays short and the dials keep the height.
+            int column = (i / half) * 2;
+            facts.add(label(names[i], "fetch-key"), column, i % half);
+            values[i].getStyleClass().setAll("label", "fetch-value");
+            values[i].setMinWidth(0);
+            facts.add(values[i], column + 1, i % half);
+        }
+        for (int i = 0; i < 4; i++) {
+            javafx.scene.layout.ColumnConstraints column = new javafx.scene.layout.ColumnConstraints();
+            if (i % 2 == 0) {
+                column.setMinWidth(i == 0 ? 76 : 96);
+            } else {
+                column.setHgrow(Priority.ALWAYS);
+                column.setPercentWidth(i == 1 ? 46 : -1);
+            }
+            facts.getColumnConstraints().add(column);
+        }
+        logTrouble.setWrapText(true);
+        logTrouble.setVisible(false);
+        logTrouble.setManaged(false);
+        HBox who = new HBox(16, titleLabel, badges);
+        who.setAlignment(Pos.CENTER_LEFT);
+        Region rule = new Region();
+        rule.getStyleClass().add("fetch-rule");
+        rule.setMinHeight(1);
+        rule.setMaxHeight(1);
+        VBox inside = new VBox(9, who, rule, logTrouble, facts);
+        inside.getStyleClass().add("home-machine");
+        return inside;
+    }
 
-        Label logKicker = label("SESSION LOG", "column-heading");
-        logFileLabel.setMinWidth(0);
-        VBox column = new VBox(logKicker, logFileLabel, logScroll);
-        VBox.setMargin(logFileLabel, new Insets(0, 0, 12, 0));
-        column.setPadding(new Insets(20, 44, 24, 8));
-        column.setPrefWidth(320);
-        column.setMinWidth(260);
-        return column;
+    private Region buildJournal() {
+        logOk.setGraphic(new Circle(3, LIVE));
+        logFailed.setGraphic(new Circle(3, ALERT));
+        logNotRun.setGraphic(new Circle(3, AMBER));
+        HBox counts = new HBox(14, logOk, logFailed, logNotRun);
+        counts.setAlignment(Pos.CENTER_LEFT);
+        counts.setMinHeight(Region.USE_PREF_SIZE);
+        logBox.setMinHeight(Region.USE_PREF_SIZE);
+        ScrollPane history = scroll(logBox);
+        history.setMinSize(0, 0);
+        VBox.setVgrow(history, Priority.ALWAYS);
+        Button all = new Button("open the full log →");
+        all.getStyleClass().add("ghost-button");
+        all.setOnAction(event -> openLogs());
+        all.setMinHeight(Region.USE_PREF_SIZE);
+        VBox content = new VBox(12, counts, history, all);
+        content.setMinHeight(0);
+        com.kubo.ui.Tile box = new com.kubo.ui.Tile("session.log", content).accent("tile-green");
+        box.setMinHeight(0);
+        box.setMinWidth(310);
+        box.setMaxWidth(380);
+        box.prefWidthProperty().bind(widthProperty().multiply(0.29));
+        logBox.getChildren().add(label("waiting for commands…", "home-muted"));
+        return box;
+    }
+
+    private HBox buildStatus() {
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        connectionState.getStyleClass().setAll("label", "status-mode", "status-mode-live");
+        sampleTime.getStyleClass().setAll("label", "status-message");
+        latencyLabel.getStyleClass().setAll("label", "status-fact");
+        HBox status = new HBox(14, connectionState, sampleTime, spacer, latencyLabel,
+                label("poll " + ServerMonitor.METRICS_INTERVAL.toSeconds() + "s", "status-fact"));
+        status.setAlignment(Pos.CENTER_LEFT);
+        status.getStyleClass().add("status-line");
+        return status;
+    }
+
+    private void toggleTerminal() {
+        if (console == null) return;
+        terminalVisible = !terminalVisible;
+        terminalButton.setText(terminalVisible ? "close shell" : "shell");
+        serverBody.setRight(terminalVisible ? null : journal);
+        if (terminalVisible) {
+            console.setCollapsed(false);
+            console.showShell();
+            // A split, the way a terminal splits: the shell gets a frame of its own under the others and
+            // the dials above it fold down to the dial alone. It used to slide up from the bottom edge of
+            // the window in a different style and cut the tiles above it off at the knees.
+            if (shellTile == null) {
+                shellTile = new com.kubo.ui.Tile("shell", console).accent("tile-green");
+                BorderPane.setMargin(shellTile, new Insets(20, 0, 0, 0));
+            }
+            console.setBare(true);
+            // The shell is what somebody opened this for, so it gets the room: the tiles above keep what
+            // they need and everything else is the terminal.
+            serverBody.setCenter(shellTile);
+            serverBody.setTop(machineArea);
+        } else {
+            serverBody.setTop(null);
+            serverBody.setCenter(machineArea);
+        }
+    }
+
+    private VBox pane(String name, Node content) {
+        Label tab = label(name, "pane-tab");
+        Region rule = new Region();
+        rule.getStyleClass().add("terminal-rule");
+        rule.setMaxHeight(1);
+        HBox.setHgrow(rule, Priority.ALWAYS);
+        HBox top = new HBox(12, tab, rule);
+        top.setAlignment(Pos.CENTER_LEFT);
+        top.getStyleClass().add("pane-top");
+        VBox body = new VBox(content);
+        body.setMinHeight(0);
+        body.getStyleClass().add("pane-body");
+        VBox.setVgrow(content, Priority.ALWAYS);
+        VBox box = new VBox(top, body);
+        VBox.setVgrow(body, Priority.ALWAYS);
+        box.getStyleClass().add("pane");
+        return box;
     }
 
     private VBox buildLostCard() {
@@ -807,14 +936,41 @@ public final class ScopeView extends StackPane {
         return label;
     }
 
-    private static Region bar(String styleClass) {
-        Region region = new Region();
-        region.getStyleClass().addAll("bar", styleClass);
-        return region;
-    }
-
     private static String web(Color color) {
         return String.format(Locale.ROOT, "#%02x%02x%02x",
                 Math.round(color.getRed() * 255), Math.round(color.getGreen() * 255), Math.round(color.getBlue() * 255));
+    }
+
+    /** What one of the monitor's commands reads, in a few words, or null for one not worth a line. */
+    static String words(String command) {
+        if (command == null) {
+            return null;
+        }
+        if (command.equals(com.kubo.monitor.parse.IdentityParser.COMMAND)) {
+            return "who the machine is";
+        }
+        if (command.equals(com.kubo.monitor.parse.DisksParser.COMMAND)) {
+            return "disks";
+        }
+        if (command.equals(com.kubo.monitor.parse.MetricsParser.COMMAND)) {
+            return "processor, memory and network";
+        }
+        if (command.equals(com.kubo.monitor.parse.PortsParser.COMMAND)) {
+            return "listening ports";
+        }
+        if (command.contains("sudo")) {
+            return "how this account becomes root";
+        }
+        return null;
+    }
+
+    /** Only for the previews: the first reading of a session, part way through. */
+    void firstReadingForPreview() {
+        java.time.Instant now = java.time.Instant.now();
+        bootJournal.showForPreview("reading", "xana@vmi2412345", "who the machine is, its disks, what it is doing",
+                List.of(new CommandEntry(now, com.kubo.monitor.parse.IdentityParser.COMMAND, false, 0, "", "",
+                                java.time.Duration.ofMillis(84)),
+                        new CommandEntry(now, com.kubo.monitor.parse.DisksParser.COMMAND, false, 0, "", "",
+                                java.time.Duration.ofMillis(31))));
     }
 }

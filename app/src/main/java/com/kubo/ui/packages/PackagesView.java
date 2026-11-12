@@ -111,7 +111,7 @@ public final class PackagesView extends StackPane {
             list.scrollTo(chosen);
         });
 
-        BorderPane body = new BorderPane(tree);
+        BorderPane body = new BorderPane(new javafx.scene.layout.StackPane(tree, journal));
         body.setRight(buildPanel());
         BorderPane layout = new BorderPane(body);
         layout.setTop(buildMasthead());
@@ -125,11 +125,76 @@ public final class PackagesView extends StackPane {
         this(null, null, null);
     }
 
+    /** The reading as Kubo's journal of what apt is asked, laid over the tree it fills. */
+    private final com.kubo.ui.Journal journal = new com.kubo.ui.Journal(PackagesView::words);
+    private Runnable stopJournal = () -> { };
+    private String who = "you@server";
+
+    /** What one of the apt commands reads, in a few words, or null for one not worth a line. */
+    static String words(String command) {
+        if (command == null) {
+            return null;
+        }
+        if (command.equals(com.kubo.packages.AptCommands.STATUS)) {
+            return "is apt here";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.INSTALLED)) {
+            return "what is installed";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.UPGRADABLE_LIST)) {
+            return "what is waiting to be upgraded";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.AUTOREMOVE_PREVIEW)) {
+            return "what is no longer needed";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.MANUAL)) {
+            return "what was asked for by hand";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.REBOOT_REQUIRED)) {
+            return "does it want a reboot";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.SOURCES)) {
+            return "where packages come from";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.KEYS)) {
+            return "the keys they are signed with";
+        }
+        if (command.equals(com.kubo.packages.AptCommands.NEEDRESTART)) {
+            return "what runs on old libraries";
+        }
+        return null;
+    }
+
+    /** Only for the previews: a reading part way through. */
+    void readingForPreview() {
+        java.time.Instant now = java.time.Instant.now();
+        journal.showForPreview("reading", "xana@vmi2412345",
+                "what apt has installed, what is waiting, what it would change", java.util.List.of(
+                        new com.kubo.command.CommandEntry(now, com.kubo.packages.AptCommands.STATUS, false, 0, "", "",
+                                java.time.Duration.ofMillis(19)),
+                        new com.kubo.command.CommandEntry(now, com.kubo.packages.AptCommands.INSTALLED, false, 0, "",
+                                "", java.time.Duration.ofMillis(388)),
+                        new com.kubo.command.CommandEntry(now, com.kubo.packages.AptCommands.UPGRADABLE_LIST, false,
+                                0, "", "", java.time.Duration.ofMillis(1240))));
+    }
+
     public void start() {
         refresh();
     }
 
+    /**
+     * Lets the journal follow what apt is asked while a reading is out.
+     *
+     * @param who the account and machine, as user@host
+     */
+    public void watch(com.kubo.command.CommandService commands, String who) {
+        stopJournal.run();
+        stopJournal = journal.follow(commands, com.kubo.command.CommandService.Origin.PACKAGES);
+        this.who = who;
+    }
+
     public void shutdown() {
+        stopJournal.run();
         tree.stop();
         worker.shutdownNow();
     }
@@ -141,10 +206,21 @@ public final class PackagesView extends StackPane {
             return;
         }
         tree.setLoading(true);
+        journal.start("reading", who, "what apt has installed, what is waiting, what it would change");
         worker.execute(() -> {
-            PackageInventory read = apt.read();
+            PackageInventory read;
+            try {
+                read = apt.read();
+            } catch (RuntimeException e) {
+                Platform.runLater(() -> {
+                    tree.setLoading(false);
+                    journal.finish("read", e.getMessage() == null ? "the reading failed" : e.getMessage());
+                });
+                return;
+            }
             Platform.runLater(() -> {
                 tree.setLoading(false);
+                journal.finish("read", null);
                 apply(read);
             });
         });

@@ -50,7 +50,20 @@ public final class NetworkCommands {
      * usual places, and only the ones this user may actually read.
      */
     public static final String NGINX_FILES = "for F in /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf "
-            + "/etc/nginx/sites-enabled/*; do [ -r \"$F\" ] && cat \"$F\"; done 2>/dev/null";
+            // Each file under the same heading nginx -T prints, so a block read this way still says which
+            // file it came from. Without it, every block was a block from nowhere and no site could claim it.
+            + "/etc/nginx/sites-enabled/*; do [ -r \"$F\" ] && { echo \"# configuration file $F:\"; "
+            + "cat \"$F\"; echo; }; done 2>/dev/null";
+
+    /**
+     * Every file in sites-available, each under its own heading, switched on or not.
+     *
+     * <p>{@code nginx -T} only prints what Nginx reads, so a site that is switched off had no rules on screen at
+     * all: its domain, its file name, and nothing in between. These are the same files, read as they are.
+     */
+    public static final String NGINX_SITE_FILES = "for F in /etc/nginx/sites-available/*; do "
+            + "[ -f \"$F\" ] && [ -r \"$F\" ] && { echo \"# configuration file $F:\"; cat \"$F\"; echo; }; "
+            + "done 2>/dev/null";
 
     public static final String NGINX_PRESENT = "command -v nginx >/dev/null 2>&1 && echo YES || echo NO";
 

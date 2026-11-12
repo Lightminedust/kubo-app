@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#e8e6e0">
 <title>Kubo · See and manage your Linux server</title>
-<meta name="description" content="Kubo is a desktop app for Windows and Linux. It connects to your Linux server over SSH and manages its files, services, ports, firewall, Docker, Redis and packages. Nothing is installed on the server.">
+<meta name="description" content="Kubo is a desktop app for Windows, macOS and Linux. It connects to your Linux server over SSH and manages its files, services, ports, firewall, Docker, Redis and packages. Nothing is installed on the server.">
 
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
@@ -30,6 +31,7 @@
       kubo-network.mp4    (the network clip)
       kubo-services.mp4   (the services clip)
   Optional WebM versions of each (kubo-files.webm and so on) are picked up first if present.
+  They play as silent previews: no sound, no controls, looping.
   The download links, and whether the winget and Linux blocks appear at all, are set by the few
   variables at the top of the script at the bottom of this file.
 -->
@@ -37,10 +39,11 @@
 <script>
 /* Which language this visitor gets.
    In order: ?lang= in the address, then what they last chose here, then the path (kubo.gemmi-e.com/fr/
-   opens in French), then what their browser asks for. A stored choice beats the path deliberately —
+   opens in French), then what their browser asks for. A stored choice beats the path deliberately,
    otherwise someone on /fr/ could click EN and be put straight back into French.
    This runs in the head so the page is painted once, in the right language, instead of flickering. */
 (function(){
+  var root = document.documentElement;
   var stored = null;
   try { stored = localStorage.getItem('kubo-lang'); } catch(e){}
   var query = /[?&]lang=fr/.test(location.search) ? 'fr'
@@ -48,818 +51,776 @@
   var path = /(^|\/)fr(\/|$)/.test(location.pathname) ? 'fr' : null;
   var browser = (navigator.language || 'en').toLowerCase().indexOf('fr') === 0 ? 'fr' : 'en';
   var lang = query || stored || path || browser;
-  document.documentElement.setAttribute('data-lang', lang);
-  document.documentElement.lang = lang;
+  root.setAttribute('data-lang', lang);
+  root.lang = lang;
+
+  /* Everything that moves is switched on from here, so a browser without scripts gets the whole page,
+     still, and never a loader it cannot dismiss. The loader plays once per visit. */
+  root.classList.add('js');
+  var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var seen = false;
+  try { seen = sessionStorage.getItem('kubo-boot') === '1'; } catch(e){}
+  if (!calm && !seen) { root.classList.add('booting'); }
 })();
 </script>
 
 <style>
 :root{
-  --bg:#05050b; --bg2:#0a0a13; --panel:#0c0c15;
-  --ink:#e9e9f2; --dim:#a2a2b4; --muted:#63637a; --line:#1b1b28;
-  --magenta:#ff2d55; --violet:#9d4dff; --cyan:#35e8ff; --teal:#35e0a1; --amber:#ffb347;
-  --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
-  --mono:"Consolas","SF Mono",ui-monospace,Menlo,monospace;
-  --edge:26px;
+  --bg:#e8e6e0; --well:#f1efea; --ink:#17161d; --dim:#474656; --muted:#7c7a89;
+  --line:#c8c5bc; --soft:#d8d5cd;
+  --red:#ff2d55; --red-ink:#c2183f; --violet:#6a3fd0; --cyan:#0a7d94; --green:#0b8a62; --amber:#a26208;
+  --screen:#0b0b12; --screen-ink:#d8d8e2; --screen-dim:#7d7d92;
+  --b-red:#ff2d55; --b-violet:#b58cff; --b-cyan:#35e8ff; --b-green:#35e0a1; --b-amber:#ffb347;
+  --mono:"Consolas","Cascadia Mono","SF Mono",ui-monospace,Menlo,"DejaVu Sans Mono",monospace;
+  --tone:var(--red-ink);
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+[hidden]{display:none !important}
+html{scroll-padding-top:60px}
 body{
-  margin:0; background:var(--bg); color:var(--ink);
-  font-family:var(--sans); line-height:1.6; -webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
+  margin:0;padding-bottom:30px;color:var(--ink);background:var(--bg);
+  background-image:radial-gradient(rgba(23,22,29,.07) 1px,transparent 1px);background-size:22px 22px;
+  font-family:var(--mono);font-size:14.5px;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
 a{color:inherit;text-decoration:none}
 img,video{max-width:100%;display:block}
-code{font-family:var(--mono);font-size:.92em;color:var(--dim)}
+code{font-family:inherit;color:var(--ink);background:var(--well);border:1px solid var(--soft);padding:0 5px}
+p{margin:0}
+h1,h2,h3{text-transform:lowercase;margin:0}
 
-/* the vertical gradient bar on the far left edge, like the app */
-.railbar{position:fixed;left:0;top:0;bottom:0;width:4px;z-index:50;
-  background:linear-gradient(180deg,var(--magenta),var(--violet) 45%,var(--cyan) 80%,var(--teal));
-  opacity:.9}
-
-.wrap{max-width:1120px;margin:0 auto;padding-inline:24px}
-
-/* ---- the drawn K_ mark ---- */
-.mark{display:inline-block;height:1em;width:auto;vertical-align:-.14em}
-.mark .us{animation:blink 1.15s steps(1) infinite}
-@keyframes blink{0%,55%{opacity:1}56%,100%{opacity:.15}}
-
-.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;
-  color:var(--magenta);display:inline-flex;align-items:center;gap:10px}
-.kicker::before{content:"";width:22px;height:1px;background:var(--magenta);display:inline-block}
-
-/* ---- top bar ---- */
-header.top{position:sticky;top:0;z-index:40;backdrop-filter:blur(9px);
-  background:linear-gradient(180deg,rgba(5,5,11,.92),rgba(5,5,11,.55));
-  border-bottom:1px solid var(--line)}
-.top .wrap{display:flex;align-items:center;gap:20px;height:64px}
-.brand{display:flex;align-items:center;gap:12px;font-size:22px;font-weight:600;letter-spacing:.01em}
-.brand .mark{height:26px}
-.nav{margin-left:auto;display:flex;gap:26px;align-items:center}
-.nav a{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-.nav a:hover{color:var(--ink)}
-
-/* Both languages are written into the page; only the inactive one is hidden. Nothing here ever sets a
-   display back on, so every element keeps whatever display its own rule gave it — a flex row stays a
-   flex row when it is the one being shown. */
+/* Both languages are written into the page; only the inactive one is hidden. */
 html[data-lang="en"] [lang="fr"],
 html[data-lang="fr"] [lang="en"]{display:none !important}
 
-.lang{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--dim);background:none;border:1px solid var(--line);border-radius:3px;
-  padding:5px 10px;cursor:pointer;line-height:1}
-.lang:hover{color:var(--ink);border-color:var(--muted)}
-.btn{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
-  padding:10px 18px;border-radius:3px;border:1px solid var(--line);color:var(--ink);
-  background:#101019;transition:.18s;white-space:nowrap}
-.btn:hover{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset}
-.btn.primary{background:linear-gradient(90deg,var(--magenta),var(--violet));border:0;color:#fff;font-weight:600}
-.btn.primary:hover{filter:brightness(1.08);box-shadow:0 6px 24px -8px var(--violet)}
-.nav-toggle{display:none;margin-left:auto;background:none;border:1px solid var(--line);color:var(--ink);
-  border-radius:3px;padding:8px 12px;font-family:var(--mono);cursor:pointer}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:24px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px;color:var(--muted)}
+.k{color:var(--tone);text-transform:lowercase;white-space:nowrap}
+.t-violet{--tone:var(--violet)} .t-cyan{--tone:var(--cyan)} .t-green{--tone:var(--green)}
+.t-amber{--tone:var(--amber)} .t-red{--tone:var(--red-ink)}
+
+/* ---- the pieces every screen of the app is made of ---- */
+.act{font:inherit;font-size:13px;color:var(--dim);background:none;border:0;border-bottom:1px solid var(--line);
+  padding:2px 0 3px;cursor:pointer;text-transform:lowercase;white-space:nowrap;transition:color .15s,border-color .15s}
+.act:hover,.act:focus-visible{color:var(--ink);border-color:var(--red);outline:none}
+.act.on{color:var(--ink);border-color:var(--red)}
+.btn{display:inline-block;font:inherit;font-size:13px;font-weight:700;text-transform:lowercase;white-space:nowrap;
+  color:var(--bg);background:var(--ink);border:1px solid var(--ink);padding:9px 18px;cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s,transform .15s}
+.btn:hover,.btn:focus-visible{background:var(--red);border-color:var(--red);color:var(--ink);outline:none;
+  transform:translateY(-1px)}
+.chip{display:inline-block;font-size:11.5px;text-transform:lowercase;color:var(--dim);border:1px solid var(--line);
+  padding:1px 9px;transition:color .25s,border-color .25s}
+a.chip:hover{color:var(--ink);border-color:var(--ink)}
+.chip.on{color:var(--tone);border-color:var(--tone)}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.tile{position:relative;border:1px solid var(--line);padding:32px 28px 26px}
+.tile > .name,.tile > .tag{position:absolute;top:-.86em;background:var(--bg);padding:0 9px;font-size:12.5px;
+  text-transform:lowercase}
+.tile > .name{left:20px;color:var(--tone)}
+.tile > .tag{right:20px;color:var(--muted)}
+.prompt{font-size:12.5px;color:var(--muted)}
+.prompt b{color:var(--tone);font-weight:400}
+.cursor{animation:blink 1.1s steps(1) infinite}
+@keyframes blink{0%,55%{opacity:1}56%,100%{opacity:.15}}
+
+/* ---- the bar across the top ---- */
+.bar{position:sticky;top:0;z-index:40;height:42px;display:flex;align-items:stretch;gap:18px;
+  border-bottom:1px solid var(--line);background:rgba(232,230,224,.93);backdrop-filter:blur(8px);padding-right:20px}
+.wordmark{display:flex;align-items:center;padding:0 18px;background:var(--red);color:var(--ink);font-weight:700}
+.wordmark i{font-style:normal;animation:blink 1.1s steps(1) infinite}
+.bar .window{display:flex;align-items:center;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.nav{display:flex;align-items:center;gap:20px;margin-left:auto}
+.bar .btn{padding:5px 14px;align-self:center}
+.nav-toggle{display:none;margin-left:auto;align-self:center}
 
 /* ---- hero ---- */
-.hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
-#rain{position:absolute;inset:0;width:100%;height:100%;opacity:.5}
-.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(120% 90% at 50% 20%,transparent 40%,var(--bg) 82%)}
-.hero .wrap{position:relative;z-index:2;padding-block:100px 96px}
-.hero h1{font-size:clamp(44px,8vw,92px);line-height:.98;margin:.35em 0 .28em;
-  font-weight:700;letter-spacing:-.02em;text-transform:uppercase}
-.hero h1 .u{color:transparent;-webkit-text-stroke:1.5px var(--violet)}
-.lede{font-size:clamp(17px,2.2vw,21px);color:var(--dim);max-width:620px;margin:0}
-.lede b{color:var(--ink);font-weight:600}
-.cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px;align-items:center}
-.cta .meta,.mailrow .meta{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:54px;align-items:center;
+  min-height:calc(100vh - 72px);padding-block:40px}
+.hero h1{font-size:clamp(36px,5.4vw,64px);line-height:1.04;letter-spacing:-.03em;margin:14px 0 18px;font-weight:700}
+.hero h1 .cursor{color:var(--red)}
+.lede{color:var(--dim);max-width:44ch}
+.cta{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-top:28px}
+.cta .small{flex-basis:100%}
+.hero .tile{padding:38px 22px 22px}
 
-/* ---- trust strip ---- */
-.trust{border-bottom:1px solid var(--line);background:var(--bg2)}
-.trust .wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
-.trust .cell{padding:26px 22px;border-left:1px solid var(--line)}
-.trust .cell:first-child{border-left:0;padding-left:0}
-.trust .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:9px}
-.trust h3{margin:0 0 6px;font-size:15px;letter-spacing:.01em}
-.trust p{margin:0;color:var(--muted);font-size:13.5px}
+/* the connection, drawn: you, four steps, the server */
+.link{display:flex;align-items:flex-start}
+.node{flex:0 0 64px;text-align:center;font-size:11.5px;color:var(--muted);line-height:1.4}
+.node svg{display:block;margin:0 auto 8px;width:56px;height:44px;stroke:var(--muted);fill:none;stroke-width:1.4;
+  transition:stroke .4s}
+.node b{display:block;color:var(--ink);font-size:13px}
+.node.on svg{stroke:var(--red-ink)}
+.node.live svg{stroke:var(--green)}
+.node .led{fill:var(--line);stroke:none;transition:fill .4s}
+.node.live .led{fill:var(--green)}
+.wire{position:relative;flex:1;height:44px;min-width:0}
+.wire::before{content:"";position:absolute;left:0;right:0;top:21px;border-top:1.5px dashed var(--line)}
+.wire .fill{position:absolute;left:0;top:21px;height:2px;width:0;background:var(--red);transition:width .55s ease,background .4s}
+.wire.live .fill{background:var(--green)}
+.wire .fill i{position:absolute;top:-2px;width:6px;height:6px;border-radius:50%;background:inherit;opacity:0}
+.wire.run .fill i{animation:run 1.3s linear infinite}
+.wire.run .fill i + i{animation-delay:.65s}
+@keyframes run{0%{left:0;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:100%;opacity:0}}
+.step{position:absolute;top:0;width:0;display:flex;flex-direction:column;align-items:center;font-size:11px;
+  color:var(--muted);white-space:nowrap}
+.step em{height:14px;line-height:14px;font-style:normal;opacity:0;transition:opacity .3s}
+.step .dot{width:13px;height:13px;margin:1px 0 6px;border-radius:50%;border:1.5px solid var(--line);
+  background:var(--bg);position:relative;transition:border-color .3s}
+.step .dot::after{content:"";position:absolute;inset:2.5px;border-radius:50%;background:transparent;transition:background .3s}
+.step.active .dot{border-color:var(--red);animation:pulse 1s ease-in-out infinite}
+.step.active .dot::after{background:var(--red);inset:3.5px}
+.step.done .dot{border-color:var(--green)}
+.step.done .dot::after{background:var(--green)}
+.step.done em{opacity:1}
+.step.done,.step.active{color:var(--dim)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,45,85,.35)}50%{box-shadow:0 0 0 6px rgba(255,45,85,0)}}
+.link-foot{display:flex;gap:16px;align-items:baseline;margin-top:30px;padding-top:16px;border-top:1px solid var(--soft);
+  font-size:12.5px}
 
-/* ---- generic section ---- */
-section.block{padding-block:88px;border-bottom:1px solid var(--line)}
-.head{max-width:720px;margin-bottom:40px}
-.head h2{font-size:clamp(28px,4vw,40px);margin:.4em 0 .3em;font-weight:700;letter-spacing:-.01em;text-transform:uppercase}
-.head p{color:var(--dim);margin:0;font-size:16.5px}
-.head p + p{margin-top:14px}
+/* ---- a terminal: what kubo knows, as a command would print it ---- */
+.about{margin-top:20px}
+.about .lines{display:grid;grid-template-columns:max-content 1fr;gap:4px 28px;font-size:13.5px}
+.about .lines dt{color:var(--tone)}
+.about .lines dd{margin:0;color:var(--dim)}
+.about .lines dd b{color:var(--ink)}
 
-/* ---- video figure ---- */
-.figure{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
-.figure.flip .stage{order:2}
-.figure .stage{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;
-  background:#000;aspect-ratio:16/9;box-shadow:0 30px 80px -40px #000}
-.figure .stage::before{content:attr(data-tag);position:absolute;z-index:3;left:14px;top:12px;
-  font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--dim);
-  background:rgba(5,5,11,.6);padding:4px 8px;border-radius:3px;pointer-events:none}
-.figure video{width:100%;height:100%;object-fit:cover;background:#04040a}
+/* ---- the screens, sideways ---- */
+.hs{position:relative;margin-top:90px}
+.hs-sticky{position:relative}
+.hs-track{display:flex;gap:44px;align-items:center;padding:24px max(24px,calc((100vw - 1100px) / 2)) 40px;
+  overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.hs-track::-webkit-scrollbar{display:none}
+.pinned .hs-sticky{position:sticky;top:42px;height:calc(100vh - 72px);overflow:hidden;display:flex;
+  flex-direction:column;justify-content:center}
+.pinned .hs-track{overflow:visible;will-change:transform;padding-block:0}
+.hs-intro{flex:0 0 auto;width:min(340px,80vw);scroll-snap-align:start}
+.hs-intro h2{font-size:clamp(30px,4vw,48px);line-height:1.05;letter-spacing:-.025em;margin:12px 0 14px}
+.hs-intro .hint{display:inline-flex;gap:10px;align-items:center;font-size:12.5px;color:var(--muted)}
+.hs-intro .hint i{font-style:normal;animation:nudge 1.4s ease-in-out infinite}
+@keyframes nudge{0%,100%{transform:none}50%{transform:translateX(6px)}}
 
-/* the big play button: the preview runs silent on its own, this starts it properly */
-.play{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:14px;width:100%;height:100%;border:0;cursor:pointer;
-  background:radial-gradient(60% 60% at 50% 50%,rgba(5,5,11,.45),rgba(5,5,11,.72));
-  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);
-  transition:opacity .25s,background .25s}
-.play svg{width:74px;height:74px;display:block;filter:drop-shadow(0 12px 30px rgba(0,0,0,.55));
-  transition:transform .25s}
-.play .ring{fill:rgba(5,5,11,.55);stroke:var(--ink);stroke-width:2;transition:fill .25s,stroke .25s}
-.play .tri{fill:var(--ink);transition:fill .25s}
-.play:hover{background:radial-gradient(60% 60% at 50% 50%,rgba(5,5,11,.3),rgba(5,5,11,.6))}
-.play:hover svg{transform:scale(1.07)}
-.play:hover .ring{fill:var(--magenta);stroke:var(--magenta)}
-.play:hover .tri{fill:#050510}
-.play[hidden]{display:none}
+.panel{flex:0 0 auto;width:min(78vw,calc((100vh - 290px) * 1.6),780px);scroll-snap-align:center;
+  transition:opacity .4s,transform .4s,filter .4s}
+.pinned .panel{opacity:.32;transform:scale(.96);filter:grayscale(1)}
+.pinned .panel.here{opacity:1;transform:none;filter:none}
+.win{border:1px solid var(--ink);background:var(--screen);box-shadow:10px 10px 0 -1px var(--soft);color:var(--screen-ink)}
+.win-bar{display:flex;align-items:center;gap:12px;height:28px;padding:0 12px;font-size:12px;
+  border-bottom:1px solid #22222e;color:var(--screen-dim)}
+.win-bar b{color:var(--b);font-weight:400}
+.win-bar .ctl{margin-left:auto;letter-spacing:.35em}
+.win-body{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--screen)}
+.win-body video{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.t-violet .win{--b:var(--b-violet)} .t-cyan .win{--b:var(--b-cyan)} .t-green .win{--b:var(--b-green)}
+.t-amber .win{--b:var(--b-amber)} .t-red .win{--b:var(--b-red)}
+
+/* the screens without a clip: the command kubo runs for them, typed */
+.term{padding:20px 22px;font-size:13.5px;line-height:1.75;height:100%;overflow:hidden}
+.term .ln{display:block;white-space:pre;opacity:0;transform:translateX(-4px);transition:opacity .2s,transform .2s}
+.term .ln.sh::before{content:"$ ";color:var(--b)}
+.term .ln.c{color:var(--screen-dim)}
+.term.typed .ln{opacity:1;transform:none;transition-delay:calc(var(--d,0) * 260ms)}
+.term .ok{color:var(--b-green)} .term .warn{color:var(--b-amber)} .term .bad{color:var(--b-red)}
+
+.panel-foot{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:baseline;margin-top:22px}
+.panel-foot .num{color:var(--tone);font-size:12.5px}
+.panel-foot h3{font-size:22px;letter-spacing:-.01em}
+.panel-foot p{grid-column:2;color:var(--dim)}
+.panel-foot .chips{grid-column:2;margin-top:8px}
+
+.hs-meter{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--muted);
+  padding:18px max(24px,calc((100vw - 1100px) / 2)) 0}
+.hs-meter .bar-in{flex:1;max-width:280px;height:2px;background:var(--soft);position:relative}
+.hs-meter .bar-in i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--tone)}
+.hs-meter b{color:var(--ink);font-weight:400}
+
+/* ---- security, as a boot log ---- */
+.section{margin-top:100px}
+.section h2{font-size:clamp(24px,3vw,34px);letter-spacing:-.02em;line-height:1.15;margin:8px 0 22px}
+.log{font-size:13.5px}
+.log .ln{display:grid;grid-template-columns:max-content 1fr;gap:16px;padding:9px 0;border-top:1px solid var(--soft)}
+.log .ln:last-child{border-bottom:1px solid var(--soft)}
+.log .ok{color:var(--green)}
+.log .ln > span:last-child{color:var(--dim)}
+
+/* ---- download, with a tab per system ---- */
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.tabs .act{border-bottom:2px solid transparent;margin-bottom:-1px;padding-bottom:8px}
+.tabs .act.on{border-color:var(--red)}
+.total{font-size:12.5px;color:var(--dim);margin:-10px 0 22px}
+.total b{color:var(--ink);font-size:15px;margin-right:6px}
+.gets{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.get{display:flex;flex-direction:column;gap:6px;background:var(--well);border:1px solid var(--soft);
+  border-left:2px solid var(--line);padding:16px 18px;transition:border-color .2s,transform .2s}
+.get:hover{border-left-color:var(--red);transform:translateY(-2px)}
+.get.lead{border-left-color:var(--red)}
+.get .n{font-size:12px;color:var(--red-ink);text-transform:lowercase}
+.get h3{font-size:15px;text-transform:none}
+.get .foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--muted)}
+.get .count{color:var(--green)}
+.bump{animation:bump .7s ease}
+@keyframes bump{0%{color:var(--red-ink);transform:translateY(-3px)}100%{transform:none}}
+.cmd{display:flex;align-items:stretch;border:1px solid var(--line);background:var(--bg);min-width:0}
+.cmd code{flex:1;min-width:0;border:0;background:none;padding:7px 12px;white-space:nowrap;overflow-x:auto;font-size:12.5px}
+.cmd button{font:inherit;font-size:12px;text-transform:lowercase;color:var(--dim);background:none;border:0;
+  border-left:1px solid var(--line);padding:0 14px;cursor:pointer}
+.cmd button:hover{color:var(--ink);background:var(--well)}
+.pane{animation:paneIn .3s ease}
+@keyframes paneIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.note{margin-top:14px}
 
 /* ---- contact ---- */
-.links{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
-  border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.link{background:var(--panel);padding:26px 22px;display:flex;flex-direction:column;gap:8px;
-  text-decoration:none;color:inherit;transition:background .2s}
-.link:hover{background:#0e0e1c}
-.link .n{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.link b{font-size:18px;letter-spacing:-.01em;word-break:break-word}
-.link .d{color:var(--muted);font-size:13.5px;flex:1}
-.link .go{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
-  transition:color .2s,letter-spacing .2s}
-.link:hover .go{color:var(--cyan);letter-spacing:.2em}
-.link:nth-child(1):hover .go{color:var(--magenta)}
-.link:nth-child(2):hover .go{color:var(--violet)}
-.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:30px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-top:18px}
+.row .cmd{flex:0 1 300px}
 
-/* ---- the three ways to get it ---- */
-.gets{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1px;background:var(--line);
-  border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:left;margin-top:10px}
-.get{background:var(--panel);padding:28px 24px;display:flex;flex-direction:column;gap:10px}
-/* an author display: rule beats the browser's own [hidden] one, so each has to say it again */
-.gets[hidden],.get[hidden]{display:none}
-.get.lead{background:#0d0d1b}
-.get .n{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.get.lead .n{color:var(--magenta)}
-.get h3{margin:0;font-size:19px;letter-spacing:-.01em;font-weight:700}
-.get p{margin:0;color:var(--muted);font-size:13.5px;flex:1}
-.get .foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px}
-.get .size{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-.cmd{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:5px;overflow:hidden;
-  background:#07070f;margin-top:6px}
-.cmd code{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;color:var(--ink);padding:11px 12px;
-  white-space:nowrap;overflow-x:auto}
-.cmd button{border:0;border-left:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer;
-  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:0 14px;
-  transition:color .2s,background .2s}
-.cmd button:hover{color:var(--ink);background:#10101f}
-.smallprint{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--muted);line-height:1.9;
-  margin-top:24px}
-
-.platform{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:40px;
-  font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
-.platform::before,.platform::after{content:"";height:1px;width:34px;background:var(--line)}
-.platform[hidden]{display:none}
-
-/* ---- the ask ---- */
-.support{margin-top:46px;padding:34px 34px 30px;border:1px solid var(--line);border-radius:10px;
-  background:linear-gradient(180deg,#0c0c18,var(--bg2));position:relative;overflow:hidden}
-.support::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
-  background:linear-gradient(180deg,var(--magenta),var(--violet) 55%,var(--cyan))}
-.support p{margin:14px 0 0;color:var(--dim);font-size:15.5px;max-width:620px}
-.support p b{color:var(--ink);font-weight:600}
-.support .row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:22px}
-.support .cmd{margin-top:0;flex:1 1 280px;max-width:380px}
-
-/* ---- the "what happens now" sheet ---- */
+/* ---- what happens after a click ---- */
 .sheet{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;
-  background:rgba(3,3,8,.78);backdrop-filter:blur(6px);text-align:left}
-.sheet[hidden]{display:none}
-.sheet-card{position:relative;width:100%;max-width:460px;background:var(--bg2);border:1px solid var(--line);
-  border-radius:10px;padding:30px 30px 26px;box-shadow:0 40px 120px -40px #000;
-  animation:rise .22s ease-out}
-@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.sheet-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;border-radius:10px 10px 0 0;
-  background:linear-gradient(90deg,var(--magenta),var(--violet) 55%,var(--cyan))}
-.sheet-kind{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;
-  color:var(--magenta)}
-.sheet-card h3{margin:.5em 0 .2em;font-size:21px;letter-spacing:-.01em}
-.sheet-card ol{margin:18px 0 0;padding:0;list-style:none;counter-reset:step}
-.sheet-card li{counter-increment:step;display:flex;gap:14px;padding:11px 0;border-top:1px solid var(--line);
-  color:var(--dim);font-size:14px;line-height:1.55}
-.sheet-card li::before{content:counter(step,decimal-leading-zero);font-family:var(--mono);font-size:11px;
-  letter-spacing:.06em;color:var(--muted);padding-top:3px}
-.sheet-card li code{color:var(--cyan);word-break:break-word}
-.sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px}
-.sheet-note{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted)}
-.sheet-close{border:1px solid var(--line);background:#101019;color:var(--ink);border-radius:3px;cursor:pointer;
-  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:9px 18px;
-  transition:border-color .2s}
-.sheet-close:hover{border-color:var(--violet)}
+  background:rgba(23,22,29,.45);backdrop-filter:blur(3px)}
+.sheet-card{position:relative;width:100%;max-width:460px;background:var(--bg);border:1px solid var(--ink);
+  padding:26px 26px 20px;box-shadow:10px 10px 0 -1px rgba(23,22,29,.25);animation:paneIn .22s ease-out}
+.sheet-kind{position:absolute;top:-.86em;left:18px;background:var(--bg);padding:0 9px;font-size:12.5px;
+  color:var(--red-ink);text-transform:lowercase}
+.sheet-card h3{font-size:18px;text-transform:none}
+.sheet-card ol{margin:12px 0 0;padding:0;list-style:none;counter-reset:step}
+.sheet-card li{counter-increment:step;display:flex;gap:14px;padding:10px 0;border-top:1px solid var(--soft);
+  color:var(--dim);font-size:13.5px;line-height:1.6}
+.sheet-card li::before{content:counter(step,decimal-leading-zero);color:var(--red-ink);font-size:12px;padding-top:1px}
+.sheet-card li code{word-break:break-word}
+.sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px}
 
-/* ---- footer links ---- */
-.footlinks{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;font-family:var(--mono);font-size:11px;
-  letter-spacing:.1em;text-transform:uppercase}
-.figure .body .fignum{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
-.figure .body h3{font-size:26px;margin:.25em 0 .5em;letter-spacing:-.01em;text-transform:uppercase}
-.figure .body p{color:var(--dim);margin:0 0 14px}
-.figure .body .accent-f{color:var(--violet)} .figure .body .accent-n{color:var(--cyan)}
-.figure .body .accent-s{color:var(--teal)}
-.taglist{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
-.tag{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:5px 10px}
+/* ---- footer and the line along the bottom ---- */
+footer{margin-top:100px;padding-block:22px 30px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justify-content:space-between}
+.status{--tone:var(--b-red);position:fixed;left:0;right:0;bottom:0;z-index:45;height:30px;display:flex;
+  align-items:stretch;gap:16px;font-size:12.5px;background:var(--ink);color:#b9b8c6;white-space:nowrap}
+.status .mode{display:flex;align-items:center;padding:0 16px;font-weight:700;color:var(--ink);
+  background:var(--tone);text-transform:lowercase;transition:background .3s}
+.status .msg{flex:1;min-width:0;display:flex;align-items:center;overflow:hidden;color:#e9e8e2}
+.status .fact{display:flex;align-items:center}
+.status .fact:last-child{padding-right:16px;min-width:52px;justify-content:flex-end}
+.status b{color:#e9e8e2;font-weight:400;margin-right:6px}
 
-/* ---- scopes grid ---- */
-.scopes{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.scope{background:var(--panel);padding:26px 22px;min-height:150px}
-.scope .n{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
-.scope h4{margin:12px 0 8px;font-size:17px;letter-spacing:.01em}
-.scope p{margin:0;color:var(--muted);font-size:13.5px}
+/* ---- arriving somewhere: a short glitch instead of a long scroll ---- */
+#glitch{position:fixed;inset:0;z-index:95;pointer-events:none;display:none;overflow:hidden}
+#glitch.on{display:block}
+#glitch::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,rgba(23,22,29,.06) 0 1px,transparent 1px 3px);animation:flick .34s steps(3) both}
+#glitch i{position:absolute;left:0;right:0;animation:slide .32s steps(4) both}
+@keyframes flick{0%,100%{opacity:0}30%,70%{opacity:1}}
+@keyframes slide{0%{transform:translateX(var(--x));opacity:0}30%{opacity:1}60%{transform:translateX(calc(var(--x) * -.5))}
+  100%{transform:none;opacity:0}}
+.glitching main{animation:jitter .34s steps(2) both}
+.glitching h1,.glitching h2,.glitching h3{text-shadow:-2px 0 rgba(255,45,85,.75),2px 0 rgba(10,125,148,.75)}
+@keyframes jitter{
+  0%{transform:none}
+  25%{transform:translateX(-4px);clip-path:inset(18% 0 52% 0)}
+  50%{transform:translateX(3px);clip-path:inset(48% 0 22% 0)}
+  75%{transform:translateX(-1px);clip-path:inset(0)}
+  100%{transform:none;clip-path:none}
+}
 
-/* ---- security ---- */
-.sec{display:grid;grid-template-columns:1fr 1fr;gap:44px}
-.sec ul{list-style:none;margin:0;padding:0}
-.sec li{padding:16px 0;border-top:1px solid var(--line);display:flex;gap:14px}
-.sec li:first-child{border-top:0}
-.sec li .mono{font-family:var(--mono);color:var(--teal);font-size:12px;letter-spacing:.05em;min-width:34px;padding-top:2px}
-.sec li b{display:block;margin-bottom:3px}
-.sec li span{color:var(--muted);font-size:14px}
-.note{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;
-  border-left:2px solid var(--violet);padding:4px 0 4px 18px;margin-top:8px}
+/* ---- what moves ---- */
+.js .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.js .reveal.in{opacity:1;transform:none}
+.js .reveal .ln,.js .reveal .about-ln{opacity:0;transition:opacity .25s ease}
+.js .reveal.in .ln,.js .reveal.in .about-ln{opacity:1;transition-delay:calc(var(--i,0) * 110ms + 150ms)}
 
-/* ---- footer ---- */
-footer{padding-block:56px;color:var(--muted)}
-footer .wrap{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between}
-footer .mark{height:22px}
-footer a{color:var(--dim)} footer a:hover{color:var(--ink)}
-footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-height:2}
+#boot{display:none}
+.booting #boot{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);background-image:radial-gradient(rgba(23,22,29,.07) 1px,transparent 1px);
+  background-size:22px 22px;transition:opacity .35s;animation:bootgone 0s 3s forwards}
+.booting #boot.gone{opacity:0}
+@keyframes bootgone{to{visibility:hidden}}
+.boot-card{width:min(430px,calc(100vw - 48px));border:1px solid var(--line);padding:26px 24px 22px;background:var(--bg);position:relative}
+.boot-card .name{position:absolute;top:-.86em;left:18px;background:var(--bg);padding:0 9px;font-size:12.5px;color:var(--red-ink)}
+.boot-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.boot-head .wordmark{padding:2px 12px}
+.boot-line{display:flex;gap:12px;opacity:0;transform:translateX(-6px);transition:opacity .2s,transform .2s}
+.boot-line.in{opacity:1;transform:none}
+.boot-line .ok{color:var(--green)}
+.boot-line .ms{margin-left:auto;color:var(--muted);font-size:12px}
+.boot-bar{height:2px;background:var(--soft);margin-top:16px;overflow:hidden}
+.boot-bar i{display:block;height:100%;width:0;background:var(--red);transition:width .25s ease}
 
-@media(max-width:820px){
-  .nav,.top .btn{display:none}
-  .nav-toggle{display:inline-block}
-  .nav.open{display:flex;position:absolute;top:64px;left:0;right:0;flex-direction:column;gap:0;
-    background:var(--bg2);border-bottom:1px solid var(--line);padding:8px 24px}
-  .nav.open a{padding:12px 0;border-top:1px solid var(--line)}
-  .trust .wrap{grid-template-columns:1fr}
-  .trust .cell{border-left:0;border-top:1px solid var(--line);padding-left:0}
-  .trust .cell:first-child{border-top:0}
-  .figure{grid-template-columns:1fr;gap:24px}
-  .figure.flip .stage{order:0}
-  .scopes,.links,.gets{grid-template-columns:1fr}
-  .support{padding:26px 20px 24px}
-  .support .cmd{max-width:none}
-  .sec{grid-template-columns:1fr;gap:26px}
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important}
+  .js .reveal,.js .reveal .ln,.js .reveal .about-ln,.term .ln{opacity:1;transform:none}
+}
+
+@media(max-width:900px){
+  .nav{display:none}
+  .nav-toggle{display:block}
+  .nav.open{display:flex;position:absolute;top:42px;left:0;right:0;flex-direction:column;align-items:flex-start;
+    gap:14px;background:var(--bg);border-bottom:1px solid var(--line);padding:18px 24px}
+  .bar .window{display:none}
+  .hero{grid-template-columns:1fr;gap:40px;min-height:0;padding-block:48px 10px}
+  .panel{width:86vw}
+  .tile{padding:30px 18px 22px}
+  .status .msg{visibility:hidden}
+  .node{flex-basis:56px}
+  .step{font-size:10px}
+  .about .lines{grid-template-columns:1fr;gap:0}
+  .about .lines dd{margin-bottom:8px}
+}
+@media(max-width:460px){
+  .node{flex-basis:50px}
+  .node svg{width:44px}
+  .step em{display:none}
+  .step{font-size:9px}
+  .term{font-size:11px;padding:14px}
 }
 </style>
 </head>
 <body>
-<span class="railbar" aria-hidden="true"></span>
 
-<!-- reusable K_ mark, drawn (no logo image) -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-  <linearGradient id="kg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#ff2d55"/><stop offset=".5" stop-color="#9d4dff"/><stop offset="1" stop-color="#35e8ff"/>
-  </linearGradient>
-  <!-- K_ : the underscore sits beside the K on its baseline, the way a terminal cursor waits after a
-       character. Centred underneath it read as an underline instead. -->
-  <symbol id="kmark" viewBox="0 0 60 50">
-    <path d="M11 7 V40"     stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <path d="M13 25 L32 8"  stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <path d="M13 23 L34 40" stroke="#e9e9f2" stroke-width="6" stroke-linecap="round"/>
-    <rect class="us" x="40" y="37.5" width="17" height="5.5" rx="1.5" fill="url(#kg)"/>
-  </symbol>
-</defs></svg>
-
-<header class="top">
-  <div class="wrap">
-    <a class="brand" href="#top"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</a>
-    <button class="nav-toggle" onclick="document.getElementById('nav').classList.toggle('open')">MENU</button>
-    <nav class="nav" id="nav">
-      <a href="#what" lang="en">Overview</a>
-      <a href="#what" lang="fr">Présentation</a>
-      <a href="#files" lang="en">Files</a>
-      <a href="#files" lang="fr">Fichiers</a>
-      <a href="#network" lang="en">Network</a>
-      <a href="#network" lang="fr">Réseau</a>
-      <a href="#services">Services</a>
-      <a href="#scopes" lang="en">All screens</a>
-      <a href="#scopes" lang="fr">Écrans</a>
-      <a href="#security" lang="en">Security</a>
-      <a href="#security" lang="fr">Sécurité</a>
-      <a href="#contact">Contact</a>
-      <a class="btn primary" href="#download" lang="en">Download</a>
-      <a class="btn primary" href="#download" lang="fr">Télécharger</a>
-      <button class="lang" type="button" data-lang-switch>
-        <span lang="en">Français</span><span lang="fr">English</span>
-      </button>
-    </nav>
+<div id="boot" aria-hidden="true">
+  <div class="boot-card">
+    <span class="name">kubo</span>
+    <div class="boot-head"><span class="wordmark">Kubo<i>_</i></span><span class="muted">kubo.gemmi-e.com</span></div>
+    <div class="boot-line"><span>[ <span class="ok">ok</span> ]</span>
+      <span lang="en">language</span><span lang="fr">langue</span>
+      <span class="ms" lang="en">english</span><span class="ms" lang="fr">français</span></div>
+    <div class="boot-line"><span>[ <span class="ok">ok</span> ]</span>
+      <span lang="en">seven screens</span><span lang="fr">sept écrans</span><span class="ms">7</span></div>
+    <div class="boot-line"><span>[ <span class="ok">ok</span> ]</span>
+      <span lang="en">nothing on the server</span><span lang="fr">rien sur le serveur</span><span class="ms">ssh</span></div>
+    <div class="boot-bar"><i></i></div>
   </div>
+</div>
+
+<div id="glitch" aria-hidden="true"></div>
+
+<header class="bar">
+  <a class="wordmark" href="#top" data-go>Kubo<i>_</i></a>
+  <span class="window">~ $ kubo</span>
+  <button class="act nav-toggle" type="button" onclick="document.getElementById('nav').classList.toggle('open')">menu</button>
+  <nav class="nav" id="nav">
+    <a class="act" href="#screens" data-go lang="en">screens</a>
+    <a class="act" href="#screens" data-go lang="fr">écrans</a>
+    <a class="act" href="#files" data-go lang="en">files</a>
+    <a class="act" href="#files" data-go lang="fr">fichiers</a>
+    <a class="act" href="#network" data-go lang="en">network</a>
+    <a class="act" href="#network" data-go lang="fr">réseau</a>
+    <a class="act" href="#services" data-go>services</a>
+    <a class="act" href="#security" data-go lang="en">security</a>
+    <a class="act" href="#security" data-go lang="fr">sécurité</a>
+    <a class="act" href="#contact" data-go>contact</a>
+    <button class="act" type="button" data-lang-switch><span lang="en">fr</span><span lang="fr">en</span></button>
+    <a class="btn" href="#download" data-go lang="en">download</a>
+    <a class="btn" href="#download" data-go lang="fr">télécharger</a>
+  </nav>
 </header>
 
 <main id="top">
 
   <!-- HERO -->
-  <section class="hero">
-    <canvas id="rain" aria-hidden="true"></canvas>
-    <div class="wrap">
-      <span class="kicker" lang="en">Linux server management</span>
-      <span class="kicker" lang="fr">Administration de serveurs Linux</span>
-      <h1 lang="en">See your<br>server.<br>Mana<span class="u">g</span>e it.</h1>
-      <h1 lang="fr">Voyez votre<br>serveur.<br><span class="u">G</span>érez-le.</h1>
-      <p class="lede" lang="en">Kubo is a desktop app for Windows and Linux. It connects to your server over SSH and
-        gives you its files, services, ports, firewall, Docker containers, Redis and packages in one interface.
-        <b>Nothing is installed on the server.</b></p>
-      <p class="lede" lang="fr">Kubo est une application de bureau pour Windows et Linux. Elle se connecte à votre
-        serveur en SSH et réunit ses fichiers, services, ports, pare-feu, conteneurs Docker, Redis et paquets dans
-        une seule interface. <b>Rien n'est installé sur le serveur.</b></p>
-      <div class="cta" lang="en">
-        <a class="btn primary" href="#download" data-download data-explain="exe">Download for Windows</a>
-        <a class="btn" href="#download">Linux →</a>
-        <a class="btn" href="#files">See it in action ↓</a>
-        <span class="meta">Java included · 75 MB · Free</span>
-      </div>
-      <div class="cta" lang="fr">
-        <a class="btn primary" href="#download" data-download data-explain="exe">Télécharger pour Windows</a>
-        <a class="btn" href="#download">Linux →</a>
-        <a class="btn" href="#files">Voir la démo ↓</a>
-        <span class="meta">Java inclus · 75 Mo · Gratuit</span>
+  <section class="wrap hero" data-spy="top" data-tone="red" data-word="kubo"
+           data-en="your linux server, over ssh" data-fr="votre serveur linux, en ssh">
+    <div>
+      <span class="prompt">~ $ <b>kubo</b></span>
+      <h1 lang="en">See your server.<br>Manage it<span class="cursor">_</span></h1>
+      <h1 lang="fr">Voyez votre serveur.<br>Gérez-le<span class="cursor">_</span></h1>
+      <p class="lede" lang="en">A desktop app for your Linux server, over SSH. Nothing to install on it.</p>
+      <p class="lede" lang="fr">Une application de bureau pour votre serveur Linux, en SSH. Rien à installer dessus.</p>
+      <div class="cta">
+        <a class="btn" href="#download" data-download data-explain="exe" lang="en">download for windows</a>
+        <a class="btn" href="#download" data-download data-explain="exe" lang="fr">télécharger pour windows</a>
+        <a class="act" href="#download" data-go data-tab="mac">macos</a>
+        <a class="act" href="#download" data-go data-tab="linux">linux</a>
+        <span class="small" lang="en">free · java included · <span data-version>v1.5.0</span></span>
+        <span class="small" lang="fr">gratuit · java inclus · <span data-version>v1.5.0</span></span>
       </div>
     </div>
-  </section>
 
-  <!-- TRUST STRIP -->
-  <section class="trust">
-    <div class="wrap">
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--teal)"></span>No agent</h3>
-        <p>Kubo only runs standard shell commands over SSH. There is nothing to install on the server.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--teal)"></span>Aucun agent</h3>
-        <p>Kubo n'exécute que des commandes shell standard via SSH. Il n'y a rien à installer sur le serveur.</p></div>
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--cyan)"></span>No cloud</h3>
-        <p>Kubo connects to your server and nothing else. No account, no telemetry.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--cyan)"></span>Aucun cloud</h3>
-        <p>Kubo se connecte à votre serveur et à rien d'autre. Pas de compte, pas de télémétrie.</p></div>
-      <div class="cell" lang="en"><h3><span class="dot" style="background:var(--magenta)"></span>Every command logged</h3>
-        <p>Each command Kubo sends is displayed and saved on your computer. Outputs are never stored.</p></div>
-      <div class="cell" lang="fr"><h3><span class="dot" style="background:var(--magenta)"></span>Chaque commande journalisée</h3>
-        <p>Chaque commande envoyée est affichée et enregistrée sur votre ordinateur. Les sorties ne sont jamais conservées.</p></div>
-    </div>
-  </section>
-
-  <!-- WHAT IT IS -->
-  <section class="block" id="what">
-    <div class="wrap">
-      <div class="head">
-        <span class="kicker" lang="en">Overview</span>
-        <span class="kicker" lang="fr">Présentation</span>
-        <h2 lang="en">What the terminal doesn't show you</h2>
-        <h2 lang="fr">Ce que le terminal ne vous montre pas</h2>
-        <p lang="en">A service that won't restart after a reboot. A database port open to the internet. A container
-          slowly eating memory. All of it is visible from a shell, if you know which command to run and when.
-          Kubo runs those commands for you and shows the result.</p>
-        <p lang="fr">Un service qui ne redémarrera pas au prochain reboot. Un port de base de données ouvert sur
-          Internet. Un conteneur qui consomme de plus en plus de mémoire. Tout cela se voit depuis un shell, à
-          condition de savoir quelle commande lancer, et quand. Kubo les lance pour vous et affiche le résultat.</p>
-        <p lang="en">The terminal stays available inside the app, and it answers what a command asks: a
-          password, a passphrase, a yes or no. Type <code>nano</code> and the file opens in the editor. Type
-          <code>htop</code> and you get a table you can sort. Anything that changes the server asks for
-          confirmation first.</p>
-        <p lang="fr">Le terminal reste disponible dans l'application, et il répond à ce qu'une commande demande :
-          un mot de passe, une phrase secrète, un oui ou non. Tapez <code>nano</code> et le fichier s'ouvre dans
-          l'éditeur. Tapez <code>htop</code> et vous obtenez un tableau triable. Toute action qui modifie le
-          serveur demande une confirmation.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- FILES VIDEO -->
-  <section class="block" id="files">
-    <div class="wrap">
-      <div class="figure">
-        <div class="stage" data-tag="FILES.SCOPE">
-          <video autoplay muted loop playsinline preload="metadata">
-            <source src="kubo-files.webm" type="video/webm">
-            <source src="kubo-files.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
-          </video>
-          <button class="play" type="button" data-play aria-label="Play the files demo with sound"
-                  data-aria-fr="Lire la démo des fichiers avec le son">
-            <svg viewBox="0 0 76 76" aria-hidden="true">
-              <circle class="ring" cx="38" cy="38" r="36"/>
-              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
-            </svg>
-            <span lang="en">Play with sound</span><span lang="fr">Lire avec le son</span>
-          </button>
+    <div class="tile t-red">
+      <span class="name">ssh</span>
+      <span class="tag" id="link-tag" data-idle-en="idle" data-idle-fr="en attente" data-busy-en="connecting"
+            data-busy-fr="connexion" data-live-en="connected in 431 ms" data-live-fr="connecté en 431 ms">idle</span>
+      <div class="link" aria-hidden="true">
+        <div class="node" id="node-you">
+          <svg viewBox="0 0 56 44"><rect x="3" y="3" width="50" height="30" rx="3"/><path d="M28 33v7M18 40.5h20"/>
+            <path d="M14 13l6 5-6 5M24 23h8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <b lang="en">you</b><b lang="fr">vous</b>
         </div>
-        <div class="body">
-          <div class="fignum" lang="en">Fig. 01 · Files</div>
-          <div class="fignum" lang="fr">Fig. 01 · Fichiers</div>
-          <h3 lang="en">Manage your files <span class="accent-f">without SFTP</span></h3>
-          <h3 lang="fr">Gérez vos fichiers <span class="accent-f">sans client SFTP</span></h3>
-          <p lang="en">Browse the whole filesystem, edit a file, change permissions, copy, move, delete. Drag files
-            from your computer to upload them.</p>
-          <p lang="fr">Parcourez tout le système de fichiers, modifiez un fichier, changez les droits, copiez,
-            déplacez, supprimez. Glissez des fichiers depuis votre ordinateur pour les envoyer.</p>
-          <p lang="en">Root mode unlocks the folders that belong to root. A shell opens in the current folder.</p>
-          <p lang="fr">Le mode root donne accès aux dossiers qui appartiennent à root. Un shell s'ouvre dans le
-            dossier courant.</p>
-          <p lang="en">Pictures, videos and sound files open in the app. Kubo copies the file across with a
-            progress bar, then plays it. The arrows move through the other files of the same kind in that
-            folder, so opening one video opens the folder it is in.</p>
-          <p lang="fr">Les images, les vidéos et les fichiers audio s'ouvrent dans l'application. Kubo copie le
-            fichier avec une barre de progression, puis le lit. Les flèches passent aux autres fichiers du même
-            type dans le dossier, donc ouvrir une vidéo ouvre le dossier où elle est.</p>
-          <div class="taglist" lang="en">
-            <span class="tag">Edit</span><span class="tag">Permissions</span><span class="tag">Upload</span>
-            <span class="tag">Download</span><span class="tag">Root mode</span><span class="tag">Shell</span>
-            <span class="tag">Pictures</span><span class="tag">Video</span><span class="tag">Audio</span>
-          </div>
-          <div class="taglist" lang="fr">
-            <span class="tag">Édition</span><span class="tag">Droits</span><span class="tag">Envoi</span>
-            <span class="tag">Téléchargement</span><span class="tag">Mode root</span><span class="tag">Shell</span>
-            <span class="tag">Images</span><span class="tag">Vidéo</span><span class="tag">Audio</span>
-          </div>
+        <div class="wire" id="wire">
+          <span class="fill"><i></i><i></i></span>
+          <div class="step" style="left:20%"><em>6 ms</em><span class="dot"></span>
+            <span lang="en">key</span><span lang="fr">clé</span></div>
+          <div class="step" style="left:40%"><em>188 ms</em><span class="dot"></span>
+            <span lang="en">reach</span><span lang="fr">accès</span></div>
+          <div class="step" style="left:60%"><em lang="en">known</em><em lang="fr">connue</em><span class="dot"></span>
+            <span lang="en">host key</span><span lang="fr">clé d'hôte</span></div>
+          <div class="step" style="left:80%"><em>237 ms</em><span class="dot"></span>
+            <span lang="en">sign in</span><span lang="fr">connexion</span></div>
+        </div>
+        <div class="node" id="node-server">
+          <svg viewBox="0 0 56 44"><rect x="5" y="3" width="46" height="10" rx="2"/><rect x="5" y="17" width="46" height="10" rx="2"/>
+            <rect x="5" y="31" width="46" height="10" rx="2"/><circle class="led" cx="43" cy="8" r="2"/>
+            <circle class="led" cx="43" cy="22" r="2"/><circle class="led" cx="43" cy="36" r="2"/></svg>
+          <b lang="en">server</b><b lang="fr">serveur</b>
+        </div>
+      </div>
+      <div class="link-foot">
+        <span class="k" lang="en">then</span><span class="k" lang="fr">ensuite</span>
+        <div class="chips" id="link-chips">
+          <a class="chip" href="#machine" data-go>machine</a>
+          <a class="chip" href="#files" data-go lang="en">files</a><a class="chip" href="#files" data-go lang="fr">fichiers</a>
+          <a class="chip" href="#network" data-go lang="en">network</a><a class="chip" href="#network" data-go lang="fr">réseau</a>
+          <a class="chip" href="#services" data-go>services</a>
+          <a class="chip" href="#docker" data-go>docker</a>
+          <a class="chip" href="#redis" data-go>redis</a>
+          <a class="chip" href="#packages" data-go lang="en">packages</a><a class="chip" href="#packages" data-go lang="fr">paquets</a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- NETWORK VIDEO -->
-  <section class="block" id="network">
-    <div class="wrap">
-      <div class="figure flip">
-        <div class="stage" data-tag="NETWORK.SCOPE">
-          <video autoplay muted loop playsinline preload="metadata">
-            <source src="kubo-network.webm" type="video/webm">
-            <source src="kubo-network.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
-          </video>
-          <button class="play" type="button" data-play aria-label="Play the network demo with sound"
-                  data-aria-fr="Lire la démo du réseau avec le son">
-            <svg viewBox="0 0 76 76" aria-hidden="true">
-              <circle class="ring" cx="38" cy="38" r="36"/>
-              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
-            </svg>
-            <span lang="en">Play with sound</span><span lang="fr">Lire avec le son</span>
-          </button>
-        </div>
-        <div class="body">
-          <div class="fignum" lang="en">Fig. 02 · Network</div>
-          <div class="fignum" lang="fr">Fig. 02 · Réseau</div>
-          <h3 lang="en">Know which ports are <span class="accent-n">really exposed</span></h3>
-          <h3 lang="fr">Sachez quels ports sont <span class="accent-n">vraiment exposés</span></h3>
-          <p lang="en">A port that is listening is not necessarily reachable. Kubo compares each listening port with
-            your firewall rules and tells you whether it is open to the internet, blocked, or local only.</p>
-          <p lang="fr">Un port en écoute n'est pas forcément accessible. Kubo compare chaque port avec les règles de
-            votre pare-feu et vous dit s'il est ouvert sur Internet, bloqué, ou seulement local.</p>
-          <p lang="en">It reads UFW, firewalld, nftables and iptables, and names the process, PM2 app or Docker
-            container behind each port. If it cannot read the rules, it says so.</p>
-          <p lang="fr">Il lit UFW, firewalld, nftables et iptables, et nomme le processus, l'application PM2 ou le
-            conteneur Docker derrière chaque port. S'il ne peut pas lire les règles, il le dit.</p>
-          <p lang="en">UFW is written as well as read. Kubo groups the rules the way a person would say them,
-            opens and closes ports, and switches the firewall on or off. Removing a rule that would cut your own
-            SSH session asks you to type the port first.</p>
-          <p lang="fr">UFW n'est pas seulement lu, il se modifie. Kubo regroupe les règles comme on les dirait à
-            voix haute, ouvre et ferme des ports, allume et éteint le pare-feu. Retirer une règle qui couperait
-            votre propre session SSH demande de taper le port avant.</p>
-          <p lang="en">Nginx has a screen of its own. It draws how a request reaches each site, from the domain
-            to the port it ends on, and turns red at the step that breaks. It reads the access log, shows the
-            file, and writes a new site from a form that checks every field before anything is sent.</p>
-          <p lang="fr">Nginx a son propre écran. Il dessine le trajet d'une requête jusqu'au site, du domaine au
-            port d'arrivée, et passe au rouge à l'étape qui casse. Il lit le journal d'accès, montre le fichier,
-            et écrit un nouveau site depuis un formulaire qui vérifie chaque champ avant d'envoyer quoi que ce
-            soit.</p>
-          <p lang="en">Every address fail2ban and the firewall have shut out is listed on one screen, sorted by
-            which of them keep coming back, with when and how often. It downloads as JSON.</p>
-          <p lang="fr">Toutes les adresses que fail2ban et le pare-feu ont bloquées tiennent sur un écran,
-            triées par celles qui reviennent le plus, avec quand et combien de fois. Le tout se télécharge en
-            JSON.</p>
-          <div class="taglist" lang="en">
-            <span class="tag">Listening ports</span><span class="tag">Firewall</span><span class="tag">Nginx</span>
-            <span class="tag">Blocked addresses</span><span class="tag">PM2</span><span class="tag">Docker</span>
-          </div>
-          <div class="taglist" lang="fr">
-            <span class="tag">Ports en écoute</span><span class="tag">Pare-feu</span><span class="tag">Nginx</span>
-            <span class="tag">Adresses bloquées</span><span class="tag">PM2</span><span class="tag">Docker</span>
-          </div>
-        </div>
-      </div>
+  <!-- WHAT IT IS, as a command would print it -->
+  <section class="wrap" data-spy="about" data-tone="red" data-word="about"
+           data-en="no agent, no account, no telemetry" data-fr="ni agent, ni compte, ni télémétrie">
+    <div class="tile t-red about reveal">
+      <span class="name">kubo --about</span>
+      <dl class="lines" lang="en">
+        <dt class="about-ln" style="--i:0">agent</dt><dd class="about-ln" style="--i:0"><b>none.</b> only standard commands over ssh</dd>
+        <dt class="about-ln" style="--i:1">account</dt><dd class="about-ln" style="--i:1"><b>none.</b> no telemetry either</dd>
+        <dt class="about-ln" style="--i:2">log</dt><dd class="about-ln" style="--i:2"><b>every command,</b> kept on your computer</dd>
+        <dt class="about-ln" style="--i:3">outputs</dt><dd class="about-ln" style="--i:3"><b>never stored</b></dd>
+        <dt class="about-ln" style="--i:4">shell</dt><dd class="about-ln" style="--i:4"><b>still there,</b> and <code>nano</code> opens the editor</dd>
+      </dl>
+      <dl class="lines" lang="fr">
+        <dt class="about-ln" style="--i:0">agent</dt><dd class="about-ln" style="--i:0"><b>aucun.</b> uniquement des commandes standard en ssh</dd>
+        <dt class="about-ln" style="--i:1">compte</dt><dd class="about-ln" style="--i:1"><b>aucun.</b> pas de télémétrie non plus</dd>
+        <dt class="about-ln" style="--i:2">journal</dt><dd class="about-ln" style="--i:2"><b>chaque commande,</b> gardée sur votre ordinateur</dd>
+        <dt class="about-ln" style="--i:3">sorties</dt><dd class="about-ln" style="--i:3"><b>jamais enregistrées</b></dd>
+        <dt class="about-ln" style="--i:4">shell</dt><dd class="about-ln" style="--i:4"><b>toujours là,</b> et <code>nano</code> ouvre l'éditeur</dd>
+      </dl>
     </div>
   </section>
 
-  <!-- SERVICES VIDEO -->
-  <section class="block" id="services">
-    <div class="wrap">
-      <div class="figure">
-        <div class="stage" data-tag="SERVICES.SCOPE">
-          <video autoplay muted loop playsinline preload="metadata">
-            <source src="kubo-services.webm" type="video/webm">
-            <source src="kubo-services.mp4" type="video/mp4">
-            <span lang="en">Your browser cannot play this video.</span><span lang="fr">Votre navigateur ne peut pas lire cette vidéo.</span>
-          </video>
-          <button class="play" type="button" data-play aria-label="Play the services demo with sound"
-                  data-aria-fr="Lire la démo des services avec le son">
-            <svg viewBox="0 0 76 76" aria-hidden="true">
-              <circle class="ring" cx="38" cy="38" r="36"/>
-              <path class="tri" d="M31 25 L54 38 L31 51 Z"/>
-            </svg>
-            <span lang="en">Play with sound</span><span lang="fr">Lire avec le son</span>
-          </button>
-        </div>
-        <div class="body">
-          <div class="fignum" lang="en">Fig. 03 · Services</div>
-          <div class="fignum" lang="fr">Fig. 03 · Services</div>
-          <h3 lang="en">Running now does not mean <span class="accent-s">running after a reboot</span></h3>
-          <h3 lang="fr">Actif maintenant ne veut pas dire <span class="accent-s">actif après un reboot</span></h3>
-          <p lang="en">A service can be running without being enabled at boot. It works until the next restart,
-            then it is gone. Kubo checks both states for every service and sorts them: failed, won't survive a
-            reboot, enabled but stopped, running, idle.</p>
-          <p lang="fr">Un service peut tourner sans être activé au démarrage. Il fonctionne jusqu'au prochain
-            redémarrage, puis disparaît. Kubo vérifie les deux états pour chaque service et les classe : en échec,
-            perdu au prochain reboot, activé mais arrêté, actif, inactif.</p>
-          <p lang="en">Select a service to see what it depends on and what depends on it. Start, stop, enable,
-            disable. Limit its memory or CPU without restarting it. Override its settings without touching the
-            original unit file. Turn any script on the server into a service.</p>
-          <p lang="fr">Sélectionnez un service pour voir ses dépendances et ce qui dépend de lui. Démarrez, arrêtez,
-            activez, désactivez. Limitez sa mémoire ou son CPU sans le redémarrer. Modifiez ses réglages sans
-            toucher au fichier d'origine. Transformez n'importe quel script du serveur en service.</p>
-          <p lang="en">Kubo refuses to stop SSH or the network. You would lose access to the server.</p>
-          <p lang="fr">Kubo refuse d'arrêter SSH ou le réseau. Vous perdriez l'accès au serveur.</p>
-          <div class="taglist" lang="en">
-            <span class="tag">Boot state</span><span class="tag">Dependencies</span><span class="tag">CPU and memory limits</span>
-            <span class="tag">Overrides</span><span class="tag">New service</span>
-          </div>
-          <div class="taglist" lang="fr">
-            <span class="tag">État au démarrage</span><span class="tag">Dépendances</span><span class="tag">Limites CPU et mémoire</span>
-            <span class="tag">Surcharges</span><span class="tag">Nouveau service</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- THE SCREENS, sideways -->
+  <section class="hs" id="screens" data-spy="screens" data-tone="amber" data-word="screens"
+           data-en="seven screens, read only until you act" data-fr="sept écrans, en lecture seule tant que vous n'agissez pas">
+    <div class="hs-sticky">
+      <div class="hs-track" id="track">
 
-  <!-- EVERYTHING -->
-  <section class="block" id="scopes">
-    <div class="wrap">
-      <div class="head">
-        <span class="kicker" lang="en">All screens</span>
-        <span class="kicker" lang="fr">Écrans</span>
-        <h2 lang="en">Seven screens</h2>
-        <h2 lang="fr">Sept écrans</h2>
-        <p lang="en">Everything is read-only until you act. Every change is confirmed or simulated first.</p>
-        <p lang="fr">Tout est en lecture seule tant que vous n'agissez pas. Chaque modification est confirmée ou
-          simulée avant d'être appliquée.</p>
+        <div class="hs-intro">
+          <span class="prompt">~ $ <b>ls</b> screens/</span>
+          <h2 lang="en">Seven screens.</h2>
+          <h2 lang="fr">Sept écrans.</h2>
+          <p class="muted" lang="en">Read only until you act.</p>
+          <p class="muted" lang="fr">Lecture seule tant que vous n'agissez pas.</p>
+          <p class="hint" style="margin-top:22px"><span lang="en">scroll</span><span lang="fr">défilez</span> <i>→</i></p>
+        </div>
+
+        <article class="panel t-violet" id="files" data-word-en="files" data-word-fr="fichiers"
+                 data-en="browse, edit, upload. no sftp client" data-fr="parcourir, modifier, envoyer. sans client sftp">
+          <div class="win"><div class="win-bar"><b>~/files</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body">
+              <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture>
+                <source src="kubo-files.webm" type="video/webm"><source src="kubo-files.mp4" type="video/mp4">
+              </video>
+            </div></div>
+          <div class="panel-foot">
+            <span class="num">01</span>
+            <h3 lang="en">files</h3><h3 lang="fr">fichiers</h3>
+            <p lang="en">Browse, edit, upload. No SFTP client.</p>
+            <p lang="fr">Parcourir, modifier, envoyer. Sans client SFTP.</p>
+            <div class="chips" lang="en"><span class="chip">permissions</span><span class="chip">root mode</span><span class="chip">shell here</span><span class="chip">video, audio</span></div>
+            <div class="chips" lang="fr"><span class="chip">droits</span><span class="chip">mode root</span><span class="chip">shell ici</span><span class="chip">vidéo, audio</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-cyan" id="network" data-word-en="network" data-word-fr="réseau"
+                 data-en="which ports are really open" data-fr="quels ports sont vraiment ouverts">
+          <div class="win"><div class="win-bar"><b>~/network</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body">
+              <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture>
+                <source src="kubo-network.webm" type="video/webm"><source src="kubo-network.mp4" type="video/mp4">
+              </video>
+            </div></div>
+          <div class="panel-foot">
+            <span class="num">02</span>
+            <h3 lang="en">network</h3><h3 lang="fr">réseau</h3>
+            <p lang="en">Which ports are really open to the internet.</p>
+            <p lang="fr">Quels ports sont vraiment ouverts sur Internet.</p>
+            <div class="chips" lang="en"><span class="chip">firewall</span><span class="chip">nginx</span><span class="chip">fail2ban</span><span class="chip">pm2, docker</span></div>
+            <div class="chips" lang="fr"><span class="chip">pare-feu</span><span class="chip">nginx</span><span class="chip">fail2ban</span><span class="chip">pm2, docker</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-green" id="services" data-word-en="services" data-word-fr="services"
+                 data-en="running now, and after a reboot" data-fr="actif maintenant, et après un reboot">
+          <div class="win"><div class="win-bar"><b>~/services</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body">
+              <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture>
+                <source src="kubo-services.webm" type="video/webm"><source src="kubo-services.mp4" type="video/mp4">
+              </video>
+            </div></div>
+          <div class="panel-foot">
+            <span class="num">03</span>
+            <h3>services</h3>
+            <p lang="en">Running now. Still running after a reboot?</p>
+            <p lang="fr">Actif maintenant. Et après un reboot ?</p>
+            <div class="chips" lang="en"><span class="chip">systemd</span><span class="chip">dependencies</span><span class="chip">cpu, memory limits</span><span class="chip">new service</span></div>
+            <div class="chips" lang="fr"><span class="chip">systemd</span><span class="chip">dépendances</span><span class="chip">limites cpu, mémoire</span><span class="chip">nouveau service</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-green" id="docker" data-word-en="docker" data-word-fr="docker"
+                 data-en="containers, logs, a shell inside" data-fr="conteneurs, logs, un shell dedans">
+          <div class="win"><div class="win-bar"><b>~/docker</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body"><div class="term">
+<span class="ln sh" style="--d:0">docker ps --format '{{.Names}}  {{.Status}}'</span>
+<span class="ln" style="--d:1">api         <span class="ok">Up 3 days</span></span>
+<span class="ln" style="--d:2">postgres    <span class="ok">Up 3 days</span></span>
+<span class="ln" style="--d:3">worker      <span class="warn">Restarting (1) 4 seconds ago</span></span>
+<span class="ln sh" style="--d:4">docker exec -it api sh</span>
+<span class="ln" style="--d:5">/app # <span class="cursor">_</span></span>
+            </div></div></div>
+          <div class="panel-foot">
+            <span class="num">04</span>
+            <h3>docker</h3>
+            <p lang="en">Containers, logs, and a shell inside each one.</p>
+            <p lang="fr">Conteneurs, logs, et un shell dans chacun.</p>
+            <div class="chips"><span class="chip">cpu</span><span class="chip">ports</span><span class="chip">volumes</span><span class="chip">logs</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-red" id="redis" data-word-en="redis" data-word-fr="redis"
+                 data-en="keys, memory, slow log. never keys *" data-fr="clés, mémoire, slowlog. jamais keys *">
+          <div class="win"><div class="win-bar"><b>~/redis</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body"><div class="term">
+<span class="ln sh" style="--d:0">redis-cli --scan --count 100</span>
+<span class="ln" style="--d:1">session:8f1c2a</span>
+<span class="ln" style="--d:2">cart:4410</span>
+<span class="ln" style="--d:3">queue:mail</span>
+<span class="ln sh" style="--d:4">redis-cli memory usage cart:4410</span>
+<span class="ln" style="--d:5">(integer) 1824</span>
+<span class="ln c" style="--d:6"><span lang="en"># KEYS * is never sent: it freezes a busy server</span><span lang="fr"># KEYS * n'est jamais envoyé : il bloque un serveur chargé</span></span>
+            </div></div></div>
+          <div class="panel-foot">
+            <span class="num">05</span>
+            <h3>redis</h3>
+            <p lang="en">Keys, memory, slow log. Never <code>KEYS *</code>.</p>
+            <p lang="fr">Clés, mémoire, slowlog. Jamais <code>KEYS *</code>.</p>
+            <div class="chips" lang="en"><span class="chip">json editing</span><span class="chip">ttl</span><span class="chip">cli</span></div>
+            <div class="chips" lang="fr"><span class="chip">édition json</span><span class="chip">ttl</span><span class="chip">cli</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-amber" id="packages" data-word-en="packages" data-word-fr="paquets"
+                 data-en="every install simulated first" data-fr="chaque installation d'abord simulée">
+          <div class="win"><div class="win-bar"><b>~/packages</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body"><div class="term">
+<span class="ln sh" style="--d:0">apt-get --simulate install nginx</span>
+<span class="ln" style="--d:1">Inst nginx-common (1.24.0-2)</span>
+<span class="ln" style="--d:2">Inst nginx (1.24.0-2)</span>
+<span class="ln c" style="--d:3"><span lang="en"># nothing changed yet</span><span lang="fr"># rien n'a encore changé</span></span>
+<span class="ln sh" style="--d:4">apt list --upgradable</span>
+<span class="ln" style="--d:5"><span class="warn">openssl</span>/stable-security 3.0.15 amd64</span>
+            </div></div></div>
+          <div class="panel-foot">
+            <span class="num">06</span>
+            <h3 lang="en">packages</h3><h3 lang="fr">paquets</h3>
+            <p lang="en">Every install is simulated before it runs.</p>
+            <p lang="fr">Chaque installation est simulée avant d'être lancée.</p>
+            <div class="chips" lang="en"><span class="chip">apt</span><span class="chip">upgrades</span><span class="chip">sources</span></div>
+            <div class="chips" lang="fr"><span class="chip">apt</span><span class="chip">mises à jour</span><span class="chip">sources</span></div>
+          </div>
+        </article>
+
+        <article class="panel t-violet" id="machine" data-word-en="machine" data-word-fr="machine"
+                 data-en="cpu, memory, load. live" data-fr="cpu, mémoire, charge. en direct">
+          <div class="win"><div class="win-bar"><b>~/machine</b><span>kubo</span><span class="ctl">_□×</span></div>
+            <div class="win-body"><div class="term">
+<span class="ln sh" style="--d:0">cat /proc/loadavg</span>
+<span class="ln" style="--d:1">0.42 0.37 0.31 2/311 48213</span>
+<span class="ln sh" style="--d:2">nproc</span>
+<span class="ln" style="--d:3">8</span>
+<span class="ln sh" style="--d:4">free -h</span>
+<span class="ln" style="--d:5">Mem:  7.8Gi total  <span class="ok">5.2Gi used</span>  2.6Gi free</span>
+            </div></div></div>
+          <div class="panel-foot">
+            <span class="num">07</span>
+            <h3>machine</h3>
+            <p lang="en">CPU, memory, load. Live.</p>
+            <p lang="fr">CPU, mémoire, charge. En direct.</p>
+            <div class="chips"><span class="chip">os</span><span class="chip">kernel</span><span class="chip">swap</span><span class="chip">disks</span></div>
+          </div>
+        </article>
+
       </div>
-      <div class="scopes">
-        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">SCOPE</div><h4>The machine</h4>
-          <p>OS, kernel, CPU, memory, swap and load, live.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">SCOPE</div><h4>La machine</h4>
-          <p>OS, noyau, CPU, mémoire, swap et charge, en direct.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--violet)">FILES</div><h4>Files</h4>
-          <p>Browse, edit, permissions, upload, download and a shell.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--violet)">FICHIERS</div><h4>Fichiers</h4>
-          <p>Navigation, édition, droits, envoi, téléchargement et un shell.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--cyan)">NETWORK</div><h4>Exposure</h4>
-          <p>Listening ports, firewall rules, and what is actually reachable.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--cyan)">RÉSEAU</div><h4>Exposition</h4>
-          <p>Ports en écoute, règles du pare-feu, et ce qui est réellement accessible.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--teal)">SERVICES</div><h4>systemd</h4>
-          <p>Units, boot state, dependencies, limits and journal.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">SERVICES</div><h4>systemd</h4>
-          <p>Unités, état au démarrage, dépendances, limites et journal.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Containers</h4>
-          <p>State, resources, ports, volumes, logs, and a shell inside each container.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--teal)">DOCKER</div><h4>Conteneurs</h4>
-          <p>État, ressources, ports, volumes, logs, et un shell dans chaque conteneur.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Keys and memory</h4>
-          <p>Keys by type, JSON editing, memory usage, slow log and a CLI. Never runs <code>KEYS *</code>.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--magenta)">REDIS</div><h4>Clés et mémoire</h4>
-          <p>Clés par type, édition JSON, usage mémoire, slowlog et une CLI. N'exécute jamais <code>KEYS *</code>.</p></div>
-        <div class="scope" lang="en"><div class="n" style="color:var(--amber)">PACKAGES</div><h4>apt</h4>
-          <p>Installed packages and pending upgrades. Every install is simulated before it runs.</p></div>
-        <div class="scope" lang="fr"><div class="n" style="color:var(--amber)">PAQUETS</div><h4>apt</h4>
-          <p>Paquets installés et mises à jour en attente. Chaque installation est simulée avant d'être lancée.</p></div>
+      <div class="hs-meter t-amber" id="meter">
+        <span><b id="meter-n">00</b> / 07</span><span class="bar-in"><i id="meter-bar"></i></span>
+        <span id="meter-word"></span>
       </div>
     </div>
   </section>
 
   <!-- SECURITY -->
-  <section class="block" id="security">
-    <div class="wrap">
-      <div class="sec">
-        <div>
-          <span class="kicker" lang="en">Security</span>
-          <span class="kicker" lang="fr">Sécurité</span>
-          <h2 lang="en" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Built to hold root access</h2>
-          <h2 lang="fr" style="font-size:clamp(28px,4vw,40px);text-transform:uppercase;margin:.4em 0 .3em">Conçu pour détenir un accès root</h2>
-          <p lang="en" style="color:var(--dim);margin:0">Kubo needs SSH access, and sometimes root. This is how it handles them.</p>
-          <p lang="fr" style="color:var(--dim);margin:0">Kubo a besoin d'un accès SSH, parfois root. Voici comment il les gère.</p>
-          <p class="note" lang="en">Kubo only connects to the servers you add. Nothing is sent anywhere else.</p>
-          <p class="note" lang="fr">Kubo ne se connecte qu'aux serveurs que vous ajoutez. Rien n'est envoyé ailleurs.</p>
-        </div>
-        <div>
-          <ul>
-            <li lang="en"><span class="mono">01</span><div><b>Host keys verified</b><span>On first connection, the server's fingerprint is shown for approval. If the key changes later, the connection is refused.</span></div></li>
-            <li lang="fr"><span class="mono">01</span><div><b>Clés d'hôte vérifiées</b><span>À la première connexion, l'empreinte du serveur est affichée pour validation. Si la clé change ensuite, la connexion est refusée.</span></div></li>
-            <li lang="en"><span class="mono">02</span><div><b>Passwords not kept</b><span>Passwords stay in memory only while they are needed, then they are erased. They are saved only if you ask, encrypted with Windows DPAPI.</span></div></li>
-            <li lang="fr"><span class="mono">02</span><div><b>Mots de passe non conservés</b><span>Les mots de passe restent en mémoire le temps nécessaire, puis sont effacés. Ils ne sont enregistrés que si vous le demandez, chiffrés avec DPAPI sous Windows.</span></div></li>
-            <li lang="en"><span class="mono">03</span><div><b>Root on demand</b><span>Kubo never elevates on its own. You enable root once per session, and every window shows <code>Kubo_root</code> while it is on.</span></div></li>
-            <li lang="fr"><span class="mono">03</span><div><b>Root à la demande</b><span>Kubo ne passe jamais root de lui-même. Vous l'activez une fois par session, et chaque fenêtre affiche <code>Kubo_root</code> tant qu'il est actif.</span></div></li>
-            <li lang="en"><span class="mono">04</span><div><b>No surprise deletions</b><span>Destructive actions require typing the name of the target. Root commands are fixed templates, never built from your input.</span></div></li>
-            <li lang="fr"><span class="mono">04</span><div><b>Aucune suppression par erreur</b><span>Les actions destructives demandent de retaper le nom de la cible. Les commandes root sont des modèles fixes, jamais construites à partir de votre saisie.</span></div></li>
-            <li lang="en"><span class="mono">05</span><div><b>Local log</b><span>Every command is logged on your computer. Outputs and file contents are never stored.</span></div></li>
-            <li lang="fr"><span class="mono">05</span><div><b>Journal local</b><span>Chaque commande est journalisée sur votre ordinateur. Les sorties et le contenu des fichiers ne sont jamais enregistrés.</span></div></li>
-          </ul>
-        </div>
+  <section class="wrap section" id="security" data-spy="security" data-tone="green" data-word-en="security"
+           data-word-fr="sécurité" data-en="how kubo holds ssh and root" data-fr="comment kubo tient ssh et root">
+    <div class="tile t-green reveal">
+      <span class="name" lang="en">security</span><span class="name" lang="fr">sécurité</span>
+      <h2 lang="en">Root, held carefully.</h2>
+      <h2 lang="fr">Root, tenu de près.</h2>
+      <div class="log" lang="en">
+        <div class="ln" style="--i:0"><span>[ <span class="ok">ok</span> ]</span><span>host key checked, refused if it ever changes</span></div>
+        <div class="ln" style="--i:1"><span>[ <span class="ok">ok</span> ]</span><span>passwords erased after use, saved only if you ask</span></div>
+        <div class="ln" style="--i:2"><span>[ <span class="ok">ok</span> ]</span><span>root only when you turn it on</span></div>
+        <div class="ln" style="--i:3"><span>[ <span class="ok">ok</span> ]</span><span>type the name before anything is deleted</span></div>
+        <div class="ln" style="--i:4"><span>[ <span class="ok">ok</span> ]</span><span>ssh and the network are never stopped</span></div>
+      </div>
+      <div class="log" lang="fr">
+        <div class="ln" style="--i:0"><span>[ <span class="ok">ok</span> ]</span><span>clé d'hôte vérifiée, refusée si elle change</span></div>
+        <div class="ln" style="--i:1"><span>[ <span class="ok">ok</span> ]</span><span>mots de passe effacés après usage, gardés seulement si vous le demandez</span></div>
+        <div class="ln" style="--i:2"><span>[ <span class="ok">ok</span> ]</span><span>root seulement quand vous l'activez</span></div>
+        <div class="ln" style="--i:3"><span>[ <span class="ok">ok</span> ]</span><span>le nom à taper avant toute suppression</span></div>
+        <div class="ln" style="--i:4"><span>[ <span class="ok">ok</span> ]</span><span>ssh et le réseau ne sont jamais arrêtés</span></div>
       </div>
     </div>
   </section>
 
   <!-- DOWNLOAD -->
-  <section class="block" id="download" style="text-align:center">
-    <div class="wrap">
-      <span class="kicker" style="justify-content:center" lang="en">Download</span>
-      <span class="kicker" style="justify-content:center" lang="fr">Télécharger</span>
-      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="en">Free. No account.</h2>
-      <h2 style="text-transform:uppercase;margin:.4em 0 .3em" lang="fr">Gratuit. Sans compte.</h2>
-      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="en">Java is included. There is nothing
-        to configure: enter your server address and connect. Every package contains the same application.</p>
-      <p style="color:var(--dim);max-width:600px;margin:0 auto 6px" lang="fr">Java est inclus. Il n'y a rien à
-        configurer : entrez l'adresse de votre serveur et connectez-vous. Tous les paquets contiennent la même
-        application.</p>
+  <section class="wrap section" id="download" data-spy="download" data-tone="red" data-word-en="download"
+           data-word-fr="télécharger" data-en="free. no account" data-fr="gratuit. sans compte">
+    <div class="tile t-red reveal">
+      <span class="name" lang="en">download</span><span class="name" lang="fr">télécharger</span>
+      <span class="tag" data-version>v1.5.0</span>
+      <h2 lang="en">Free. No account.</h2>
+      <h2 lang="fr">Gratuit. Sans compte.</h2>
+      <p class="total" data-dl-total hidden lang="en"><b data-dl-total-n></b>downloads so far</p>
+      <p class="total" data-dl-total hidden lang="fr"><b data-dl-total-n></b>téléchargements à ce jour</p>
 
-      <div class="platform">Windows 10 / 11</div>
-
-      <div class="gets">
-        <div class="get lead">
-          <span class="n" lang="en">01 · Installer</span>
-          <span class="n" lang="fr">01 · Installeur</span>
-          <h3>Kubo-Setup.exe</h3>
-          <p lang="en">Installs Kubo with a Start menu shortcut. A new version replaces the previous one.</p>
-          <p lang="fr">Installe Kubo avec un raccourci dans le menu Démarrer. Une nouvelle version remplace la
-            précédente.</p>
-          <div class="foot" lang="en">
-            <a class="btn primary" href="#" data-download data-explain="exe">Download for Windows</a>
-            <span class="size">75 MB</span>
-          </div>
-          <div class="foot" lang="fr">
-            <a class="btn primary" href="#" data-download data-explain="exe">Télécharger pour Windows</a>
-            <span class="size">75 Mo</span>
-          </div>
-        </div>
-
-        <div class="get" data-zip-card hidden>
-          <span class="n">02 · Portable</span>
-          <h3 lang="en">No installation</h3>
-          <h3 lang="fr">Sans installation</h3>
-          <p lang="en">Unzip it anywhere and run it. No administrator rights, nothing written to the registry.
-            Delete the folder to remove it.</p>
-          <p lang="fr">Décompressez où vous voulez et lancez. Pas de droits administrateur, rien dans le registre.
-            Supprimez le dossier pour le retirer.</p>
-          <div class="foot" lang="en">
-            <a class="btn" href="#" data-zip data-explain="zip">Download the .zip</a>
-            <span class="size">73 MB</span>
-          </div>
-          <div class="foot" lang="fr">
-            <a class="btn" href="#" data-zip data-explain="zip">Télécharger le .zip</a>
-            <span class="size">73 Mo</span>
-          </div>
-        </div>
-
-        <div class="get" data-winget-card hidden>
-          <span class="n">03 · winget</span>
-          <h3 lang="en">From the terminal</h3>
-          <h3 lang="fr">Depuis le terminal</h3>
-          <p lang="en">Install it with Windows' package manager. <code>winget upgrade</code> keeps it up to date.</p>
-          <p lang="fr">Installez avec le gestionnaire de paquets de Windows. <code>winget upgrade</code> le garde à
-            jour.</p>
-          <div class="cmd">
-            <code data-winget-command>winget install Gemmie.Kubo</code>
-            <button type="button" data-copy="[data-winget-command]" data-explain="winget"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
-          </div>
-        </div>
+      <div class="tabs" role="tablist">
+        <button class="act" type="button" data-tab-button="win">windows</button>
+        <button class="act" type="button" data-tab-button="mac">macos</button>
+        <button class="act" type="button" data-tab-button="linux" data-linux-card hidden>linux</button>
       </div>
 
-      <p class="smallprint" lang="en">64-bit · v1.4.0 · Free<br>
-        The installer is not signed yet. If Windows warns about an unknown publisher, click
-        <b>More info → Run anyway</b>.</p>
-      <p class="smallprint" lang="fr">64 bits · v1.4.0 · Gratuit<br>
-        L'installeur n'est pas encore signé. Si Windows signale un éditeur inconnu, cliquez sur
-        <b>Informations complémentaires → Exécuter quand même</b>.</p>
-
-      <div class="platform" data-linux-card hidden lang="en">Linux desktop</div>
-      <div class="platform" data-linux-card hidden lang="fr">Bureau Linux</div>
-
-      <div class="gets" data-linux-card hidden>
-        <div class="get">
-          <span class="n">Debian · Ubuntu</span>
-          <h3>.deb</h3>
-          <p lang="en">Debian, Ubuntu, Mint, Pop!_OS. Adds Kubo to the applications menu.</p>
-          <p lang="fr">Debian, Ubuntu, Mint, Pop!_OS. Ajoute Kubo au menu des applications.</p>
-          <div class="foot" lang="en">
-            <a class="btn" href="#" data-deb data-explain="deb">Download the .deb</a>
+      <div class="pane" data-tab-pane="win">
+        <div class="gets">
+          <div class="get lead">
+            <span class="n" lang="en">installer</span><span class="n" lang="fr">installeur</span>
+            <h3>Kubo-Setup.exe</h3>
+            <div class="foot">
+              <a class="btn" href="#" data-download data-explain="exe" lang="en">download</a>
+              <a class="btn" href="#" data-download data-explain="exe" lang="fr">télécharger</a>
+              <span data-size="exe" lang="en">76.5 MB</span><span data-size="exe" lang="fr">76,5 Mo</span>
+              <span class="count" data-count="exe" hidden lang="en"></span><span class="count" data-count="exe" hidden lang="fr"></span>
+            </div>
           </div>
-          <div class="foot" lang="fr">
-            <a class="btn" href="#" data-deb data-explain="deb">Télécharger le .deb</a>
+          <div class="get" data-zip-card hidden>
+            <span class="n">portable</span>
+            <h3>.zip</h3>
+            <div class="foot">
+              <a class="act" href="#" data-zip data-explain="zip" lang="en">download</a>
+              <a class="act" href="#" data-zip data-explain="zip" lang="fr">télécharger</a>
+              <span data-size="zip" lang="en">74.8 MB</span><span data-size="zip" lang="fr">74,8 Mo</span>
+              <span class="count" data-count="zip" hidden lang="en"></span><span class="count" data-count="zip" hidden lang="fr"></span>
+            </div>
           </div>
-        </div>
-
-        <div class="get">
-          <span class="n">Fedora · RHEL · openSUSE</span>
-          <h3>.rpm</h3>
-          <p lang="en">Fedora, RHEL, Rocky, Alma, openSUSE.</p>
-          <p lang="fr">Fedora, RHEL, Rocky, Alma, openSUSE.</p>
-          <div class="foot" lang="en">
-            <a class="btn" href="#" data-rpm data-explain="rpm">Download the .rpm</a>
-          </div>
-          <div class="foot" lang="fr">
-            <a class="btn" href="#" data-rpm data-explain="rpm">Télécharger le .rpm</a>
+          <div class="get" data-winget-card hidden>
+            <span class="n">winget</span>
+            <div class="cmd">
+              <code data-winget-command>winget install Gemmie.Kubo</code>
+              <button type="button" data-copy="[data-winget-command]" data-explain="winget"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
+            </div>
           </div>
         </div>
-
-        <div class="get">
-          <span class="n" lang="en">Other distributions</span>
-          <span class="n" lang="fr">Autres distributions</span>
-          <h3>.tar.gz</h3>
-          <p lang="en">Extract it and run <code>Kubo/bin/Kubo</code>. Nothing is installed.</p>
-          <p lang="fr">Décompressez et lancez <code>Kubo/bin/Kubo</code>. Rien n'est installé.</p>
-          <div class="foot" lang="en">
-            <a class="btn" href="#" data-targz data-explain="targz">Download the archive</a>
-          </div>
-          <div class="foot" lang="fr">
-            <a class="btn" href="#" data-targz data-explain="targz">Télécharger l'archive</a>
-          </div>
-        </div>
+        <p class="small note" lang="en">Not signed yet: if Windows warns, <b>More info → Run anyway</b>.</p>
+        <p class="small note" lang="fr">Pas encore signé : si Windows prévient, <b>Informations complémentaires → Exécuter quand même</b>.</p>
       </div>
 
-      <p class="smallprint" data-linux-card hidden lang="en">x86-64 · v1.4.0 · Requires a desktop session and GTK 3<br>
-        Kubo runs on your computer, not on the server. On Linux, passwords are never saved. Key files are.</p>
-      <p class="smallprint" data-linux-card hidden lang="fr">x86-64 · v1.4.0 · Nécessite une session graphique et GTK 3<br>
-        Kubo tourne sur votre ordinateur, pas sur le serveur. Sous Linux, les mots de passe ne sont jamais
-        enregistrés. Les fichiers de clé, si.</p>
+      <div class="pane" data-tab-pane="mac" hidden>
+        <div class="gets">
+          <div class="get lead">
+            <span class="n">apple silicon</span>
+            <h3>Kubo-macos-aarch64.dmg</h3>
+            <div class="foot">
+              <a class="btn" href="https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-macos-aarch64.dmg" data-explain="macarm" lang="en">download</a>
+              <a class="btn" href="https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-macos-aarch64.dmg" data-explain="macarm" lang="fr">télécharger</a>
+              <span lang="en">78.2 MB</span><span lang="fr">78,2 Mo</span>
+            </div>
+          </div>
+          <div class="get">
+            <span class="n">intel</span>
+            <h3>Kubo-macos-x86_64.dmg</h3>
+            <div class="foot">
+              <a class="act" href="https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-macos-x86_64.dmg" data-explain="macintel" lang="en">download</a>
+              <a class="act" href="https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-macos-x86_64.dmg" data-explain="macintel" lang="fr">télécharger</a>
+              <span lang="en">79.9 MB</span><span lang="fr">79,9 Mo</span>
+            </div>
+          </div>
+        </div>
+        <p class="small note" lang="en">Not notarized yet: the first time, Control-click Kubo and choose <b>Open</b>.</p>
+        <p class="small note" lang="fr">Pas encore notarisé : la première fois, clic avec Contrôle sur Kubo, puis <b>Ouvrir</b>.</p>
+      </div>
+
+      <div class="pane" data-tab-pane="linux" hidden>
+        <div class="gets">
+          <div class="get lead">
+            <span class="n">debian · ubuntu</span>
+            <h3>.deb</h3>
+            <div class="foot">
+              <a class="btn" href="#" data-deb data-explain="deb" lang="en">download</a>
+              <a class="btn" href="#" data-deb data-explain="deb" lang="fr">télécharger</a>
+              <span data-size="deb" lang="en">57.9 MB</span><span data-size="deb" lang="fr">57,9 Mo</span>
+              <span class="count" data-count="deb" hidden lang="en"></span><span class="count" data-count="deb" hidden lang="fr"></span>
+            </div>
+          </div>
+          <div class="get">
+            <span class="n">fedora · rhel · opensuse</span>
+            <h3>.rpm</h3>
+            <div class="foot">
+              <a class="act" href="#" data-rpm data-explain="rpm" lang="en">download</a>
+              <a class="act" href="#" data-rpm data-explain="rpm" lang="fr">télécharger</a>
+              <span data-size="rpm" lang="en">76.5 MB</span><span data-size="rpm" lang="fr">76,5 Mo</span>
+              <span class="count" data-count="rpm" hidden lang="en"></span><span class="count" data-count="rpm" hidden lang="fr"></span>
+            </div>
+          </div>
+          <div class="get">
+            <span class="n" lang="en">any distribution</span><span class="n" lang="fr">toute distribution</span>
+            <h3>.tar.gz</h3>
+            <div class="foot">
+              <a class="act" href="#" data-targz data-explain="targz" lang="en">download</a>
+              <a class="act" href="#" data-targz data-explain="targz" lang="fr">télécharger</a>
+              <span data-size="targz" lang="en">76.8 MB</span><span data-size="targz" lang="fr">76,8 Mo</span>
+              <span class="count" data-count="targz" hidden lang="en"></span><span class="count" data-count="targz" hidden lang="fr"></span>
+            </div>
+          </div>
+        </div>
+        <p class="small note" lang="en">x86-64, GTK 3. Kubo runs on your computer, not on the server.</p>
+        <p class="small note" lang="fr">x86-64, GTK 3. Kubo tourne sur votre ordinateur, pas sur le serveur.</p>
+      </div>
     </div>
   </section>
 
   <!-- CONTACT -->
-  <section class="block" id="contact">
-    <div class="wrap">
-      <div class="head">
-        <span class="kicker">Contact</span>
-        <h2 lang="en">Built by one developer</h2>
-        <h2 lang="fr">Développé par une seule personne</h2>
-        <p lang="en">Kubo is designed and maintained by <b>Awassi Nell Damas</b> at <b>Gemmie</b>, in Kigali. For a
-          bug, a feature request or a project, write to me directly. I reply within 24 hours.</p>
-        <p lang="fr">Kubo est conçu et maintenu par <b>Awassi Nell Damas</b> chez <b>Gemmie</b>, à Kigali. Pour un
-          bug, une demande de fonctionnalité ou un projet, écrivez-moi directement. Je réponds sous 24 heures.</p>
+  <section class="wrap section" id="contact" data-spy="contact" data-tone="violet" data-word-en="contact"
+           data-word-fr="contact" data-en="one developer, in kigali" data-fr="un seul développeur, à kigali">
+    <div class="tile t-violet reveal">
+      <span class="name">contact</span>
+      <h2 lang="en">One developer, in Kigali.</h2>
+      <h2 lang="fr">Un seul développeur, à Kigali.</h2>
+      <p class="muted" lang="en">Awassi Nell Damas, at Gemmie. A bug, an idea, a project: I reply within 24 hours.</p>
+      <p class="muted" lang="fr">Awassi Nell Damas, chez Gemmie. Un bug, une idée, un projet : réponse sous 24 heures.</p>
+      <div class="row">
+        <a class="btn" href="mailto:nellawassi@gmail.com?subject=Kubo" style="text-transform:none">nellawassi@gmail.com</a>
+        <a class="act" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">issues</a>
+        <a class="act" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">tickets</a>
+        <a class="act" href="https://gemmi-e.com/contact" target="_blank" rel="noopener">portfolio</a>
+        <a class="act" href="https://github.com/Lightminedust" target="_blank" rel="noopener">github</a>
       </div>
-      <div class="links">
-        <a class="link" href="https://gemmi-e.com/contact" target="_blank" rel="noopener">
-          <span class="n">01 · Portfolio</span>
-          <b>gemmi-e.com</b>
-          <span class="d" lang="en">Web, mobile, backend and Linux infrastructure. Contact form for projects.</span>
-          <span class="d" lang="fr">Web, mobile, backend et infrastructure Linux. Formulaire de contact pour vos projets.</span>
-          <span class="go" lang="en">Start a project →</span>
-          <span class="go" lang="fr">Démarrer un projet →</span>
-        </a>
-        <a class="link" href="https://github.com/Lightminedust" target="_blank" rel="noopener">
-          <span class="n">02 · GitHub</span>
-          <b>github.com/Lightminedust</b>
-          <span class="d" lang="en">My other projects.</span>
-          <span class="d" lang="fr">Mes autres projets.</span>
-          <span class="go" lang="en">Follow →</span>
-          <span class="go" lang="fr">Suivre →</span>
-        </a>
-        <a class="link" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener">
-          <span class="n">03 · Kubo</span>
-          <b>github.com/Lightminedust/Kubo</b>
-          <span class="d" lang="en">Releases and issues. Report bugs here.</span>
-          <span class="d" lang="fr">Versions et tickets. Signalez les bugs ici.</span>
-          <span class="go" lang="en">Open the repository →</span>
-          <span class="go" lang="fr">Ouvrir le dépôt →</span>
-        </a>
-      </div>
-      <div class="mailrow">
-        <span class="kicker" lang="en">Email</span>
-        <span class="kicker" lang="fr">Par email</span>
-        <a class="btn primary" href="mailto:nellawassi@gmail.com?subject=Kubo">nellawassi@gmail.com</a>
-        <span class="meta" lang="en">Reply within 24 hours</span>
-        <span class="meta" lang="fr">Réponse sous 24 heures</span>
-      </div>
-
-      <div class="support">
-        <span class="kicker" lang="en">Support</span>
-        <span class="kicker" lang="fr">Soutenir</span>
-        <p lang="en">Kubo is free, with no subscription and no account. It is developed by an independent student,
-          on personal time and a personal server budget.</p>
-        <p lang="fr">Kubo est gratuit, sans abonnement ni compte. Il est développé par un étudiant indépendant, sur
-          son temps libre et avec son propre budget serveur.</p>
-        <p lang="en">If it is useful to you, a star on GitHub or a shared link helps.</p>
-        <p lang="fr">S'il vous est utile, une étoile sur GitHub ou un lien partagé aide.</p>
-        <div class="row">
-          <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">★ Star on GitHub</a>
-          <a class="btn primary" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">★ Étoile sur GitHub</a>
-          <div class="cmd">
-            <code id="share-link">https://kubo.gemmi-e.com</code>
-            <button type="button" data-copy="#share-link"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
-          </div>
+      <div class="row">
+        <span class="k" lang="en">support</span><span class="k" lang="fr">soutenir</span>
+        <span class="muted" lang="en">free, made on personal time. a star helps.</span>
+        <span class="muted" lang="fr">gratuit, fait sur du temps libre. une étoile aide.</span>
+        <a class="act" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">★ star</a>
+        <a class="act" href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">★ étoile</a>
+        <div class="cmd">
+          <code id="share-link">https://kubo.gemmi-e.com</code>
+          <button type="button" data-copy="#share-link"><span lang="en">Copy</span><span lang="fr">Copier</span></button>
         </div>
       </div>
     </div>
@@ -871,8 +832,8 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
     <h3 id="sheet-title"></h3>
     <ol id="sheet-steps"></ol>
     <div class="sheet-foot">
-      <span class="sheet-note" id="sheet-note"></span>
-      <button type="button" class="sheet-close" id="sheet-close"><span lang="en">Got it</span><span lang="fr">Compris</span></button>
+      <span class="small" id="sheet-note"></span>
+      <button type="button" class="btn" id="sheet-close"><span lang="en">Got it</span><span lang="fr">Compris</span></button>
     </div>
   </div>
 </div>
@@ -881,36 +842,23 @@ footer .legal{font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-h
 
 <footer>
   <div class="wrap">
-    <div>
-      <div class="brand" style="font-size:20px;margin-bottom:10px"><svg class="mark" viewBox="0 0 60 50"><use href="#kmark"/></svg>Kubo</div>
-      <div class="legal" lang="en">A Gemmie product.</div>
-      <div class="legal" lang="fr">Un produit Gemmie.</div>
-      <div class="footlinks">
-        <a href="https://gemmi-e.com/contact" target="_blank" rel="noopener">Portfolio</a>
-        <a href="https://github.com/Lightminedust" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="en">Kubo repository</a>
-        <a href="https://github.com/Lightminedust/Kubo" target="_blank" rel="noopener" lang="fr">Dépôt Kubo</a>
-        <a href="mailto:nellawassi@gmail.com?subject=Kubo">Email</a>
-      </div>
-    </div>
-    <div class="legal" style="text-align:right" lang="en">
-      Kubo is the intellectual property of Gemmie.<br>
-      © 2026 Gemmie · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
-    </div>
-    <div class="legal" style="text-align:right" lang="fr">
-      Kubo est la propriété intellectuelle de Gemmie.<br>
-      © 2026 Gemmie · <a href="mailto:nellawassi@gmail.com">nellawassi@gmail.com</a>
-    </div>
+    <span><b style="color:var(--ink)">Kubo<span class="cursor" style="color:var(--red)">_</span></b>
+      <span lang="en">a Gemmie product. © 2026 Gemmie</span><span lang="fr">un produit Gemmie. © 2026 Gemmie</span></span>
+    <span lang="en">Kubo is the intellectual property of Gemmie.</span>
+    <span lang="fr">Kubo est la propriété intellectuelle de Gemmie.</span>
   </div>
 </footer>
 
+<div class="status" id="status" aria-hidden="true">
+  <span class="mode" id="status-mode">kubo</span>
+  <span class="msg" id="status-msg"></span>
+  <span class="fact" data-dl-total hidden lang="en"><b data-dl-total-n></b>downloads</span>
+  <span class="fact" data-dl-total hidden lang="fr"><b data-dl-total-n></b>téléchargements</span>
+  <span class="fact" data-version>v1.5.0</span>
+  <span class="fact" id="status-pct">top</span>
+</div>
+
 <script>
-/* ============================================================
-   DOWNLOAD LINK — the one line to change when the installer is online.
-   Leave it "" for now; every "Download" / "Get Kubo" button stays a placeholder.
-   Put the real URL between the quotes (e.g. "https://kubo.gemmie.rw/Kubo-0.1.0.exe")
-   and all three buttons update automatically.
-   ============================================================ */
 /* The language switch. The head has already picked one; this only records a deliberate change, so it
    sticks on the next visit and beats both the path and the browser. */
 document.querySelectorAll('[data-lang-switch]').forEach(function(button){
@@ -919,7 +867,7 @@ document.querySelectorAll('[data-lang-switch]').forEach(function(button){
     document.documentElement.setAttribute('data-lang', next);
     document.documentElement.lang = next;
     document.title = next === 'fr' ? TITLES.fr : TITLES.en;
-    spokenLabels(next);
+    if (window.kuboRelabel) { window.kuboRelabel(); }
     try { localStorage.setItem('kubo-lang', next); } catch(e){}
   });
 });
@@ -928,29 +876,41 @@ var TITLES = {
   en: "Kubo · See and manage your Linux server",
   fr: "Kubo · Voyez et gérez votre serveur Linux"
 };
-/* An aria-label cannot carry a lang, so the spoken label is swapped with the rest. The English one
-   stays in the attribute and the French one waits in data-aria-fr beside it. */
-function spokenLabels(lang){
-  document.querySelectorAll('[data-aria-fr]').forEach(function(node){
-    if (!node.dataset.ariaEn) { node.dataset.ariaEn = node.getAttribute('aria-label'); }
-    node.setAttribute('aria-label', lang === 'fr' ? node.dataset.ariaFr : node.dataset.ariaEn);
-  });
-}
 if (document.documentElement.getAttribute('data-lang') === 'fr') { document.title = TITLES.fr; }
-spokenLabels(document.documentElement.getAttribute('data-lang'));
 
-var DOWNLOAD_URL = "https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-Setup.exe";
-var ZIP_URL      = "https://github.com/Lightminedust/Kubo/releases/latest/download/Kubo-windows-portable.zip";
+/* Every download goes through gemme-stats on this same host: /download/… counts the click, then sends
+   the browser on to the file on GitHub Releases. These names never change between versions, the server
+   always points them at the latest release. */
+var DOWNLOAD_URL = "/download/Kubo-Setup.exe";
+var ZIP_URL      = "/download/Kubo-windows-portable.zip";
 
 /* The winget package identifier, once Microsoft's index has accepted it. Leave it "" until the pull
    request to microsoft/winget-pkgs is merged: the card stays hidden rather than showing a command that
    fails. See packaging/winget/README.md. */
 var WINGET_ID = "";
 
-/* The release whose Linux packages are online. Their file names carry the version, so this is the one line
-   to bump when a new release is published — and the one to leave "" while there are none, which keeps the
-   whole Linux block hidden instead of offering three links that 404. */
-var LINUX_VERSION = "1.4.0";
+/* Where the click counter listens, on this same host so there is no third party and no CORS. Leave it ""
+   to switch counting off entirely: nothing is sent and nothing breaks. The service behind it is in
+   site/counter, it stores counts and nothing else, and it is the only thing on this page that talks to a
+   server at all. */
+var COUNTER_URL = "/api/count";
+
+/* Leave it "" while no release has Linux packages: the whole Linux block stays hidden instead of offering
+   three links that 404. The links themselves no longer carry the version; this one is only shown in the
+   install commands until /_stats/public answers with the current one. */
+var LINUX_VERSION = "1.5.0";
+
+/* Where the download counts come from: the same server that counts the clicks. "" switches it off. */
+var STATS_URL = "/_stats/public";
+
+/* The link of each package, by the name the page uses for it (data-explain, data-count, data-size). */
+var LINKS = {
+  exe:   DOWNLOAD_URL,
+  zip:   ZIP_URL,
+  deb:   "/download/kubo_amd64.deb",
+  rpm:   "/download/kubo.x86_64.rpm",
+  targz: "/download/Kubo-linux-x86_64.tar.gz"
+};
 
 if (DOWNLOAD_URL) {
   document.querySelectorAll('[data-download]').forEach(function(a){ a.href = DOWNLOAD_URL; });
@@ -965,11 +925,10 @@ if (WINGET_ID) {
 }
 
 if (LINUX_VERSION) {
-  var release = "https://github.com/Lightminedust/Kubo/releases/download/v" + LINUX_VERSION + "/";
   var linux = {
-    '[data-deb]':   release + "kubo_" + LINUX_VERSION + "_amd64.deb",
-    '[data-rpm]':   release + "kubo-" + LINUX_VERSION + "-1.x86_64.rpm",
-    '[data-targz]': release + "Kubo-linux-x86_64.tar.gz"
+    '[data-deb]':   LINKS.deb,
+    '[data-rpm]':   LINKS.rpm,
+    '[data-targz]': LINKS.targz
   };
   Object.keys(linux).forEach(function(selector){
     document.querySelectorAll(selector).forEach(function(a){ a.href = linux[selector]; });
@@ -977,30 +936,153 @@ if (LINUX_VERSION) {
   document.querySelectorAll('[data-linux-card]').forEach(function(c){ c.hidden = false; });
 }
 
+/* How many times each package was downloaded, the current version and the real sizes, read once from
+   STATS_URL. If it does not answer, the page stays as written: the buttons work, the counters stay hidden.
+   Every element carries its own lang (one copy per language), so each is written in its own language and
+   switching EN/FR needs nothing more. */
+var LIVE = { version: null, total: null, count: {}, size: {} };
+
+function langOf(node){
+  var holder = node.closest('[lang]');
+  return holder && holder.getAttribute('lang') === 'fr' ? 'fr' : 'en';
+}
+function formatCount(n, lang){ return n.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US'); }
+function formatSize(bytes, lang){
+  var mb = bytes / 1048576, text = mb >= 100 ? String(Math.round(mb)) : mb.toFixed(1);
+  return lang === 'fr' ? text.replace('.', ',') + ' Mo' : text + ' MB';
+}
+function bump(node){ node.classList.remove('bump'); void node.offsetWidth; node.classList.add('bump'); }
+
+function paintDownloads(changed){
+  document.querySelectorAll('[data-count]').forEach(function(node){
+    var key = node.getAttribute('data-count'), n = LIVE.count[key];
+    if (n == null) return;
+    node.textContent = '↓ ' + formatCount(n, langOf(node));
+    node.hidden = false;
+    if (key === changed) bump(node);
+  });
+  document.querySelectorAll('[data-size]').forEach(function(node){
+    var bytes = LIVE.size[node.getAttribute('data-size')];
+    if (bytes) node.textContent = formatSize(bytes, langOf(node));
+  });
+  if (LIVE.total != null) {
+    document.querySelectorAll('[data-dl-total]').forEach(function(line){
+      var n = line.querySelector('[data-dl-total-n]');
+      n.textContent = formatCount(LIVE.total, langOf(line));
+      line.hidden = false;
+      if (changed) bump(n);
+    });
+  }
+  if (LIVE.version) {
+    document.querySelectorAll('[data-version]').forEach(function(node){ node.textContent = LIVE.version; });
+  }
+}
+
+if (STATS_URL && window.fetch) {
+  var keyByLink = {};
+  Object.keys(LINKS).forEach(function(key){ keyByLink[LINKS[key]] = key; });
+
+  fetch(STATS_URL, { cache: 'no-store' })
+    .then(function(response){ return response.ok ? response.json() : null; })
+    .then(function(data){
+      var kubo = data && data.apps && data.apps.kubo;
+      if (!kubo) return;
+      LIVE.version = kubo.version;
+      LIVE.total = kubo.downloads;
+      (kubo.files || []).forEach(function(file){
+        var key = keyByLink[new URL(file.link, location.href).pathname];
+        if (!key) return;
+        LIVE.count[key] = file.downloads;
+        LIVE.size[key] = file.size;
+      });
+      paintDownloads();
+    })
+    .catch(function(){ /* the counters are a bonus, never a reason for the page to fail */ });
+
+  /* The click itself is counted by the server when the link opens; this only shows it at once. Text is
+     all that changes here: replacing the link being clicked would cancel the download. */
+  var shown = function(event){
+    var link = event.target.closest ? event.target.closest('a[href^="/download/"]') : null;
+    var key = link && keyByLink[link.getAttribute('href')];
+    if (!key || LIVE.total == null || LIVE.count[key] == null) return;
+    LIVE.count[key]++;
+    LIVE.total++;
+    paintDownloads(key);
+  };
+  document.addEventListener('click', shown);
+  document.addEventListener('auxclick', function(event){ if (event.button === 1) shown(event); });
+}
+
+/* Counting presses on GitHub and the portfolio. Downloads are no longer counted here: they go through
+   /download/ and gemme-stats counts them there, so counting them here too would count them twice.
+
+   One listener on the document rather than a handler per button, because the same button exists twice on
+   this page, once per language, and several of them are written by the script above.
+
+   sendBeacon and not fetch: every one of these clicks navigates away, and a normal request started on the
+   way out is cancelled by the navigation. A beacon is handed to the browser to deliver on its own time,
+   which is exactly this case. Nothing here can delay or block the click. */
+(function(){
+  if (!COUNTER_URL) return;
+
+  function what(node){
+    var href = node.getAttribute('href') || '';
+    if (href.indexOf('/download/') === 0) return null;
+    if (href.indexOf('github.com') >= 0)  return 'github';
+    if (href.indexOf('gemmi-e.com') >= 0) return 'portfolio';
+    return null;
+  }
+
+  document.addEventListener('click', function(event){
+    var node = event.target.closest ? event.target.closest('a, button') : null;
+    if (!node) return;
+    var name = what(node);
+    if (!name) return;
+    try {
+      var body = JSON.stringify({ what: name });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(COUNTER_URL, new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch(COUNTER_URL, { method: 'POST', body: body, keepalive: true });
+      }
+    } catch (e) {
+      /* A counter is never a reason for a download button not to work. */
+    }
+  }, true);
+})();
+
 /* What happens after you click. Three lines each: the reader wanted a download, not a manual. */
 (function(){
   var sheet = document.getElementById('sheet');
   if (!sheet) return;
-  var v = LINUX_VERSION || "0.0.0", opened = null;
+  var opened = null;
 
   var SHEETS = {
-    exe: { kind: "Installer", title: "Kubo-Setup.exe", note: "75 MB", steps: [
+    exe: { kind: "Installer", title: "Kubo-Setup.exe", note: "76.5 MB", steps: [
       "Run the file you just downloaded.",
       "If Windows warns about an unknown publisher, click <b>More info → Run anyway</b>.",
       "Open Kubo from the Start menu and enter your server address." ]},
-    zip: { kind: "Portable", title: "No installation", note: "73 MB", steps: [
+    zip: { kind: "Portable", title: "No installation", note: "74.8 MB", steps: [
       "Unzip the folder anywhere.",
       "Run <code>Kubo.exe</code>. No administrator rights needed.",
       "Your servers and logs are stored in <code>%USERPROFILE%\\.kubo</code>." ]},
-    deb: { kind: "Debian · Ubuntu", title: "The .deb", note: "56 MB", steps: [
-      "<code>sudo apt install ./kubo_" + v + "_amd64.deb</code>",
+    macarm: { kind: "macOS · Apple Silicon", title: "Kubo for Apple Silicon", note: "78.2 MB", steps: [
+      "Open <code>Kubo-macos-aarch64.dmg</code> and drag Kubo into Applications.",
+      "Eject the disk image, then open Kubo from Applications.",
+      "If macOS blocks the unsigned app, Control-click Kubo in Applications and choose <b>Open</b>." ]},
+    macintel: { kind: "macOS · Intel", title: "Kubo for Intel", note: "79.9 MB", steps: [
+      "Open <code>Kubo-macos-x86_64.dmg</code> and drag Kubo into Applications.",
+      "Eject the disk image, then open Kubo from Applications.",
+      "If macOS blocks the unsigned app, Control-click Kubo in Applications and choose <b>Open</b>." ]},
+    deb: { kind: "Debian · Ubuntu", title: "The .deb", note: "57.9 MB", steps: [
+      "<code>sudo apt install ./kubo_{v}_amd64.deb</code>",
       "Open Kubo from the applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
       "Uninstall with <code>sudo apt remove kubo</code>." ]},
-    rpm: { kind: "Fedora · RHEL · openSUSE", title: "The .rpm", note: "56 MB", steps: [
-      "<code>sudo dnf install ./kubo-" + v + "-1.x86_64.rpm</code>",
+    rpm: { kind: "Fedora · RHEL · openSUSE", title: "The .rpm", note: "76.5 MB", steps: [
+      "<code>sudo dnf install ./kubo-{v}-1.x86_64.rpm</code>",
       "Open Kubo from the applications menu, or run <code>/opt/kubo/bin/Kubo</code>.",
       "Uninstall with <code>sudo dnf remove kubo</code>." ]},
-    targz: { kind: "Portable", title: "The archive", note: "75 MB", steps: [
+    targz: { kind: "Portable", title: "The archive", note: "76.8 MB", steps: [
       "<code>tar -xzf Kubo-linux-x86_64.tar.gz</code>",
       "Run <code>./Kubo/bin/Kubo</code>. No root needed.",
       "Settings are stored in <code>~/.kubo</code>." ]},
@@ -1011,23 +1093,31 @@ if (LINUX_VERSION) {
   };
 
   var SHEETS_FR = {
-    exe: { kind: "Installeur", title: "Kubo-Setup.exe", note: "75 Mo", steps: [
+    exe: { kind: "Installeur", title: "Kubo-Setup.exe", note: "76,5 Mo", steps: [
       "Lancez le fichier téléchargé.",
       "Si Windows signale un éditeur inconnu, cliquez sur <b>Informations complémentaires → Exécuter quand même</b>.",
       "Ouvrez Kubo depuis le menu Démarrer et entrez l'adresse de votre serveur." ]},
-    zip: { kind: "Portable", title: "Sans installation", note: "73 Mo", steps: [
+    zip: { kind: "Portable", title: "Sans installation", note: "74,8 Mo", steps: [
       "Décompressez le dossier où vous voulez.",
       "Lancez <code>Kubo.exe</code>. Aucun droit administrateur requis.",
       "Vos serveurs et vos journaux sont enregistrés dans <code>%USERPROFILE%\\.kubo</code>." ]},
-    deb: { kind: "Debian · Ubuntu", title: "Le .deb", note: "56 Mo", steps: [
-      "<code>sudo apt install ./kubo_" + v + "_amd64.deb</code>",
+    macarm: { kind: "macOS · Apple Silicon", title: "Kubo pour Apple Silicon", note: "78,2 Mo", steps: [
+      "Ouvrez <code>Kubo-macos-aarch64.dmg</code> et glissez Kubo dans Applications.",
+      "Éjectez l'image disque, puis ouvrez Kubo depuis Applications.",
+      "Si macOS bloque l'application non signée, faites un clic avec Contrôle sur Kubo dans Applications, puis choisissez <b>Ouvrir</b>." ]},
+    macintel: { kind: "macOS · Intel", title: "Kubo pour Intel", note: "79,9 Mo", steps: [
+      "Ouvrez <code>Kubo-macos-x86_64.dmg</code> et glissez Kubo dans Applications.",
+      "Éjectez l'image disque, puis ouvrez Kubo depuis Applications.",
+      "Si macOS bloque l'application non signée, faites un clic avec Contrôle sur Kubo dans Applications, puis choisissez <b>Ouvrir</b>." ]},
+    deb: { kind: "Debian · Ubuntu", title: "Le .deb", note: "57,9 Mo", steps: [
+      "<code>sudo apt install ./kubo_{v}_amd64.deb</code>",
       "Ouvrez Kubo depuis le menu des applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
       "Désinstallation : <code>sudo apt remove kubo</code>." ]},
-    rpm: { kind: "Fedora · RHEL · openSUSE", title: "Le .rpm", note: "56 Mo", steps: [
-      "<code>sudo dnf install ./kubo-" + v + "-1.x86_64.rpm</code>",
+    rpm: { kind: "Fedora · RHEL · openSUSE", title: "Le .rpm", note: "76,5 Mo", steps: [
+      "<code>sudo dnf install ./kubo-{v}-1.x86_64.rpm</code>",
       "Ouvrez Kubo depuis le menu des applications, ou lancez <code>/opt/kubo/bin/Kubo</code>.",
       "Désinstallation : <code>sudo dnf remove kubo</code>." ]},
-    targz: { kind: "Portable", title: "L'archive", note: "75 Mo", steps: [
+    targz: { kind: "Portable", title: "L'archive", note: "76,8 Mo", steps: [
       "<code>tar -xzf Kubo-linux-x86_64.tar.gz</code>",
       "Lancez <code>./Kubo/bin/Kubo</code>. Pas besoin de root.",
       "Les réglages sont enregistrés dans <code>~/.kubo</code>." ]},
@@ -1046,9 +1136,12 @@ if (LINUX_VERSION) {
     opened = document.activeElement;
     document.getElementById('sheet-kind').textContent = data.kind;
     document.getElementById('sheet-title').textContent = data.title;
-    document.getElementById('sheet-note').textContent = data.note;
+    /* The version and the size are the live ones once /_stats/public has answered. */
+    var version = (LIVE.version || LINUX_VERSION || '0.0.0').replace(/^v/, '');
+    document.getElementById('sheet-note').textContent =
+      LIVE.size[name] ? formatSize(LIVE.size[name], french ? 'fr' : 'en') : data.note;
     document.getElementById('sheet-steps').innerHTML =
-      data.steps.map(function(step){ return '<li><span>' + step + '</span></li>'; }).join('');
+      data.steps.map(function(step){ return '<li><span>' + step.replace(/\{v\}/g, version) + '</span></li>'; }).join('');
     sheet.hidden = false;
     document.getElementById('sheet-close').focus();
   }
@@ -1070,14 +1163,14 @@ if (LINUX_VERSION) {
 /* Copy a command to the clipboard, and say so where the button was. */
 var COPY_WORDS = {
   en: { copy: 'Copy',   copied: 'Copied',  select: 'Select it' },
-  fr: { copy: 'Copier', copied: 'Copi\u00e9', select: 'S\u00e9lectionnez-le' }
+  fr: { copy: 'Copier', copied: 'Copié', select: 'Sélectionnez-le' }
 };
 
 document.querySelectorAll('[data-copy]').forEach(function(button){
   var source = document.querySelector(button.getAttribute('data-copy'));
 
   /* The label is thrown away while it says "copied", so it cannot stay two spans through that. It is
-     rebuilt as both languages when it settles back, and the CSS hides the wrong one again \u2014
+     rebuilt as both languages when it settles back, and the CSS hides the wrong one again,
      otherwise one click would leave the button stuck in whichever language it was in. */
   function resting(){
     button.innerHTML = '<span lang="en">' + COPY_WORDS.en.copy + '</span>'
@@ -1096,72 +1189,290 @@ document.querySelectorAll('[data-copy]').forEach(function(button){
   });
 });
 
-/* The previews run silent and looping on their own. The big button starts one properly:
-   sound on, from the beginning, with the browser's own controls. */
-document.querySelectorAll('[data-play]').forEach(function(button){
-  var stage = button.parentNode, video = stage.querySelector('video');
-  button.addEventListener('click', function(){
-    // only one preview speaks at a time
-    document.querySelectorAll('.figure video').forEach(function(other){
-      if (other !== video) {
-        other.muted = true; other.controls = false; other.loop = true;
-        var b = other.parentNode.querySelector('[data-play]');
-        if (b) b.hidden = false;
-      }
-    });
-    button.hidden = true;
-    video.loop = false; video.muted = false; video.controls = true; video.currentTime = 0;
-    video.play().catch(function(){ /* refused: the controls are there anyway */ });
-  });
-  // when it finishes, fall back to the silent loop and offer the button again
-  video.addEventListener('ended', function(){
-    video.controls = false; video.muted = true; video.loop = true;
-    button.hidden = false;
-    video.play().catch(function(){});
-  });
-});
 
-/* A quiet Matrix rain behind the hero — the same 0/1 fall as the app's connection screen. */
+/* ---- what moves ---- */
 (function(){
-  var c=document.getElementById('rain'); if(!c) return;
-  var g=c.getContext('2d'), cols=[], W=0, H=0, cell=16, reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
-  var violet='#9d4dff', cyan='#35e8ff';
-  function size(){
-    var r=c.getBoundingClientRect(); W=c.width=r.width; H=c.height=r.height;
-    var n=Math.ceil(W/cell); cols=[];
-    for(var i=0;i<n;i++) cols.push({y:Math.random()*H/cell, v:0.5+Math.random()*0.9, len:6+Math.floor(Math.random()*12)});
+  var root = document.documentElement;
+  var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function french(){ return root.getAttribute('data-lang') === 'fr'; }
+  function word(node){
+    return node.getAttribute(french() ? 'data-word-fr' : 'data-word-en') || node.getAttribute('data-word') || '';
   }
-  function frame(){
-    g.clearRect(0,0,W,H);
-    g.font='14px Consolas, monospace'; g.textAlign='center';
-    for(var i=0;i<cols.length;i++){
-      var col=cols[i], x=i*cell+cell/2, head=Math.floor(col.y), left=x< W/2, hue=left?violet:cyan;
-      // fade out toward the two edges so the middle corridor stays densest
-      var edge=Math.min(x/W,1-x/W), band=Math.max(0,Math.min(1,(edge-0.05)/0.25));
-      for(var k=0;k<col.len;k++){
-        var cy=(head-k)*cell+cell/2; if(cy<0||cy>H) continue;
-        var ch=((i*73856093 ^ (head-k)*19349663)&1)?'1':'0', fade=1-k/col.len;
-        if(k===0){ g.globalAlpha=0.85*band; g.fillStyle='#dfe6ff'; }
-        else{ g.globalAlpha=(0.05+0.4*fade*fade)*band; g.fillStyle=hue; }
-        g.fillText(ch,x,cy);
-      }
-      col.y += col.v*(reduce?0:0.35);
-      if((col.y-col.len)*cell>H){ col.y=-Math.random()*20; col.v=0.5+Math.random()*0.9; col.len=6+Math.floor(Math.random()*12); }
+
+  /* The loader: three lines and a bar, then out of the way. A stylesheet rule takes it away after three
+     seconds if this never runs. */
+  var boot = document.getElementById('boot');
+  function ready(){ startLink(); }
+  if (boot && root.classList.contains('booting')) {
+    var lines = boot.querySelectorAll('.boot-line'), bar = boot.querySelector('.boot-bar i');
+    lines.forEach(function(line, i){
+      setTimeout(function(){ line.classList.add('in'); bar.style.width = Math.round((i + 1) / lines.length * 100) + '%'; },
+                 140 + i * 190);
+    });
+    setTimeout(function(){ boot.classList.add('gone'); }, 140 + lines.length * 190 + 180);
+    setTimeout(function(){
+      root.classList.remove('booting');
+      try { sessionStorage.setItem('kubo-boot', '1'); } catch(e){}
+      ready();
+    }, 140 + lines.length * 190 + 520);
+  } else {
+    setTimeout(ready, 0);
+  }
+
+  /* Frames come in as they are reached, their lines one after the other. */
+  var reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window && !calm) {
+    var seen = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if (entry.isIntersecting) { entry.target.classList.add('in'); seen.unobserve(entry.target); }
+      });
+    }, { rootMargin: '0px 0px -10% 0px' });
+    reveals.forEach(function(tile){ seen.observe(tile); });
+  } else {
+    reveals.forEach(function(tile){ tile.classList.add('in'); });
+  }
+
+  /* ---- the screens, sideways ----
+     On a large screen the section is pinned while the page scrolls, and the scroll moves the panels
+     sideways. On a phone, or with less motion asked for, it is a row that swipes. */
+  var section = document.getElementById('screens'), track = document.getElementById('track');
+  var sticky = section.querySelector('.hs-sticky');
+  var panels = [].slice.call(track.querySelectorAll('.panel'));
+  var meterN = document.getElementById('meter-n'), meterBar = document.getElementById('meter-bar');
+  var meterWord = document.getElementById('meter-word'), meter = document.getElementById('meter');
+  var pinned = false, travel = 0, start = 0, here = -1;
+  var wide = window.matchMedia ? matchMedia('(min-width: 900px)') : { matches: true };
+
+  function measure(){
+    pinned = wide.matches && !calm;
+    section.classList.toggle('pinned', pinned);
+    track.style.transform = '';
+    if (!pinned) { section.style.height = ''; return; }
+    var view = sticky.clientWidth;
+    var last = panels[panels.length - 1];
+    var pad = parseFloat(getComputedStyle(track).paddingLeft) || 24;
+    travel = Math.max(0, last.offsetLeft + last.offsetWidth / 2 - view / 2);
+    section.style.height = (sticky.offsetHeight + travel) + 'px';
+    start = section.getBoundingClientRect().top + window.scrollY - 42;
+    void pad;
+  }
+  /* Where the page has to be for this panel to stand in the middle. */
+  function scrollFor(panel){
+    if (!pinned) { return section.getBoundingClientRect().top + window.scrollY - 42; }
+    var view = sticky.clientWidth;
+    var x = Math.max(0, Math.min(travel, panel.offsetLeft + panel.offsetWidth / 2 - view / 2));
+    return start + x;
+  }
+  function centred(){
+    var view = sticky.getBoundingClientRect(), mid = view.left + view.width / 2, best = -1, gap = Infinity;
+    panels.forEach(function(panel, i){
+      var r = panel.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid);
+      if (d < gap) { gap = d; best = i; }
+    });
+    return gap < view.width * 0.4 ? best : -1;
+  }
+  function moveTrack(){
+    if (pinned) {
+      var x = Math.max(0, Math.min(travel, window.scrollY - start));
+      track.style.transform = 'translateX(' + (-x) + 'px)';
     }
-    g.globalAlpha=1;
-    if(!reduce) requestAnimationFrame(frame);
+    var i = centred();
+    if (i === here) return;
+    here = i;
+    panels.forEach(function(panel, n){ panel.classList.toggle('here', n === i); });
+    meterN.textContent = i < 0 ? '00' : ('0' + (i + 1));
+    meterBar.style.width = i < 0 ? '0' : ((i + 1) / panels.length * 100) + '%';
+    meterWord.textContent = i < 0 ? '' : word(panels[i]);
+    meter.className = 'hs-meter ' + (i < 0 ? 't-amber' : panels[i].className.replace('panel', '').replace('here', '').trim());
+    if (i >= 0) { type(panels[i]); }
+    paintStatus(true);
   }
-  size(); addEventListener('resize',size);
-  if(reduce){ frame(); } else { requestAnimationFrame(frame); }
+  function type(panel){
+    var term = panel.querySelector('.term');
+    if (term) { term.classList.add('typed'); }
+  }
+  if (calm) { panels.forEach(type); }
+  track.addEventListener('scroll', function(){ requestAnimationFrame(moveTrack); }, { passive: true });
+
+  /* A clip plays only while it can be seen. */
+  if ('IntersectionObserver' in window) {
+    var watch = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        var video = entry.target;
+        if (entry.isIntersecting && !calm) { video.play().catch(function(){}); } else { video.pause(); }
+      });
+    }, { threshold: 0.25 });
+    track.querySelectorAll('video').forEach(function(video){ video.controls = false; watch.observe(video); });
+  }
+
+  /* ---- the status line ---- */
+  var mode = document.getElementById('status-mode'), msg = document.getElementById('status-msg');
+  var pct = document.getElementById('status-pct'), statusBar = document.getElementById('status');
+  var spied = [].slice.call(document.querySelectorAll('[data-spy]')), current = null, holding = false;
+  var TONES = { violet: 'var(--b-violet)', cyan: 'var(--b-cyan)', green: 'var(--b-green)', amber: 'var(--b-amber)', red: 'var(--b-red)' };
+  function toneOf(node){
+    var m = /t-(violet|cyan|green|amber|red)/.exec(node.className || '');
+    return TONES[m ? m[1] : node.getAttribute('data-tone')] || TONES.red;
+  }
+  function paintStatus(){
+    if (!current || holding) return;
+    var source = current === section && here >= 0 ? panels[here] : current;
+    mode.textContent = word(source) || 'kubo';
+    msg.textContent = source.getAttribute(french() ? 'data-fr' : 'data-en') || '';
+    statusBar.style.setProperty('--tone', toneOf(source));
+    var id = source.id || current.id;
+    document.querySelectorAll('.nav a.act').forEach(function(a){ a.classList.toggle('on', a.getAttribute('href') === '#' + id); });
+  }
+  function spy(){
+    var middle = window.innerHeight * 0.45, found = spied[0];
+    spied.forEach(function(s){ if (s.getBoundingClientRect().top <= middle) found = s; });
+    if (found !== current) { current = found; paintStatus(); }
+    var room = document.documentElement.scrollHeight - window.innerHeight;
+    var at = room <= 0 ? 0 : window.scrollY / room;
+    pct.textContent = at <= 0.005 ? 'top' : at >= 0.995 ? 'bot' : Math.round(at * 100) + '%';
+  }
+  var queued = false;
+  window.addEventListener('scroll', function(){
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function(){ queued = false; moveTrack(); spy(); });
+  }, { passive: true });
+  window.addEventListener('resize', function(){ measure(); moveTrack(); spy(); });
+  if (wide.addEventListener) { wide.addEventListener('change', function(){ measure(); moveTrack(); }); }
+  window.addEventListener('load', function(){ measure(); moveTrack(); spy(); });
+  measure(); moveTrack(); spy();
+
+  /* ---- the download tabs, opened on this visitor's system ---- */
+  var tabButtons = [].slice.call(document.querySelectorAll('[data-tab-button]'));
+  function openTab(name){
+    var button = document.querySelector('[data-tab-button="' + name + '"]');
+    if (!button || button.hidden) { name = 'win'; }
+    tabButtons.forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab-button') === name); });
+    document.querySelectorAll('[data-tab-pane]').forEach(function(p){ p.hidden = p.getAttribute('data-tab-pane') !== name; });
+  }
+  tabButtons.forEach(function(b){ b.addEventListener('click', function(){ openTab(b.getAttribute('data-tab-button')); }); });
+  var agent = navigator.userAgent || '';
+  openTab(/Mac/.test(agent) && !/iPhone|iPad/.test(agent) ? 'mac' : /Linux/.test(agent) && !/Android/.test(agent) ? 'linux' : 'win');
+
+  /* ---- arriving somewhere: a short glitch, the page already there when it clears ---- */
+  var glitch = document.getElementById('glitch');
+  function go(target, tab){
+    if (tab) { openTab(tab); }
+    var y;
+    if (target.classList && target.classList.contains('panel')) {
+      y = scrollFor(target);
+      if (!pinned) {
+        track.scrollTo({ left: target.offsetLeft - (track.clientWidth - target.offsetWidth) / 2, behavior: calm ? 'auto' : 'smooth' });
+      }
+    } else if (target.id === 'top') {
+      y = 0;
+    } else {
+      y = target.getBoundingClientRect().top + window.scrollY - (target === section ? 42 : 60);
+    }
+    if (calm) { window.scrollTo(0, y); return; }
+    holding = true;
+    mode.textContent = 'cd';
+    msg.textContent = '~/' + (target.id === 'top' ? '' : (word(target) || target.id));
+    glitch.innerHTML = '';
+    var colours = ['rgba(255,45,85,.32)', 'rgba(10,125,148,.28)', 'rgba(23,22,29,.16)'];
+    for (var i = 0; i < 6; i++) {
+      var band = document.createElement('i');
+      band.style.top = Math.round(Math.random() * 96) + '%';
+      band.style.height = (1 + Math.round(Math.random() * (i % 3 === 2 ? 22 : 4))) + 'px';
+      band.style.background = colours[i % colours.length];
+      band.style.setProperty('--x', (Math.random() < .5 ? -1 : 1) * (14 + Math.round(Math.random() * 46)) + 'px');
+      band.style.animationDelay = Math.round(Math.random() * 60) + 'ms';
+      glitch.appendChild(band);
+    }
+    glitch.classList.add('on');
+    root.classList.add('glitching');
+    setTimeout(function(){ window.scrollTo({ top: y, behavior: 'instant' }); moveTrack(); }, 150);
+    setTimeout(function(){
+      glitch.classList.remove('on');
+      root.classList.remove('glitching');
+      holding = false;
+      current = null;
+      spy();
+      paintStatus();
+    }, 360);
+  }
+  document.querySelectorAll('[data-go]').forEach(function(link){
+    link.addEventListener('click', function(event){
+      var id = (link.getAttribute('href') || '').slice(1);
+      var target = id === 'top' ? document.getElementById('top') : document.getElementById(id);
+      if (!target) return;
+      event.preventDefault();
+      document.getElementById('nav').classList.remove('open');
+      go(target, link.getAttribute('data-tab'));
+      if (history.replaceState) { history.replaceState(null, '', '#' + id); }
+    });
+  });
+  /* A link opened with an anchor lands where it points, after the layout is measured. */
+  if (location.hash && location.hash.length > 1) {
+    var landing = document.getElementById(location.hash.slice(1));
+    if (landing && landing.classList.contains('panel')) {
+      window.addEventListener('load', function(){ window.scrollTo(0, scrollFor(landing)); });
+    }
+  }
+
+  /* ---- the connection in the hero: the steps the app goes through, then the screens it opens ---- */
+  var wire = document.getElementById('wire'), tag = document.getElementById('link-tag');
+  var you = document.getElementById('node-you'), server = document.getElementById('node-server');
+  var steps = wire ? [].slice.call(wire.querySelectorAll('.step')) : [];
+  var fill = wire ? wire.querySelector('.fill') : null, chipBox = document.getElementById('link-chips');
+  var phase = 'idle', timers = [], running = false;
+  function tagWord(){ tag.textContent = tag.getAttribute('data-' + phase + '-' + (french() ? 'fr' : 'en')); }
+  function chips(){ return [].slice.call(chipBox.querySelectorAll('.chip')).filter(function(c){ return c.offsetParent !== null; }); }
+  function later(ms, work){ timers.push(setTimeout(work, ms)); }
+  function reset(){
+    phase = 'idle'; tagWord();
+    wire.classList.remove('run', 'live'); fill.style.width = '0';
+    you.classList.remove('on'); server.classList.remove('live');
+    steps.forEach(function(s){ s.classList.remove('active', 'done'); });
+    chipBox.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('on'); });
+  }
+  function reach(i){
+    steps.forEach(function(s, n){ s.classList.toggle('done', n < i); s.classList.toggle('active', n === i); });
+    fill.style.width = (i + 1) * 20 + '%';
+  }
+  function connected(){
+    phase = 'live'; tagWord();
+    steps.forEach(function(s){ s.classList.remove('active'); s.classList.add('done'); });
+    fill.style.width = '100%'; wire.classList.add('live'); server.classList.add('live');
+  }
+  function play(){
+    reset();
+    later(700, function(){ phase = 'busy'; tagWord(); you.classList.add('on'); wire.classList.add('run'); reach(0); });
+    later(1300, function(){ reach(1); });
+    later(2200, function(){ reach(2); });
+    later(2750, function(){ reach(3); });
+    later(3600, connected);
+    var at = 4000;
+    chips().forEach(function(chip){ later(at, function(){ chip.classList.add('on'); }); at += 200; });
+    later(at + 3200, play);
+  }
+  function startLink(){
+    if (!wire || running) return;
+    running = true;
+    if (calm) { you.classList.add('on'); connected(); chips().forEach(function(c){ c.classList.add('on'); }); return; }
+    play();
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (!running || calm) return;
+    timers.forEach(clearTimeout); timers = [];
+    if (!document.hidden) play();
+  });
+
+  /* After a language switch: the words this script wrote are written again. */
+  window.kuboRelabel = function(){
+    paintStatus();
+    if (here >= 0) { meterWord.textContent = word(panels[here]); }
+    if (wire) {
+      tagWord();
+      if (phase === 'live') { chipBox.querySelectorAll('.chip').forEach(function(c){ c.classList.add('on'); }); }
+    }
+  };
 })();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-

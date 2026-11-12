@@ -204,7 +204,7 @@ class RedisCommandsTest {
 
         assertTrue(value.failed());
         assertTrue(value.error().contains("TSDB-TYPE"), value.error());
-        assertTrue(value.error().contains("REDIS CLI"), value.error());
+        assertTrue(value.error().contains("redis-cli"), value.error());
     }
 
     @Test

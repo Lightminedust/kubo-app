@@ -167,6 +167,20 @@ class SessionStoreTest {
     }
 
     @Test
+    void aKeyThatMovedIsFoundAgainWithItsPassphrase() throws IOException {
+        SessionStore store = store();
+        SavedSession saved = store.remember(VPS, Auth.KEY, KEY, true, "phrase".toCharArray());
+
+        store.relocateKey(saved.id(), "D:\\keys\\vps.ppk");
+
+        SavedSession moved = store.list().get(0);
+        assertEquals(saved.id(), moved.id());
+        assertEquals("D:\\keys\\vps.ppk", moved.keyFile());
+        assertArrayEquals("phrase".toCharArray(), store.secret(moved));
+        assertThrows(IllegalArgumentException.class, () -> store.relocateKey(saved.id(), " "));
+    }
+
+    @Test
     void keySessionWithoutKeyIsRefused() {
         assertThrows(IllegalArgumentException.class,
                 () -> new SavedSession("id", "xana", "host", 22, Auth.KEY, "", "", 0));

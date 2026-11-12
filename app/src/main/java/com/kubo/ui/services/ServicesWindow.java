@@ -40,7 +40,7 @@ public final class ServicesWindow {
         stage.setTitle("Kubo — Services — " + connection.target());
         stage.setMinWidth(Math.min(1040, screen.getWidth() - 32));
         stage.setMinHeight(Math.min(620, screen.getHeight() - 48));
-        stage.setMaximized(true);
+        com.kubo.ui.KuboWindow.maximize(stage);
         stage.setOnHidden(event -> scope.shutdown());
         scope.start();
     }

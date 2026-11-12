@@ -65,7 +65,21 @@ public final class ParticleField extends Pane {
 
     private State state = State.IDLE;
     private String remote = "NO TARGET YET";
+    /**
+     * How loud the falling ones and zeros are.
+     *
+     * <p>Down here rather than on the whole canvas, because the state in the middle of it is the one thing
+     * on this screen that has to stay readable: whether there is a connection, and to what. Dimming the
+     * node took that with it.
+     */
+    private static final double RAIN = 0.26;
+
     private String handshake = "IDLE";
+    private boolean captionVisible = true;
+
+    public void setCaptionVisible(boolean visible) {
+        captionVisible = visible;
+    }
 
     // Everything the state drives, eased toward its target so a change is a transition, not a jump.
     private double glow = 0.5;
@@ -242,11 +256,11 @@ public final class ParticleField extends Pane {
                 double fade = 1 - k / (double) trail[col];
                 if (k == 0) {
                     // The head: brightest, tinted toward white.
-                    gc.setGlobalAlpha((0.85 + 0.15 * glow) * band);
+                    gc.setGlobalAlpha((0.85 + 0.15 * glow) * band * RAIN);
                     gc.setFill(colour.interpolate(Color.WHITE, 0.55));
                     gc.fillText(one ? "1" : "0", x, y);
                 } else {
-                    gc.setGlobalAlpha((0.05 + 0.45 * fade * fade) * (0.5 + 0.6 * glow) * band);
+                    gc.setGlobalAlpha((0.05 + 0.45 * fade * fade) * (0.5 + 0.6 * glow) * band * RAIN);
                     gc.setFill(colour);
                     gc.fillText(one ? "1" : "0", x, y);
                 }
@@ -262,7 +276,7 @@ public final class ParticleField extends Pane {
         }
 
         drawVignette(gc, width, height);
-        drawCaption(gc, width, height);
+        if (captionVisible) drawCaption(gc, width, height);
     }
 
     /**

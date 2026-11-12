@@ -47,6 +47,7 @@ public final class RedisPreview {
                 renderMulti(output);
                 renderCrowded(output);
                 renderHelp(output);
+                renderSmall(output);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
@@ -63,7 +64,6 @@ public final class RedisPreview {
         RedisKey session = new RedisKey("session:9f2a", RedisType.STRING, 1740);
         scope.showForPreview(info(), keys(), session, RedisValue.string(
                 "{\"user\":420,\"role\":\"admin\",\"csrf\":\"a91f...\",\"ip\":\"203.0.113.42\"}", false));
-        scope.stack().freeze(2.4);
         write(scene, output, "redis");
         scope.shutdown();
     }
@@ -78,7 +78,6 @@ public final class RedisPreview {
                 new RedisValue.Entry("role", "admin"),
                 new RedisValue.Entry("created", "2026-09-12"),
                 new RedisValue.Entry("logins", "1284")), false));
-        scope.stack().freeze(2.4);
         write(scene, output, "redis-hash");
         scope.shutdown();
     }
@@ -90,7 +89,6 @@ public final class RedisPreview {
         Scene scene = new Scene(holder, 1400, 860, Color.web("#050508"));
         scene.getStylesheets().add(KuboApp.STYLESHEET);
         scope.showForPreview(info(), keys(), null, null);
-        scope.stack().freeze(2.0);
         write(scene, output, "redis-help");
         scope.shutdown();
     }
@@ -103,9 +101,20 @@ public final class RedisPreview {
                 null, new CommandService());
         Scene scene = scene(scope);
         scope.showForPreview(info(), moduleKeys(), null, null);
-        scope.stack().fit();
-        scope.stack().freeze(2.7);
         write(scene, output, "redis-multi");
+        scope.shutdown();
+    }
+
+    /** The smallest window the screen allows, where the frames have the least room. */
+    private static void renderSmall(Path output) throws IOException {
+        RedisScope scope = scope();
+        Scene scene = new Scene(scope, 1000, 620, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        RedisKey profile = new RedisKey("user:420", RedisType.HASH, RedisKey.PERSISTENT);
+        scope.showForPreview(info(), keys(), profile, RedisValue.collection(RedisType.HASH, List.of(
+                new RedisValue.Entry("name", "Gemmie"),
+                new RedisValue.Entry("role", "admin")), false));
+        write(scene, output, "redis-small");
         scope.shutdown();
     }
 
@@ -136,13 +145,12 @@ public final class RedisPreview {
     }
 
     /**
-     * A keyspace big enough to be the real problem: thousands of keys on a handful of plates.
+     * A keyspace big enough to be the real problem: thousands of keys of a handful of kinds.
      */
     private static void renderCrowded(Path output) throws IOException {
         RedisScope scope = scope();
         Scene scene = scene(scope);
         scope.showForPreview(info(), crowdedKeys(), null, null);
-        scope.stack().freeze(3.1);
         write(scene, output, "redis-crowded");
         scope.shutdown();
     }
@@ -180,7 +188,7 @@ public final class RedisPreview {
             long ttl = i % 3 == 0 ? RedisKey.PERSISTENT : random.nextInt(6000);
             keys.add(new RedisKey(prefixes[i % prefixes.length] + Integer.toString(1000 + i * 37, 36), type, ttl));
         }
-        // The inspected examples must also exist in the navigable stack, exactly as they do in the live screen.
+        // The inspected examples must also exist in the keyspace, exactly as they do in the live screen.
         keys.set(0, new RedisKey("session:9f2a", RedisType.STRING, 1740));
         keys.set(1, new RedisKey("user:420", RedisType.HASH, RedisKey.PERSISTENT));
         return keys;

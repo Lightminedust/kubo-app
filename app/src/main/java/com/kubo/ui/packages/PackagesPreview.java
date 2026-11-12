@@ -48,6 +48,7 @@ public final class PackagesPreview {
                 render(output, "packages-restart", sample(true), null, null);
                 render(output, "packages-sheet", sample(true), null, null);
                 render(output, "packages-sources", sample(true), null, null);
+                render(output, "packages-reading", sample(true), null, null);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
@@ -77,6 +78,9 @@ public final class PackagesPreview {
         }
         if (name.endsWith("-legend")) {
             view.showLegendForPreview();
+        }
+        if (name.endsWith("-reading")) {
+            view.readingForPreview();
         }
         if (name.endsWith("-upgrade")) {
             view.showUpgradeForPreview(inventory.waiting(), false, null);

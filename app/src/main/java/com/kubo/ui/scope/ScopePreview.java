@@ -11,7 +11,6 @@ import com.kubo.model.server.ServerMetrics;
 import com.kubo.monitor.parse.DisksParser;
 import com.kubo.monitor.parse.IdentityParser;
 import com.kubo.monitor.parse.MetricsParser;
-import com.kubo.monitor.parse.PortsParser;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.Scene;
@@ -44,36 +43,76 @@ public final class ScopePreview {
         Files.createDirectories(output);
 
         CountDownLatch done = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
         Platform.startup(() -> {
             try {
                 render(output, "scope-calm", 9, 0.4, 38, 0.3, 40_000, 12_000, false);
                 render(output, "scope-busy", 88, 7.5, 91, 3.6, 2_400_000, 900_000, false);
                 render(output, "scope-lost", 30, 1, 55, 0.8, 200_000, 50_000, true);
-                render(output, "scope-console-folded", 9, 0.4, 38, 0.3, 40_000, 12_000, false, true);
-            } catch (IOException e) {
-                e.printStackTrace();
+                ServerView calm = sample(9, 0.4, 38, 0.3, 40_000, 12_000);
+                render(output, "scope-terminal", calm, false, true, 1280, 800);
+                render(output, "scope-small", calm, false, false, 1100, 640);
+                render(output, "scope-small-terminal", calm, false, true, 1100, 640);
+                render(output, "scope-console-logs", calm, false, true, 1280, 800, true, 0);
+                render(output, "scope-small-expanded-logs", calm, false, true, 1100, 640, true, 600);
+                renderFirstReading(output);
+                render(output, "scope-waiting", new ServerView(
+                        new Server(calm.server().identity(), null, List.of(), List.of()), List.of(), List.of()),
+                        false, false, 1100, 640);
+                render(output, "scope-full", sample(100, 0, 100, 4, 0, 0), false, false, 1280, 800);
+                ServerView startup = sample(3, 0, 16, 0.1, 12_000, 2_000);
+                render(output, "scope-startup", new ServerView(startup.server(),
+                        startup.history().subList(startup.history().size() - 5, startup.history().size()), startup.log()),
+                        false, false, 1280, 800);
+            } catch (Throwable e) {
+                failure.set(e);
             } finally {
                 done.countDown();
             }
         });
         done.await();
         Platform.exit();
+        if (failure.get() != null) throw new IllegalStateException("Scope preview failed", failure.get());
+    }
+
+    /** The window just after connecting, before the first answer. */
+    private static void renderFirstReading(Path output) throws IOException {
+        ScopeView view = new ScopeView();
+        Scene scene = new Scene(view, KuboApp.WIDTH, KuboApp.HEIGHT, Color.web("#050508"));
+        scene.getStylesheets().add(KuboApp.STYLESHEET);
+        view.firstReadingForPreview();
+        view.applyCss();
+        view.layout();
+        WritableImage image = scene.snapshot(null);
+        Path file = output.resolve("scope-first-reading.png");
+        ImageIO.write(SwingFXUtils.fromFXImage(image, null), "png", file.toFile());
+        System.out.println("Wrote " + file.toAbsolutePath());
     }
 
     private static void render(Path output, String name, double cpu, double steal, double memory, double load,
                                long download, long upload, boolean lost) throws IOException {
-        render(output, name, cpu, steal, memory, load, download, upload, lost, false);
+        render(output, name, sample(cpu, steal, memory, load, download, upload), lost, false,
+                KuboApp.WIDTH, KuboApp.HEIGHT);
     }
 
-    private static void render(Path output, String name, double cpu, double steal, double memory, double load,
-                               long download, long upload, boolean lost, boolean collapsed) throws IOException {
-        ServerView sample = sample(cpu, steal, memory, load, download, upload);
+    private static void render(Path output, String name, ServerView sample, boolean lost, boolean terminal,
+                               int width, int height) throws IOException {
+        render(output, name, sample, lost, terminal, width, height, false, 0);
+    }
 
+    private static void render(Path output, String name, ServerView sample, boolean lost, boolean terminal,
+                               int width, int height, boolean logs, double consoleHeight) throws IOException {
         ScopeView view = new ScopeView();
-        Scene scene = new Scene(view, KuboApp.WIDTH, KuboApp.HEIGHT, Color.web("#0a0a0f"));
+        Scene scene = new Scene(view, width, height, Color.web("#0a0a0f"));
         scene.getStylesheets().add(KuboApp.STYLESHEET);
-        view.showPreview(sample.server(), sample.history(), sample.log(), "xana@203.0.113.10:22", lost,
-                collapsed);
+        view.showPreview(sample.server(), sample.history(), sample.log(), "xana@203.0.113.10:22", lost, terminal);
+        if (logs) {
+            com.kubo.ui.ServerConsole console = (com.kubo.ui.ServerConsole) view.lookup(".redis-console");
+            console.lookupAll(".mode-toggle").stream()
+                    .filter(node -> node instanceof javafx.scene.control.Button button && button.getText().equalsIgnoreCase("logs"))
+                    .map(javafx.scene.control.Button.class::cast).findFirst().orElseThrow().fire();
+            if (consoleHeight > 0) console.setPrefHeight(consoleHeight);
+        }
 
         WritableImage image = scene.snapshot(null);
         Path file = output.resolve(name + ".png");
@@ -116,7 +155,8 @@ public final class ScopePreview {
                 new ListeningPort(Protocol.UDP, "127.0.0.53%lo", 53, ""),
                 new ListeningPort(Protocol.TCP, "127.0.0.1", 3000, "node"));
         List<DiskPartition> disks = List.of(
-                new DiskPartition("/", 193_000_000_000L, (long) (193_000_000_000L * memory / 110), 60_000_000_000L),
+                new DiskPartition("/", 193_000_000_000L, (long) (193_000_000_000L * memory / 110),
+                        (long) (193_000_000_000L * (1 - memory / 110) * 0.95)),
                 new DiskPartition("/boot/efi", 124_000_000L, 6_000_000L, 118_000_000L));
 
         List<CommandEntry> log = new ArrayList<>();
@@ -128,6 +168,8 @@ public final class ScopePreview {
         }
         log.add(entry(NOW.plusSeconds(26), "docker ps --format '{{json .}}'", 1, 52,
                 "permission denied while trying to connect to the Docker daemon socket"));
+        log.add(entry(NOW.plusSeconds(28), "systemctl status nginx --no-pager", CommandEntry.NOT_RUN, 5_000,
+                "SSH request timed out before the command completed"));
 
         return new ServerView(new Server(identity, latest, ports, disks), history, log);
     }

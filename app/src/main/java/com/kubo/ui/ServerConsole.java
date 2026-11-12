@@ -73,8 +73,12 @@ public final class ServerConsole extends VBox {
     /** The edge you pull to make the console taller or shorter. */
     private final Region grip = new Region();
     private final Button fold = tab("▾");
-    private final Button logsTab = tab("LOGS");
-    private final Button shellTab = tab("SHELL");
+    private final Button logsTab = tab("logs");
+    private final Button shellTab = tab("shell");
+    /** Who and where, in front of the command line, the way bash writes it. */
+    private final Label promptHost = new Label();
+    private HBox header;
+    private final Label promptPath = new Label(":~");
     private final Label title = label("", "column-heading");
     private final Label rootNote = label("", "prompt-meta");
     private final List<String> history = new ArrayList<>();
@@ -101,6 +105,7 @@ public final class ServerConsole extends VBox {
     /** True when the field takes what is typed. Idle it always does; running it does only while asked. */
     private boolean open = true;
     private Page current = Page.LOGS;
+    private final Label hint = label("", "metric-label");
     private double expandedHeight = 178;
     private double dragFromY;
     private double dragFromHeight;
@@ -133,7 +138,7 @@ public final class ServerConsole extends VBox {
         java.util.Set<CommandService.Origin> all = java.util.EnumSet.of(typedAs);
         all.addAll(shows);
         this.shows = java.util.Collections.unmodifiableSet(all);
-        this.activity = service + " ACTIVITY";
+        this.activity = service.toLowerCase(java.util.Locale.ROOT) + " activity";
         getStyleClass().addAll("prompt-panel", "redis-console");
         setPadding(new Insets(0, 34, 12, 36));
         setPrefHeight(expandedHeight);
@@ -144,15 +149,16 @@ public final class ServerConsole extends VBox {
         shellTab.setOnAction(event -> show(Page.SHELL));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Label hint = label("ONLY THIS SCREEN'S COMMANDS, NEVER THEIR OUTPUT  ·  EVERY SCREEN IS IN LOGS  ·  "
-                + "IT CAN ANSWER WHAT A COMMAND ASKS  ·  AN EDITOR OPENS THE FILE  ·  ↑↓ HISTORY",
-                "metric-label");
+        hint.setTooltip(new javafx.scene.control.Tooltip(
+                "Logs list this screen's commands, without their output. Open LOGS for the full session.\n"
+                        + "The shell accepts commands and replies to interactive prompts."));
         hint.setMinWidth(0);
+        title.setMinWidth(Region.USE_PREF_SIZE);
         fold.setOnAction(event -> setCollapsed(!collapsed));
         copiedFades.setOnFinished(event -> copied.setText(""));
         logOutput.setOnCopied(this::sayCopied);
         shellOutput.setOnCopied(this::sayCopied);
-        HBox header = new HBox(10, title, logsTab, shellTab, copied, spacer, hint, fold);
+        header = new HBox(10, title, logsTab, shellTab, copied, spacer, hint, fold);
         header.setAlignment(Pos.CENTER_LEFT);
         header.setPadding(new Insets(6, 0, 0, 0));
         // Double-clicking the bar is the quick way out of the way.
@@ -225,13 +231,24 @@ public final class ServerConsole extends VBox {
             }
         });
 
-        inputRow = new HBox(10, mark, input, hidden, reveal, stop, rootNote);
+        // user@host in green and the folder in blue, which is what a prompt looks like on every Linux
+        // machine anybody has logged into. The sign after it is still the mark that breathes while a
+        // command runs.
+        promptHost.getStyleClass().add("bash-host");
+        promptPath.getStyleClass().add("bash-path");
+        promptHost.setMinWidth(Region.USE_PREF_SIZE);
+        promptPath.setMinWidth(Region.USE_PREF_SIZE);
+        promptHost.setText(connection == null ? "you@server"
+                : connection.target().username() + "@" + connection.target().host());
+        HBox prompt = new HBox(0, promptHost, promptPath);
+        prompt.setAlignment(Pos.CENTER_LEFT);
+        inputRow = new HBox(8, prompt, mark, input, hidden, reveal, stop, rootNote);
         inputRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox.setVgrow(pages, Priority.ALWAYS);
         getChildren().addAll(grip, header, pages, inputRow);
-        logOutput.append("EVERY COMMAND THIS SCREEN SENDS APPEARS HERE AS IT HAPPENS.", "prompt-meta");
-        shellOutput.append("TYPE A COMMAND TO RUN IT ON THE SERVER.", "prompt-meta");
+        logOutput.append("every command this screen sends appears here as it happens", "prompt-meta");
+        shellOutput.append("type a command to run it on the server", "prompt-meta");
 
         stopListening = commands == null ? () -> {
         } : commands.addLoggedListener(logged -> {
@@ -245,10 +262,49 @@ public final class ServerConsole extends VBox {
     }
 
     /**
+     * The shell and nothing round it: no tabs, no hints, no edge to drag.
+     *
+     * <p>For a screen that already frames it and already shows the log beside it. There the tabs
+     * offer a second copy of something on screen and the frame is drawn twice.
+     */
+    public void setBare(boolean bare) {
+        header.setVisible(!bare);
+        header.setManaged(!bare);
+        grip.setVisible(!bare);
+        grip.setManaged(!bare);
+        if (bare) {
+            show(Page.SHELL);
+        }
+    }
+
+    /**
      * Brings the command line forward.
      */
     public void showShell() {
         show(Page.SHELL);
+    }
+
+    /** Brings the list of commands this screen sent forward. */
+    public void showLogs() {
+        show(Page.LOGS);
+    }
+
+    /** True while the command line is the page in front. */
+    public boolean showingShell() {
+        return current == Page.SHELL;
+    }
+
+    /**
+     * Inside a frame that already says what it is and is shown or hidden by a button: the tabs stay, the
+     * title, the fold and the edge to drag go.
+     */
+    public void setFramed() {
+        title.setVisible(false);
+        title.setManaged(false);
+        fold.setVisible(false);
+        fold.setManaged(false);
+        grip.setVisible(false);
+        grip.setManaged(false);
     }
 
     /** Only for the previews: commands already in the log, without a server, and the first two selected. */
@@ -313,7 +369,8 @@ public final class ServerConsole extends VBox {
         logsTab.getStyleClass().remove("mode-toggle-active");
         shellTab.getStyleClass().remove("mode-toggle-active");
         (page == Page.LOGS ? logsTab : shellTab).getStyleClass().add("mode-toggle-active");
-        title.setText(page == Page.LOGS ? activity : "SHELL  ·  THIS SERVER");
+        title.setText(page == Page.LOGS ? activity : "this server");
+        hint.setText(page == Page.LOGS ? "commands · exit · duration" : "enter to run  ·  ↑↓ history");
         logOutput.setVisible(page == Page.LOGS);
         logOutput.setManaged(page == Page.LOGS);
         shellOutput.setVisible(page == Page.SHELL);
@@ -334,8 +391,7 @@ public final class ServerConsole extends VBox {
         logOutput.append(CLOCK.format(entry.executedAt()) + origin + "  ·  " + state + "  ·  "
                         + entry.duration().toMillis() + " MS" + (entry.asRoot() ? "  ·  ROOT" : "")
                         + (logged.typed() ? "  ·  TYPED" : "") + "\n" + entry.command(),
-                !entry.success() ? "prompt-error"
-                        : logged.typed() ? "shell-sent" : "prompt-command");
+                entry.success() ? "command-log-ok" : entry.ran() ? "command-log-failed" : "command-log-not-run");
     }
 
     private void sayCopied(int count) {
@@ -813,6 +869,7 @@ public final class ServerConsole extends VBox {
 
     private static Button tab(String text) {
         Button button = new Button(text);
+        button.setMinWidth(Region.USE_PREF_SIZE);
         button.getStyleClass().add("mode-toggle");
         button.setFocusTraversable(false);
         return button;

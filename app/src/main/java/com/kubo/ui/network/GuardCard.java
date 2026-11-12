@@ -6,7 +6,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
@@ -82,10 +81,8 @@ final class GuardCard extends VBox {
 
         // Certificates are read when this card opens rather than on every poll: they change once every few
         // months and the screen re-reads every twelve seconds.
-        ProgressIndicator spinner = new ProgressIndicator();
+        com.kubo.ui.Spinner spinner = new com.kubo.ui.Spinner();
         spinner.getStyleClass().add("connection-progress");
-        spinner.setPrefSize(14, 14);
-        spinner.setMaxSize(14, 14);
         HBox reading = new HBox(10, spinner, label("READING THE CERTIFICATES", "card-note"));
         reading.setAlignment(Pos.CENTER_LEFT);
         certificates.getChildren().add(reading);

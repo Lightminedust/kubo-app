@@ -9,98 +9,75 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.Circle;
 
 /**
- * A card that explains the Redis topology, type colours, expiry mark and key actions.
+ * How to read the Redis screen, in the same key and value lines as the rest of it.
  */
 final class RedisHelp extends VBox {
 
     RedisHelp(Runnable onClose) {
-        getStyleClass().addAll("float-card", "help-card");
+        getStyleClass().addAll("float-card", "help-card", "redis-help");
         setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
-        setSpacing(14);
+        setSpacing(16);
         setPadding(new Insets(24, 30, 24, 28));
 
-        Label title = label("READING THE REDIS SCREEN", "card-title");
+        Label title = label("reading this screen", "fetch-host");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button close = new Button("✕");
+        Button close = new Button("close");
         close.getStyleClass().add("ghost-button");
         close.setFocusTraversable(false);
         close.setOnAction(event -> onClose.run());
         HBox header = new HBox(12, title, spacer, close);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        Label navigation = label("EACH REDIS PROCESS IS A ROOT CARD. ITS TYPE NODES FORM THE NEXT COLUMN; CLICK ONE "
-                + "TO OPEN A VERTICAL KEY COLUMN. DRAG OR USE THE WHEEL TO PAN WITH INERTIA. CTRL+WHEEL ZOOMS; "
-                + "RIGHT-CLICKING A KEY OPENS ITS ACTIONS.", "card-note");
-        navigation.setWrapText(true);
-        navigation.setMaxWidth(520);
+        GridPane frames = table(
+                "keyspace", "every kind of value in this database, one per line, with how many keys hold it. "
+                        + "Click one to list its keys.",
+                "keys", "every key of the chosen kind. Type to filter, right click for clone, rename, export "
+                        + "and delete.",
+                "value", "the key you opened. A text value can be edited and saved; a collection can be "
+                        + "edited as JSON.");
 
-        GridPane types = table("COLOUR", "TYPE",
-                RedisPalette.STRING, "STRING — a single value (GET / SET)",
-                RedisPalette.HASH, "HASH — fields and values (HGETALL)",
-                RedisPalette.LIST, "LIST — an ordered list (LRANGE)",
-                RedisPalette.SET, "SET — unique members (SMEMBERS)",
-                RedisPalette.ZSET, "ZSET — members with scores (ZRANGE)",
-                RedisPalette.STREAM, "STREAM — an append log (shown as length)");
+        GridPane actions = table(
+                "db0", "Redis keeps 16 numbered databases. Most applications only use db0.",
+                "match", "only keys whose name fits, for example user:* for every key starting with user:",
+                "ttl", "how long until Redis deletes the key by itself. never expire removes that timer.",
+                "weigh keys", "asks Redis how much memory each loaded key takes.",
+                "slowlog", "the last commands Redis found slow.",
+                "live traffic", "every command Redis receives, for 6 seconds.",
+                "flush", "deletes every key of the database, or of all of them. It cannot be undone.");
 
-        Label ring = label("AN AMBER MARK AND A TTL LABEL MEAN THE KEY WILL EXPIRE; PERSISTENT KEYS ARE LABELLED "
-                + "PERSISTENT.", "card-note");
-        ring.setWrapText(true);
-        ring.setMaxWidth(520);
-
-        GridPane actions = table2("ACTION", "DOES",
-                "ADD NEW KEY", "Creates String, Hash, List, Set or ZSet data",
-                "RIGHT-CLICK", "Open, clone, rename, export JSON or delete",
-                "SAVE VALUE", "Writes the edited string back (SET)",
-                "SET TTL", "Makes the key expire after N seconds (EXPIRE)",
-                "PERSIST", "Removes the expiry so it lives forever (PERSIST)",
-                "🗑 DELETE", "Removes the key at once, without blocking (UNLINK)");
-
-        Label scan = label("KUBO SCANS KEYS A PAGE AT A TIME (SCAN), NEVER KEYS *, SO IT WILL NOT BLOCK A BUSY REDIS. "
-                + "SCROLLING NEAR THE END LOADS THE NEXT PAGE. USE MATCH TO FILTER AND THE DB0–DB15 SELECTOR TO "
-                + "SWITCH DATABASE. MEMORY SORT, SLOWLOG, LIVE TRAFFIC AND REDIS CLI ARE IN THE TOP TOOLBAR.", "card-note");
+        Label scan = label("Kubo reads keys a page at a time with SCAN, never KEYS *, so a busy Redis is never "
+                + "blocked. Scan further loads the next page.", "fetch-value");
         scan.setWrapText(true);
-        scan.setMaxWidth(520);
+        scan.setMaxWidth(560);
 
-        getChildren().addAll(header, label("NAVIGATION", "series"), navigation,
-                label("KEY TYPES", "series"), types, ring,
-                label("ACTIONS", "series"), actions, scan);
+        getChildren().addAll(header, frames, rule(), actions, rule(), scan);
     }
 
-    private static GridPane table(String h1, String h2, Object... rows) {
+    private static GridPane table(String... rows) {
         GridPane grid = new GridPane();
-        grid.setHgap(16);
-        grid.setVgap(7);
-        grid.add(label(h1, "metric-label"), 0, 0);
-        grid.add(label(h2, "metric-label"), 1, 0);
+        grid.setHgap(18);
+        grid.setVgap(8);
         for (int i = 0; i < rows.length; i += 2) {
-            int row = i / 2 + 1;
-            HBox mark = new HBox(new Circle(5, (javafx.scene.paint.Color) rows[i]));
-            mark.setAlignment(Pos.CENTER_LEFT);
-            mark.setMinWidth(60);
-            grid.add(mark, 0, row);
-            grid.add(label((String) rows[i + 1], "card-note"), 1, row);
+            Label key = label(rows[i], "fetch-key");
+            key.setMinWidth(96);
+            Label text = label(rows[i + 1], "fetch-value");
+            text.setWrapText(true);
+            text.setMaxWidth(460);
+            grid.add(key, 0, i / 2);
+            grid.add(text, 1, i / 2);
         }
         return grid;
     }
 
-    private static GridPane table2(String h1, String h2, String... rows) {
-        GridPane grid = new GridPane();
-        grid.setHgap(16);
-        grid.setVgap(7);
-        grid.add(label(h1, "metric-label"), 0, 0);
-        grid.add(label(h2, "metric-label"), 1, 0);
-        for (int i = 0; i < rows.length; i += 2) {
-            int row = i / 2 + 1;
-            Label name = label(rows[i], "mono");
-            name.setMinWidth(110);
-            grid.add(name, 0, row);
-            grid.add(label(rows[i + 1], "card-note"), 1, row);
-        }
-        return grid;
+    private static Region rule() {
+        Region rule = new Region();
+        rule.getStyleClass().add("fetch-rule");
+        rule.setMinHeight(1);
+        rule.setMaxHeight(1);
+        return rule;
     }
 
     private static Label label(String text, String styleClass) {

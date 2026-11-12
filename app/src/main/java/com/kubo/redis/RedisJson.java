@@ -81,7 +81,7 @@ public final class RedisJson {
     public static RedisValue readEntries(RedisType type, String json) throws IOException {
         if (!creatable(type)) {
             throw new IOException("Kubo cannot rebuild a " + type.name().toLowerCase(java.util.Locale.ROOT)
-                    + " value; use the REDIS CLI tab");
+                    + " value; use the redis-cli tab");
         }
         JsonNode node;
         try {

@@ -106,7 +106,7 @@ final class LocalCard extends VBox {
         list.setMinHeight(120);
         VBox.setVgrow(list, Priority.ALWAYS);
         list.setSeveral(true);
-        list.setLoadingText("READING THIS FOLDER…");
+        list.setWaitingText("reading this computer");
         list.setOnPick(index -> updateSelection());
         list.setOnOpen(index -> open(entries.get(index).path()));
         list.setOnBack(() -> {
@@ -232,6 +232,7 @@ final class LocalCard extends VBox {
         }
         current = folder;
         loading = true;
+        list.setLoadingText(folder.toString());
         list.setLoading(true);
         updateCrumbs();
         boolean hidden = hiddenToggle.isSelected();
@@ -260,7 +261,7 @@ final class LocalCard extends VBox {
                     }
                 }
             } catch (IOException e) {
-                problem = "CANNOT OPEN THIS FOLDER: " + e.getMessage();
+                problem = "cannot open it: " + e.getMessage();
             }
             read.sort(Comparator.comparing((LocalEntry entry) -> !entry.directory())
                     .thenComparing(entry -> entry.name().toLowerCase(Locale.ROOT)));
@@ -272,7 +273,7 @@ final class LocalCard extends VBox {
                 entries = List.copyOf(read);
                 loading = false;
                 list.setRows(rows(entries));
-                list.setMessage(failure.isEmpty() ? "EMPTY FOLDER" : failure, !failure.isEmpty());
+                list.setMessage(failure.isEmpty() ? "empty folder" : failure, !failure.isEmpty());
                 updateSelection();
             });
         });

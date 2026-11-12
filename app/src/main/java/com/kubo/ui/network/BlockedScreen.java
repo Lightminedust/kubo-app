@@ -81,7 +81,6 @@ final class BlockedScreen extends VBox {
     private final java.util.Set<String> asked = new java.util.HashSet<>();
     private final Label tally = new Label();
     /** What is being asked while the table has nothing in it yet. */
-    private final com.kubo.ui.WorkTrail trail = new com.kubo.ui.WorkTrail();
     private final Label status = new Label();
     private final TextField search = new TextField();
     private final ToggleGroup sortGroup = new ToggleGroup();
@@ -153,9 +152,7 @@ final class BlockedScreen extends VBox {
         status.setVisible(false);
         status.setManaged(false);
 
-        trail.setVisible(false);
-        trail.setManaged(false);
-        getChildren().addAll(mark, tally, actions, trail, sorting, header(), table, status);
+        getChildren().addAll(mark, tally, actions, sorting, header(), table, status);
     }
 
     /** The column names, above the rows rather than repeated in each one. */
@@ -182,22 +179,11 @@ final class BlockedScreen extends VBox {
      * firewall rules. A blank table for four seconds looks exactly like a server with nothing to show.
      */
     void reading(boolean yes) {
-        trail.setVisible(yes);
-        trail.setManaged(yes);
         if (yes) {
             tally.setText("Asking the server what it has shut out…");
-            trail.start();
-        } else {
-            trail.finish();
         }
     }
 
-    /** One command going out, for the trail. */
-    void asking(String command) {
-        if (trail.running()) {
-            trail.add(command);
-        }
-    }
 
     /** Fills the screen. */
     void show(List<BlockedAddress> blocked, String problem) {

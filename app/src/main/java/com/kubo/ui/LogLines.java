@@ -219,6 +219,19 @@ public final class LogLines extends ListView<LogLines.Line> {
                 // An empty line still takes a line's height; what is copied stays empty.
                 label.setText(line.text().isEmpty() ? " " : line.text());
                 label.getStyleClass().setAll("label", line.style());
+                String resultColor = switch (line.style()) {
+                    case "command-log-ok" -> "#35e0a1";
+                    case "command-log-failed" -> "#ff2d55";
+                    case "command-log-not-run" -> "#ffb347";
+                    default -> null;
+                };
+                label.setGraphic(resultColor == null ? null
+                        : new javafx.scene.shape.Circle(3.5, javafx.scene.paint.Color.web(resultColor)));
+                if (resultColor != null) {
+                    label.getStyleClass().add("prompt-command");
+                    label.setAlignment(javafx.geometry.Pos.TOP_LEFT);
+                    label.setGraphicTextGap(8);
+                }
                 setGraphic(label);
                 return;
             }

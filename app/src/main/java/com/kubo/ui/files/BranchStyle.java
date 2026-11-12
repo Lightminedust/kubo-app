@@ -31,12 +31,11 @@ final class BranchStyle {
     static final Color FAINT = Color.web("#1c1c24");
     static final Color ALERT = Color.web("#ff2d55");
     static final Color DENIED_TEXT = Color.web("#ff6b81");
-    static final Color[] PROBE_COLORS = {FOLDER, MEDIA, ARCHIVE, CODE};
 
-    static final Font SMALL_FONT = Font.font("Segoe UI", 9);
-    static final Font CHIP_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 9);
-    static final Font HEADER_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 10.5);
-    static final Font TOOLTIP_FONT = Font.font("Segoe UI", 11);
+    static final Font SMALL_FONT = Font.font("Consolas", 9);
+    static final Font CHIP_FONT = Font.font("Consolas", FontWeight.SEMI_BOLD, 9);
+    static final Font HEADER_FONT = Font.font("Consolas", FontWeight.SEMI_BOLD, 10.5);
+    static final Font TOOLTIP_FONT = Font.font("Consolas", 11);
 
     static final double TAU = Fibers.TAU;
 
